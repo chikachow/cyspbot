@@ -1,0 +1,117 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "cyspbot-dev",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-05-07",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+  },
+  "vars": {
+    "AUDIT_LOG_MAX_ENTRIES": "5000",
+    "AUDIT_LOG_RETENTION_DAYS": "180",
+    "GITHUB_ACTIONS_OIDC_AUDIENCE": "cyspbot",
+    "GITHUB_ACTIONS_OIDC_ISSUER": "https://token.actions.githubusercontent.com",
+    "GITHUB_ACTIONS_OIDC_JWKS_URL": "https://token.actions.githubusercontent.com/.well-known/jwks",
+    "GITHUB_API_BASE_URL": "https://api.github.com",
+    "GITHUB_APP_ID": "2419473",
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "GITHUB_INSTALLATION",
+        "class_name": "GitHubInstallationObject",
+      },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["GitHubInstallationObject"],
+    },
+  ],
+  "env": {
+    "preview": {
+      "name": "cyspbot-preview",
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "GITHUB_INSTALLATION",
+            "class_name": "GitHubInstallationObject",
+          },
+        ],
+      },
+      "vars": {
+        "AUDIT_LOG_MAX_ENTRIES": "5000",
+        "AUDIT_LOG_RETENTION_DAYS": "180",
+        "GITHUB_ACTIONS_OIDC_AUDIENCE": "cyspbot",
+        "GITHUB_ACTIONS_OIDC_ISSUER": "https://token.actions.githubusercontent.com",
+        "GITHUB_ACTIONS_OIDC_JWKS_URL": "https://token.actions.githubusercontent.com/.well-known/jwks",
+        "GITHUB_API_BASE_URL": "https://api.github.com",
+        "GITHUB_APP_ID": "2419473",
+      },
+    },
+    "test": {
+      "name": "cyspbot-test",
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "GITHUB_INSTALLATION",
+            "class_name": "GitHubInstallationObject",
+          },
+        ],
+      },
+      "vars": {
+        "AUDIT_LOG_MAX_ENTRIES": "5000",
+        "AUDIT_LOG_RETENTION_DAYS": "180",
+        "ENABLE_TEST_GITHUB_API": "true",
+        "GITHUB_ACTIONS_OIDC_AUDIENCE": "cyspbot",
+        "GITHUB_ACTIONS_OIDC_ISSUER": "https://token.actions.githubusercontent.com",
+        "GITHUB_ACTIONS_OIDC_JWKS_URL": "https://token.actions.githubusercontent.com/.well-known/jwks",
+        "GITHUB_ACTIONS_OIDC_PUBLIC_KEY_PEM_BASE64": "LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUlJQklqQU5CZ2txaGtpRzl3MEJBUUVGQUFPQ0FROEFNSUlCQ2dLQ0FRRUF0dTFidGZtaWo2S0FSdk15Ujh2WApHOGRCUUR0dWhaTmg1ODJLWmYwNXV6emkrajhjNGJkaHp1aGpreEwremlzKzZORTh4dWwzUTgrWEl2aUQrbmloCjFUejBicVIrOEcyRHFzYWVNMFlUekdsV21pUlVOdXdLVndEVGlzYy9sQVl4bnZ5VEJVR2t3UHp0NURTZEZxRFYKNVRGQXcxcFM4NXBNKyt1eEpxcEt6bmd6dnZ5TmRRVXNONjlPeW9YcnRRdVMyZndiL3lCTlNTRGJGVGM4emVIRgpSMTVpUFIxNUN3QjhBODNsTE5ITHUycStsY1g1ZURqZVpRNmJjQ3FiWjdYMU9KNSs2ZGMyU3ZhdEVFRll6MFZjCklXaTh2bDZIMHFEdWU4WCtYcmljbUE4V3ZVOTRxZ0dUdFZtZTVGeHlHVkdPaks4TE9qVlptN2RuS1FUTyt4QXMKaXdJREFRQUIKLS0tLS1FTkQgUFVCTElDIEtFWS0tLS0tCg==",
+        "GITHUB_API_BASE_URL": "https://example.test/__test/github",
+        "GITHUB_APP_ID": "12345",
+        "GITHUB_APP_PRIVATE_KEY_PEM": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC27Vu1+aKPooBG\n8zJHy9cbx0FAO26Fk2HnzYpl/Tm7POL6Pxzht2HO6GOTEv7OKz7o0TzG6XdDz5ci\n+IP6eKHVPPRupH7wbYOqxp4zRhPMaVaaJFQ27ApXANOKxz+UBjGe/JMFQaTA/O3k\nNJ0WoNXlMUDDWlLzmkz767EmqkrOeDO+/I11BSw3r07Kheu1C5LZ/Bv/IE1JINsV\nNzzN4cVHXmI9HXkLAHwDzeUs0cu7ar6Vxfl4ON5lDptwKptntfU4nn7p1zZK9q0Q\nQVjPRVwhaLy+XofSoO57xf5euJyYDxa9T3iqAZO1WZ7kXHIZUY6Mrws6NVmbt2cp\nBM77ECyLAgMBAAECggEAA3x4j/pG99fP/AosfiPLYLMmcjPvwknxxrorFhCCZigd\n50kGouKc0ZWqOCZXhtRaKZO7RcszQ66UIc18rmxYITk9K1KlPK3JoZqRb0a5n96u\nENf6ZuWOuOPCJFXxxz9q+K21m5cJrcfkPMIn8EN2cBzFMDPressJBpASWztJm6+0\ng6uTBt6l9CU3ObvjyORefXSfPwkhGKNfvgy75/VSlddcDAV+wjH14JdqWdMlntHH\nfMRPboYC3cvik6YsWb6qNGfjXz+Hzeba7D13y+QGYWrdfBfavbTHqkgZKas7AmyY\nTdrl1VlWD+h03Tec3DkhIxrdeA1+Wf+wmBjonmURSQKBgQDgrpsNIe8Ee/TT7VMz\n4fb3GfplRv0lshPfYW5W4ULEga2Oviz32BtSPhgG6NFZwIJ+MTxQhvPwGMQuYfqR\nCR3SG9O+m+kr4CLJJLxQ0RHBQ9VtP9wVOKqUiNkE9ez7mqx3/RF8oenNUPkAUFso\n1O0d9p87H5xpGZ43NVupfGpL1wKBgQDQbM0rYOK+1YToh7RanFLW0MpvQcvQHjsF\nqJ56yoza0f/3FNyrEy7vcwzI5m+mQLfRMLkrvljv+iavjylG2cZDr+/lK4QQRcyM\nLQctBJeSXw/y2+dS7AvL5XJQkRe8hpZTpFNdVsOnzWrqEl674CrFZKo89ORIirLJ\n7GJJgZTubQKBgQDF2FrGNKRREYnj9+41GHws2N5Jwjn1sJqZMCVGMbNmcD5RHJti\nXxSn1e+4XdjDLKZ70oUm777sJBLUOQi4IAv3UPOiu42WSha3gjak/4Sf50iPnBUD\nRtPGWb6oBJn6cBgAzIJSegzz86JfqWKsUNq/cMSD/nDvh1Rvjve5BcpgHwKBgAKi\n7bF3x0Z8svKyDMD8qzuWZokjvu1CBKMcr+yDtWZrM56vf98WHgjfXrEH4S+sL+cQ\ng7ce8EcQ1f5whCgmRxDCH/m5JDGEgILhau7R2Qz78Nq0l2eAHuIUY+7K9w7mcO5b\n7MYIe+8adRjC5LnhqwjWLiUZP+3++yX8vH2LixO9AoGATPqMHTEaIrIh999ahqmv\nOulHU1mIPsNEzbagWNwCmDJB5+MJPE76j59Gg1NMVmRQvDOnhktjCdyr7cLoSyb5\ncT0XqIpKa8tyk2RAMjqM52QwttVzRnDjhqrpyM+9HsPyP7huvTlkpwLBE8GR7cP3\nguigOK0SOM7v+1ceZuh/bm8=\n-----END PRIVATE KEY-----\n",
+        "TEST_GITHUB_DEFAULT_BRANCH": "main",
+        "TEST_GITHUB_INSTALLATION_ID": "67890",
+        "TEST_GITHUB_MINTED_TOKEN": "ghs_test_token",
+        "TEST_GITHUB_REPOSITORY": "cysp/terraform-provider-contentful",
+        "TEST_GITHUB_REPOSITORY_ID": "123456789",
+      },
+    },
+    "production": {
+      "name": "cyspbot",
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "GITHUB_INSTALLATION",
+            "class_name": "GitHubInstallationObject",
+          },
+        ],
+      },
+      "routes": [
+        {
+          "pattern": "cyspbot.chikachow.org",
+          "custom_domain": true,
+        },
+      ],
+      "vars": {
+        "AUDIT_LOG_MAX_ENTRIES": "5000",
+        "AUDIT_LOG_RETENTION_DAYS": "180",
+        "GITHUB_ACTIONS_OIDC_AUDIENCE": "cyspbot",
+        "GITHUB_ACTIONS_OIDC_ISSUER": "https://token.actions.githubusercontent.com",
+        "GITHUB_ACTIONS_OIDC_JWKS_URL": "https://token.actions.githubusercontent.com/.well-known/jwks",
+        "GITHUB_API_BASE_URL": "https://api.github.com",
+        "GITHUB_APP_ID": "2419473",
+      },
+      "secrets_store_secrets": [
+        {
+          "binding": "GITHUB_APP_PRIVATE_KEY",
+          "secret_name": "CYSPBOT_GITHUB_APP_PRIVATE_KEY",
+          "store_id": "d38c6b7fbcc143dba27208fa1c044e37",
+        },
+      ],
+      "workers_dev": false,
+    },
+  },
+}

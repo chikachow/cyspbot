@@ -1,0 +1,17 @@
+{
+  "extends": ["@tsconfig/recommended/tsconfig.json", "@tsconfig/strictest/tsconfig.json"],
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "customConditions": ["workerd", "worker"],
+    "exactOptionalPropertyTypes": false,
+    "lib": ["ES2024", "WebWorker"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmit": true,
+    "rootDir": ".",
+    "skipLibCheck": true,
+    "target": "ES2024",
+    "types": ["@cloudflare/vitest-pool-workers/types", "@cloudflare/workers-types", "node"]
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts", "vitest.config.ts"]
+}

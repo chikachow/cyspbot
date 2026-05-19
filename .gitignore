@@ -1,0 +1,6 @@
+.dev.vars
+.wrangler
+coverage
+node_modules
+*.private-key.pem
+*.private-key.pkcs8.pem
