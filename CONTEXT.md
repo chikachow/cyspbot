@@ -44,14 +44,25 @@ _Avoid_: Permanent event store, analytics stream
 A non-minting Cyspbot endpoint that verifies a **Caller** OIDC token and returns Cyspbot's derived identity without issuing an **Installation Token**.
 _Avoid_: Debug dump, raw JWT inspector
 
+**Issuer Registration**:
+A Cyspbot configuration entry that defines one trusted OIDC issuer and the verification material and policy Cyspbot uses for that issuer.
+_Avoid_: Dynamic issuer discovery, arbitrary identity provider, issuer profile as a separate concept
+
+**JWKS Cache**:
+A short-lived Cyspbot-held store of verification keys for a trusted **Issuer Registration**, which may remain briefly usable during upstream key-distribution failures.
+_Avoid_: Permanent key store, token cache, caller-controlled key source
+
 ## Relationships
 
 - A **Caller** authenticates to **Cyspbot** with a GitHub OIDC token
+- Cyspbot verifies a **Caller** only against a trusted **Issuer Registration**
+- Each **Issuer Registration** owns its own verification policy, including JWKS freshness, staleness, and refresh-backoff rules
 - **Cyspbot** derives exactly one **Calling Repository** from the verified OIDC claims
 - **Token Minting** in **Cyspbot** issues an **Installation Token** only for the **Calling Repository**
 - The **Token Policy** is fixed by **Cyspbot**, not selected by the **Caller**
 - **Cyspbot** records an **Audit Log** entry for each token minting attempt
 - The **Claims Endpoint** verifies caller identity and repository installation relationship without issuing an **Installation Token**
+- The **JWKS Cache** supplies verification keys for an **Issuer Registration**, but never stores issued **Installation Tokens**
 - A **GitHub App Installation** is the GitHub-side authority that allows **Cyspbot** to mint an **Installation Token**
 - The **Webhook Receiver** accepts GitHub webhook deliveries only after signature and envelope validation
 - The **Webhook Receiver** routes each accepted webhook delivery to the Durable Object keyed by **GitHub App Installation**

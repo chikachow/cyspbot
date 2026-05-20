@@ -58,7 +58,7 @@ async function createOidcToken(overrides?: Partial<Record<string, string>>): Pro
     workflow: "update indirect dependencies",
     ...overrides,
   })
-    .setProtectedHeader({ alg: "RS256" })
+    .setProtectedHeader({ alg: "RS256", kid: "test-key-1" })
     .setAudience("cyspbot")
     .setIssuer("https://token.actions.githubusercontent.com")
     .setIssuedAt(now - 10)
@@ -197,6 +197,55 @@ describe("cyspbot worker", () => {
     await expect(response.json()).resolves.toEqual({
       status: 401,
       title: "Unauthorized",
+      type: "about:blank",
+    });
+  });
+
+  it("rejects webhook payloads with a non-JSON content type", async () => {
+    const body = JSON.stringify({
+      action: "added",
+      installation: {
+        id: 67890,
+      },
+    });
+    const headers = {
+      ...githubWebhookHeaders(body, "test-webhook-secret"),
+      "content-type": "text/plain",
+    };
+
+    const response = await SELF.fetch("https://example.test/github/webhooks", {
+      body,
+      headers,
+      method: "POST",
+    });
+
+    expect(response.status).toBe(415);
+    await expect(response.json()).resolves.toEqual({
+      status: 415,
+      title: "Unsupported Media Type",
+      type: "about:blank",
+    });
+  });
+
+  it("rejects webhook payloads larger than 256 KiB", async () => {
+    const body = JSON.stringify({
+      installation: {
+        id: 67890,
+      },
+      payload: "x".repeat(256 * 1024),
+    });
+    const headers = githubWebhookHeaders(body, "test-webhook-secret");
+
+    const response = await SELF.fetch("https://example.test/github/webhooks", {
+      body,
+      headers,
+      method: "POST",
+    });
+
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toEqual({
+      status: 413,
+      title: "Payload Too Large",
       type: "about:blank",
     });
   });

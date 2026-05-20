@@ -1,7 +1,7 @@
 import { importPKCS8, SignJWT } from "jose";
 
 import type { Env } from "../env.ts";
-import type { VerifiedCaller } from "./oidc.ts";
+import type { GitHubActionsPrincipal } from "../oidc/principals.ts";
 import { maybeMockGitHubApiResponse } from "./test-api.ts";
 
 const fixedTokenPermissions = {
@@ -66,7 +66,10 @@ export async function resolveInstallationForRepository(
   return { id: body.id };
 }
 
-export async function assertTokenMintPolicy(env: Env, caller: VerifiedCaller): Promise<void> {
+export async function assertTokenMintPolicy(
+  env: Env,
+  caller: GitHubActionsPrincipal,
+): Promise<void> {
   switch (caller.eventName) {
     case "schedule":
     case "workflow_dispatch":
@@ -115,7 +118,7 @@ export async function createRepositoryScopedInstallationToken(
   };
 }
 
-async function assertDefaultBranchPush(env: Env, caller: VerifiedCaller): Promise<void> {
+async function assertDefaultBranchPush(env: Env, caller: GitHubActionsPrincipal): Promise<void> {
   if (caller.ref === null) {
     throw new BrokerAuthorizationError("missing ref");
   }

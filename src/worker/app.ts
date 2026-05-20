@@ -1,9 +1,14 @@
 import type { Env } from "../env.ts";
 import { GitHubApiError, resolveInstallationForRepository } from "../github/api.ts";
-import { OidcAuthenticationError, verifyGithubActionsOidcBearerToken } from "../github/oidc.ts";
+import type {
+  MintInstallationTokenResult,
+  ReceiveWebhookResult,
+} from "../durable-objects/installation-object.ts";
+import { githubActionsPrincipal, authenticateRequest } from "./authentication.ts";
 import { jsonResponse, problemResponse } from "./problem-details.ts";
 
 const textEncoder = new TextEncoder();
+const maxWebhookBodyBytes = 256 * 1024;
 
 export const app: ExportedHandler<Env> = {
   async fetch(request, env): Promise<Response> {
@@ -38,83 +43,77 @@ export const app: ExportedHandler<Env> = {
 };
 
 async function handleClaimsRequest(request: Request, env: Env): Promise<Response> {
-  const caller = await authenticatedCaller(request, env);
+  const authentication = await authenticateRequest(request, env);
 
-  if (caller instanceof Response) {
-    return caller;
+  if (!authentication.ok) {
+    return problemResponse(authentication.httpStatus, authentication.responseHeaders);
+  }
+
+  if (!githubActionsPrincipal(authentication.context.principal)) {
+    return problemResponse(403);
   }
 
   try {
-    await resolveInstallationForRepository(env, caller.repository);
+    await resolveInstallationForRepository(env, authentication.context.principal.repository);
   } catch (error) {
     return responseForGitHubApiError(error);
   }
 
   return jsonResponse({
-    event_name: caller.eventName,
-    ref: caller.ref,
-    repository: caller.repository,
-    repository_id: caller.repositoryId,
+    event_name: authentication.context.principal.eventName,
+    ref: authentication.context.principal.ref,
+    repository: authentication.context.principal.repository,
+    repository_id: authentication.context.principal.repositoryId,
   });
 }
 
 async function handleInstallationTokenRequest(request: Request, env: Env): Promise<Response> {
-  const caller = await authenticatedCaller(request, env);
+  const authentication = await authenticateRequest(request, env);
 
-  if (caller instanceof Response) {
-    return caller;
+  if (!authentication.ok) {
+    return problemResponse(authentication.httpStatus, authentication.responseHeaders);
+  }
+
+  if (!githubActionsPrincipal(authentication.context.principal)) {
+    return problemResponse(403);
   }
 
   let installation;
 
   try {
-    installation = await resolveInstallationForRepository(env, caller.repository);
+    installation = await resolveInstallationForRepository(
+      env,
+      authentication.context.principal.repository,
+    );
   } catch (error) {
     console.error("GitHub installation lookup failed", {
       errorMessage: error instanceof Error ? error.message : String(error),
       errorName: error instanceof Error ? error.name : typeof error,
-      eventName: caller.eventName,
-      ref: caller.ref,
-      repository: caller.repository,
-      repositoryId: caller.repositoryId,
+      eventName: authentication.context.principal.eventName,
+      ref: authentication.context.principal.ref,
+      repository: authentication.context.principal.repository,
+      repositoryId: authentication.context.principal.repositoryId,
     });
     return responseForGitHubApiError(error);
   }
 
-  const stub = env.GITHUB_INSTALLATION.get(
-    env.GITHUB_INSTALLATION.idFromName(String(installation.id)),
-  );
+  const stub = env.GITHUB_INSTALLATION.getByName(String(installation.id));
+  const result = (await stub.mintInstallationToken({
+    installationId: installation.id,
+    principal: authentication.context.principal,
+  })) as MintInstallationTokenResult;
 
-  return stub.fetch("https://installation.internal/token", {
-    body: JSON.stringify({
-      caller,
-      installationId: installation.id,
-    }),
-    method: "POST",
-  });
-}
-
-async function authenticatedCaller(request: Request, env: Env) {
-  try {
-    return await verifyGithubActionsOidcBearerToken(request.headers.get("authorization"), env);
-  } catch (error) {
-    if (error instanceof OidcAuthenticationError) {
-      const url = new URL(request.url);
-
-      console.warn("GitHub Actions OIDC authentication failed", {
-        message: error.message,
-        path: url.pathname,
-        rayId: request.headers.get("cf-ray"),
-        userAgent: request.headers.get("user-agent"),
-      });
-
-      return problemResponse(401, {
-        "www-authenticate": "Bearer",
-      });
-    }
-
-    throw error;
+  if (!result.ok) {
+    return problemResponse(result.status);
   }
+
+  return jsonResponse(
+    {
+      expires_at: result.expiresAt,
+      token: result.token,
+    },
+    { status: 200 },
+  );
 }
 
 function responseForGitHubApiError(error: unknown): Response {
@@ -152,10 +151,32 @@ async function handleGitHubWebhookRequest(request: Request, env: Env): Promise<R
     return problemResponse(500);
   }
 
+  if (!isJsonContentType(request.headers.get("content-type"))) {
+    return problemResponse(415);
+  }
+
+  const contentLength = request.headers.get("content-length");
+
+  if (contentLength !== null) {
+    const parsedContentLength = Number.parseInt(contentLength, 10);
+
+    if (!Number.isSafeInteger(parsedContentLength) || parsedContentLength < 0) {
+      return problemResponse(400);
+    }
+
+    if (parsedContentLength > maxWebhookBodyBytes) {
+      return problemResponse(413);
+    }
+  }
+
   const event = request.headers.get("x-github-event");
   const deliveryId = request.headers.get("x-github-delivery");
   const signatureHeader = request.headers.get("x-hub-signature-256");
   const bodyBytes = new Uint8Array(await request.arrayBuffer());
+
+  if (bodyBytes.byteLength > maxWebhookBodyBytes) {
+    return problemResponse(413);
+  }
 
   if (event === null || deliveryId === null || signatureHeader === null) {
     return problemResponse(400);
@@ -181,18 +202,26 @@ async function handleGitHubWebhookRequest(request: Request, env: Env): Promise<R
     return problemResponse(400);
   }
 
-  const stub = env.GITHUB_INSTALLATION.get(env.GITHUB_INSTALLATION.idFromName(String(installationId)));
+  const stub = env.GITHUB_INSTALLATION.getByName(String(installationId));
 
-  return stub.fetch("https://installation.internal/webhook", {
-    body: JSON.stringify({
-      body: new TextDecoder().decode(bodyBytes),
-      deliveryId,
-      event,
-      installationId,
-      signature: signatureHeader,
-    }),
-    method: "POST",
-  });
+  const result = (await stub.receiveWebhook({
+    body: new TextDecoder().decode(bodyBytes),
+    deliveryId,
+    event,
+    installationId,
+    signature: signatureHeader,
+  })) as ReceiveWebhookResult;
+
+  if (!result.ok) {
+    return problemResponse(result.status);
+  }
+
+  return jsonResponse(
+    {
+      accepted: true,
+    },
+    { status: 202 },
+  );
 }
 
 async function verifyGitHubWebhookSignature(
@@ -235,4 +264,12 @@ function constantTimeEquals(left: string, right: string): boolean {
   }
 
   return mismatch === 0;
+}
+
+function isJsonContentType(contentType: string | null): boolean {
+  if (contentType === null) {
+    return false;
+  }
+
+  return contentType.split(";", 1)[0]?.trim().toLowerCase() === "application/json";
 }

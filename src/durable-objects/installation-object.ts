@@ -7,21 +7,46 @@ import {
   GitHubApiError,
   assertTokenMintPolicy,
 } from "../github/api.ts";
-import type { VerifiedCaller } from "../github/oidc.ts";
-import { jsonResponse, problemResponse } from "../worker/problem-details.ts";
-
-interface MintTokenRequest {
-  caller: VerifiedCaller;
-  installationId: number;
+import type { GitHubActionsPrincipal } from "../oidc/principals.ts";
+export interface ReceiveWebhookFailure {
+  ok: false;
+  status: number;
 }
 
-interface InstallationWebhookRequest {
+export interface ReceiveWebhookSuccess {
+  accepted: true;
+  ok: true;
+}
+
+export type ReceiveWebhookResult = ReceiveWebhookFailure | ReceiveWebhookSuccess;
+
+export interface InstallationWebhookRequest {
   body: string;
   deliveryId: string;
   event: string;
   installationId: number;
   signature: string;
 }
+
+export interface MintInstallationTokenRequest {
+  installationId: number;
+  principal: GitHubActionsPrincipal;
+}
+
+export interface MintInstallationTokenSuccess {
+  expiresAt: string;
+  ok: true;
+  token: string;
+}
+
+export interface MintInstallationTokenFailure {
+  ok: false;
+  status: number;
+}
+
+export type MintInstallationTokenResult =
+  | MintInstallationTokenFailure
+  | MintInstallationTokenSuccess;
 
 export class GitHubInstallationObject extends DurableObject<Env> {
   public constructor(ctx: DurableObjectState, env: Env) {
@@ -57,77 +82,64 @@ export class GitHubInstallationObject extends DurableObject<Env> {
     `);
   }
 
-  public override async fetch(request: Request): Promise<Response> {
-    const url = new URL(request.url);
-
-    if (request.method !== "POST") {
-      return problemResponse(404);
-    }
-
-    if (url.pathname === "/webhook") {
-      return this.handleWebhookRequest(request);
-    }
-
-    if (url.pathname !== "/token") {
-      return problemResponse(404);
-    }
-
-    const { caller, installationId } = (await request.json()) as MintTokenRequest;
+  public async mintInstallationToken(
+    request: MintInstallationTokenRequest,
+  ): Promise<MintInstallationTokenResult> {
+    const { installationId, principal } = request;
     const requestedAt = new Date().toISOString();
 
     try {
-      await assertTokenMintPolicy(this.env, caller);
+      await assertTokenMintPolicy(this.env, principal);
 
       const token = await createRepositoryScopedInstallationToken(
         this.env,
         installationId,
-        caller.repositoryId,
+        principal.repositoryId,
       );
 
       await this.recordAuditLog({
-        caller,
+        principal,
         expiresAt: token.expiresAt,
         installationId,
         requestedAt,
         status: 200,
       });
 
-      return jsonResponse(
-        {
-          expires_at: token.expiresAt,
-          token: token.token,
-        },
-        { status: 200 },
-      );
+      return {
+        expiresAt: token.expiresAt,
+        ok: true,
+        token: token.token,
+      };
     } catch (error) {
       const status = statusForTokenRequestError(error);
 
       console.error("GitHub installation token request failed", {
         errorMessage: error instanceof Error ? error.message : String(error),
         errorName: error instanceof Error ? error.name : typeof error,
-        eventName: caller.eventName,
+        eventName: principal.eventName,
         installationId,
         mappedStatus: status,
-        ref: caller.ref,
-        repository: caller.repository,
-        repositoryId: caller.repositoryId,
+        ref: principal.ref,
+        repository: principal.repository,
+        repositoryId: principal.repositoryId,
       });
 
       await this.recordAuditLog({
-        caller,
+        principal,
         installationId,
         requestedAt,
         status,
       });
 
-      return problemResponse(status);
+      return {
+        ok: false,
+        status,
+      };
     }
   }
 
-  private async handleWebhookRequest(request: Request): Promise<Response> {
-    const { body, deliveryId, event, installationId, signature } =
-      (await request.json()) as InstallationWebhookRequest;
-
+  public async receiveWebhook(request: InstallationWebhookRequest): Promise<ReceiveWebhookResult> {
+    const { body, deliveryId, event, installationId, signature } = request;
     if (
       typeof body !== "string" ||
       typeof deliveryId !== "string" ||
@@ -135,7 +147,10 @@ export class GitHubInstallationObject extends DurableObject<Env> {
       typeof signature !== "string" ||
       !Number.isInteger(installationId)
     ) {
-      return problemResponse(400);
+      return {
+        ok: false,
+        status: 400,
+      };
     }
 
     this.ctx.storage.sql.exec(
@@ -159,11 +174,14 @@ export class GitHubInstallationObject extends DurableObject<Env> {
 
     this.pruneWebhookLog();
 
-    return jsonResponse({ accepted: true }, { status: 202 });
+    return {
+      accepted: true,
+      ok: true,
+    };
   }
 
   private async recordAuditLog(entry: {
-    caller: VerifiedCaller;
+    principal: GitHubActionsPrincipal;
     expiresAt?: string;
     installationId: number;
     requestedAt: string;
@@ -188,16 +206,16 @@ export class GitHubInstallationObject extends DurableObject<Env> {
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       entry.requestedAt,
-      entry.caller.repositoryId,
-      entry.caller.repository,
+      entry.principal.repositoryId,
+      entry.principal.repository,
       entry.installationId,
-      entry.caller.eventName,
-      entry.caller.ref,
-      entry.caller.actor,
-      entry.caller.workflow,
-      entry.caller.runId,
-      entry.caller.runAttempt,
-      entry.caller.sha,
+      entry.principal.eventName,
+      entry.principal.ref,
+      entry.principal.actor,
+      entry.principal.workflow,
+      entry.principal.runId,
+      entry.principal.runAttempt,
+      entry.principal.sha,
       entry.status,
       entry.expiresAt ?? null,
     );
