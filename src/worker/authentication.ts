@@ -145,7 +145,8 @@ function unverifiedIssuerHint(token: string): string | null {
       return null;
     }
 
-    const payload = JSON.parse(atob(base64UrlToBase64(payloadSegment))) as { iss?: unknown };
+    const payloadJson = new TextDecoder().decode(base64UrlToBytes(payloadSegment));
+    const payload = JSON.parse(payloadJson) as { iss?: unknown };
 
     return typeof payload.iss === "string" && payload.iss.length > 0 ? payload.iss : null;
   } catch {
@@ -153,10 +154,12 @@ function unverifiedIssuerHint(token: string): string | null {
   }
 }
 
-function base64UrlToBase64(value: string): string {
+function base64UrlToBytes(value: string): Uint8Array {
   const padded = value.padEnd(value.length + ((4 - (value.length % 4 || 4)) % 4), "=");
+  const base64 = padded.replaceAll("-", "+").replaceAll("_", "/");
+  const binary = atob(base64);
 
-  return padded.replaceAll("-", "+").replaceAll("_", "/");
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
 
 function logAuthFailure(

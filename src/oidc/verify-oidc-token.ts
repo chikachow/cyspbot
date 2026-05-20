@@ -60,6 +60,7 @@ export async function verifyOidcToken(
   const nowMs = clock.now();
   let nextState = state;
   let snapshot = state.snapshot;
+  let refreshAttempted = false;
   const shouldAttemptRefresh =
     snapshot === null ||
     !snapshotIsFresh(snapshot, nowMs) ||
@@ -68,6 +69,7 @@ export async function verifyOidcToken(
   if (shouldAttemptRefresh) {
     const refresh = await maybeRefreshSnapshot(nextState, registration, clock, fetchImpl);
     nextState = refresh.nextState;
+    refreshAttempted = refresh.refreshAttempted;
 
     if (refresh.snapshot !== null) {
       snapshot = refresh.snapshot;
@@ -84,6 +86,7 @@ export async function verifyOidcToken(
     if (
       selection.reason === "no_matching_key" &&
       kid !== null &&
+      !refreshAttempted &&
       canAttemptRefresh(nextState, nowMs) &&
       registration.source === "remote-jwks"
     ) {
@@ -121,15 +124,19 @@ async function maybeRefreshSnapshot(
   registration: IssuerRegistration,
   clock: Clock,
   fetchImpl: typeof fetch,
-): Promise<{ nextState: VerifierState; snapshot: JwksSnapshot | null }> {
+): Promise<{
+  nextState: VerifierState;
+  refreshAttempted: boolean;
+  snapshot: JwksSnapshot | null;
+}> {
   const nowMs = clock.now();
 
   if (!canAttemptRefresh(state, nowMs)) {
     if (snapshotIsWithinStaleWindow(state.snapshot, nowMs)) {
-      return { nextState: state, snapshot: state.snapshot };
+      return { nextState: state, refreshAttempted: false, snapshot: state.snapshot };
     }
 
-    return { nextState: state, snapshot: null };
+    return { nextState: state, refreshAttempted: false, snapshot: null };
   }
 
   const refresh = await fetchJwksSnapshot(registration, clock, fetchImpl);
@@ -138,15 +145,15 @@ async function maybeRefreshSnapshot(
     const nextState = stateWithRefreshFailure(state, registration, refresh.kind, nowMs);
 
     if (snapshotIsWithinStaleWindow(nextState.snapshot, nowMs)) {
-      return { nextState, snapshot: nextState.snapshot };
+      return { nextState, refreshAttempted: true, snapshot: nextState.snapshot };
     }
 
-    return { nextState, snapshot: null };
+    return { nextState, refreshAttempted: true, snapshot: null };
   }
 
   const nextState = stateWithRefreshSuccess(state, refresh.snapshot);
 
-  return { nextState, snapshot: refresh.snapshot };
+  return { nextState, refreshAttempted: true, snapshot: refresh.snapshot };
 }
 
 function shouldRefreshForUnknownKid(

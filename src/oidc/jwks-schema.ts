@@ -13,13 +13,13 @@ const baseJwkSchema = z
     x: z.string().min(1).optional(),
     y: z.string().min(1).optional(),
   })
-  .strict();
+  .passthrough();
 
 export const jwksDocumentSchema = z
   .object({
     keys: z.array(baseJwkSchema).min(1),
   })
-  .strict();
+  .passthrough();
 
 export type ParsedJwksDocument = z.infer<typeof jwksDocumentSchema>;
 export type ParsedJwk = ParsedJwksDocument["keys"][number];

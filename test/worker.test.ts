@@ -113,6 +113,23 @@ describe("cyspbot worker", () => {
     });
   });
 
+  it("accepts tokens whose payload contains non-ascii claim values", async () => {
+    const response = await SELF.fetch("https://example.test/github/claims", {
+      headers: await authorizationHeaders({
+        workflow: "déploiement principal",
+      }),
+      method: "POST",
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      event_name: "workflow_dispatch",
+      ref: "refs/heads/main",
+      repository: "cysp/terraform-provider-contentful",
+      repository_id: "123456789",
+    });
+  });
+
   it("mints a repository-scoped installation token for allowed events", async () => {
     const response = await SELF.fetch("https://example.test/github/installations/token", {
       headers: await authorizationHeaders(),
