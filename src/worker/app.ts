@@ -3,6 +3,8 @@ import { GitHubApiError, resolveInstallationForRepository } from "../github/api.
 import { OidcAuthenticationError, verifyGithubActionsOidcBearerToken } from "../github/oidc.ts";
 import { jsonResponse, problemResponse } from "./problem-details.ts";
 
+const textEncoder = new TextEncoder();
+
 export const app: ExportedHandler<Env> = {
   async fetch(request, env): Promise<Response> {
     const url = new URL(request.url);
@@ -21,6 +23,14 @@ export const app: ExportedHandler<Env> = {
       }
 
       return handleInstallationTokenRequest(request, env);
+    }
+
+    if (url.pathname === "/github/webhooks") {
+      if (request.method !== "POST") {
+        return problemResponse(405, { allow: "POST" });
+      }
+
+      return handleGitHubWebhookRequest(request, env);
     }
 
     return problemResponse(404);
@@ -127,4 +137,102 @@ function responseForGitHubApiError(error: unknown): Response {
   }
 
   return problemResponse(500);
+}
+
+interface InstallationWebhookPayload {
+  installation?: {
+    id?: number;
+  };
+}
+
+async function handleGitHubWebhookRequest(request: Request, env: Env): Promise<Response> {
+  const secret = env.GITHUB_WEBHOOK_SECRET;
+
+  if (secret === undefined || secret.length === 0) {
+    return problemResponse(500);
+  }
+
+  const event = request.headers.get("x-github-event");
+  const deliveryId = request.headers.get("x-github-delivery");
+  const signatureHeader = request.headers.get("x-hub-signature-256");
+  const bodyBytes = new Uint8Array(await request.arrayBuffer());
+
+  if (event === null || deliveryId === null || signatureHeader === null) {
+    return problemResponse(400);
+  }
+
+  const valid = await verifyGitHubWebhookSignature(bodyBytes, signatureHeader, secret);
+
+  if (!valid) {
+    return problemResponse(401);
+  }
+
+  let payload: InstallationWebhookPayload;
+
+  try {
+    payload = JSON.parse(new TextDecoder().decode(bodyBytes)) as InstallationWebhookPayload;
+  } catch {
+    return problemResponse(400);
+  }
+
+  const installationId = payload.installation?.id;
+
+  if (!Number.isInteger(installationId) || installationId === undefined || installationId <= 0) {
+    return problemResponse(400);
+  }
+
+  const stub = env.GITHUB_INSTALLATION.get(env.GITHUB_INSTALLATION.idFromName(String(installationId)));
+
+  return stub.fetch("https://installation.internal/webhook", {
+    body: JSON.stringify({
+      body: new TextDecoder().decode(bodyBytes),
+      deliveryId,
+      event,
+      installationId,
+      signature: signatureHeader,
+    }),
+    method: "POST",
+  });
+}
+
+async function verifyGitHubWebhookSignature(
+  body: Uint8Array,
+  signatureHeader: string,
+  secret: string,
+): Promise<boolean> {
+  if (!signatureHeader.startsWith("sha256=")) {
+    return false;
+  }
+
+  const expectedHex = signatureHeader.slice("sha256=".length);
+
+  if (!/^[a-f0-9]{64}$/u.test(expectedHex)) {
+    return false;
+  }
+
+  const key = await crypto.subtle.importKey(
+    "raw",
+    textEncoder.encode(secret),
+    { hash: "SHA-256", name: "HMAC" },
+    false,
+    ["sign"],
+  );
+  const digest = new Uint8Array(await crypto.subtle.sign("HMAC", key, body as BufferSource));
+  const actualHex = [...digest].map((value) => value.toString(16).padStart(2, "0")).join("");
+
+  return constantTimeEquals(actualHex, expectedHex);
+}
+
+function constantTimeEquals(left: string, right: string): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  let mismatch = 0;
+
+  for (let index = 0; index < left.length; index += 1) {
+    mismatch |= left.charCodeAt(index) ^ right.charCodeAt(index);
+  }
+
+  return mismatch === 0;
 }

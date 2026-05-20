@@ -16,6 +16,7 @@ export interface Env {
   GITHUB_APP_ID: string;
   GITHUB_APP_PRIVATE_KEY?: SecretsStoreSecretBinding;
   GITHUB_APP_PRIVATE_KEY_PEM?: string;
+  GITHUB_WEBHOOK_SECRET?: string;
   GITHUB_INSTALLATION: DurableObjectNamespace<GitHubInstallationObject>;
   TEST_GITHUB_DEFAULT_BRANCH?: string;
   TEST_GITHUB_INSTALLATION_ID?: string;

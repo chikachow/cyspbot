@@ -15,6 +15,14 @@ interface MintTokenRequest {
   installationId: number;
 }
 
+interface InstallationWebhookRequest {
+  body: string;
+  deliveryId: string;
+  event: string;
+  installationId: number;
+  signature: string;
+}
+
 export class GitHubInstallationObject extends DurableObject<Env> {
   public constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -36,12 +44,31 @@ export class GitHubInstallationObject extends DurableObject<Env> {
         expires_at TEXT
       )
     `);
+    ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS webhook_requests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        received_at TEXT NOT NULL,
+        installation_id INTEGER NOT NULL,
+        delivery_id TEXT NOT NULL,
+        event TEXT NOT NULL,
+        signature TEXT NOT NULL,
+        body TEXT NOT NULL
+      )
+    `);
   }
 
   public override async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
 
-    if (request.method !== "POST" || url.pathname !== "/token") {
+    if (request.method !== "POST") {
+      return problemResponse(404);
+    }
+
+    if (url.pathname === "/webhook") {
+      return this.handleWebhookRequest(request);
+    }
+
+    if (url.pathname !== "/token") {
       return problemResponse(404);
     }
 
@@ -95,6 +122,44 @@ export class GitHubInstallationObject extends DurableObject<Env> {
 
       return problemResponse(status);
     }
+  }
+
+  private async handleWebhookRequest(request: Request): Promise<Response> {
+    const { body, deliveryId, event, installationId, signature } =
+      (await request.json()) as InstallationWebhookRequest;
+
+    if (
+      typeof body !== "string" ||
+      typeof deliveryId !== "string" ||
+      typeof event !== "string" ||
+      typeof signature !== "string" ||
+      !Number.isInteger(installationId)
+    ) {
+      return problemResponse(400);
+    }
+
+    this.ctx.storage.sql.exec(
+      `
+        INSERT INTO webhook_requests (
+          received_at,
+          installation_id,
+          delivery_id,
+          event,
+          signature,
+          body
+        ) VALUES (?, ?, ?, ?, ?, ?)
+      `,
+      new Date().toISOString(),
+      installationId,
+      deliveryId,
+      event,
+      signature,
+      body,
+    );
+
+    this.pruneWebhookLog();
+
+    return jsonResponse({ accepted: true }, { status: 202 });
   }
 
   private async recordAuditLog(entry: {
@@ -152,6 +217,25 @@ export class GitHubInstallationObject extends DurableObject<Env> {
         WHERE id NOT IN (
           SELECT id FROM token_requests
           ORDER BY requested_at DESC, id DESC
+          LIMIT ?
+        )
+      `,
+      maxEntries,
+    );
+  }
+
+  private pruneWebhookLog(): void {
+    const retentionDays = parsePositiveInteger(this.env.AUDIT_LOG_RETENTION_DAYS, 180);
+    const maxEntries = parsePositiveInteger(this.env.AUDIT_LOG_MAX_ENTRIES, 5000);
+    const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000).toISOString();
+
+    this.ctx.storage.sql.exec(`DELETE FROM webhook_requests WHERE received_at < ?`, cutoff);
+    this.ctx.storage.sql.exec(
+      `
+        DELETE FROM webhook_requests
+        WHERE id NOT IN (
+          SELECT id FROM webhook_requests
+          ORDER BY received_at DESC, id DESC
           LIMIT ?
         )
       `,

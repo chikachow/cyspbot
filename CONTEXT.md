@@ -32,6 +32,14 @@ _Avoid_: Requested scope, ad hoc permissions, caller-defined token shape
 A bounded record of token minting attempts and outcomes kept by **Cyspbot** for operational review.
 _Avoid_: Analytics, metrics, permanent event history
 
+**Webhook Receiver**:
+A Cyspbot endpoint that validates GitHub webhook authenticity and envelope fields, then forwards the delivery to the relevant per-installation Durable Object.
+_Avoid_: Business event processor, schema-normalizer
+
+**Webhook Delivery Log**:
+A bounded per-installation record of accepted webhook deliveries, including delivery metadata and raw payload for short-term debugging and replay.
+_Avoid_: Permanent event store, analytics stream
+
 **Claims Endpoint**:
 A non-minting Cyspbot endpoint that verifies a **Caller** OIDC token and returns Cyspbot's derived identity without issuing an **Installation Token**.
 _Avoid_: Debug dump, raw JWT inspector
@@ -45,6 +53,10 @@ _Avoid_: Debug dump, raw JWT inspector
 - **Cyspbot** records an **Audit Log** entry for each token minting attempt
 - The **Claims Endpoint** verifies caller identity and repository installation relationship without issuing an **Installation Token**
 - A **GitHub App Installation** is the GitHub-side authority that allows **Cyspbot** to mint an **Installation Token**
+- The **Webhook Receiver** accepts GitHub webhook deliveries only after signature and envelope validation
+- The **Webhook Receiver** routes each accepted webhook delivery to the Durable Object keyed by **GitHub App Installation**
+- Cyspbot keeps a bounded **Webhook Delivery Log** per installation, including raw payload for short-term debugging and replay
+- The **Webhook Receiver** fails closed with a server-side error when no webhook secret is configured
 
 ## Example dialogue
 

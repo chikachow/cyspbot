@@ -1,4 +1,4 @@
-import { createPrivateKey } from "node:crypto";
+import { createHmac, createPrivateKey } from "node:crypto";
 
 import { SELF } from "cloudflare:test";
 import { SignJWT } from "jose";
@@ -66,6 +66,17 @@ async function createOidcToken(overrides?: Partial<Record<string, string>>): Pro
     .setExpirationTime(now + 300)
     .setSubject("repo:cysp/terraform-provider-contentful:ref:refs/heads/main")
     .sign(privateKey);
+}
+
+function githubWebhookHeaders(body: string, secret: string): Record<string, string> {
+  const signature = createHmac("sha256", secret).update(body).digest("hex");
+
+  return {
+    "content-type": "application/json",
+    "x-github-delivery": "delivery-123",
+    "x-github-event": "installation_repositories",
+    "x-hub-signature-256": `sha256=${signature}`,
+  };
 }
 
 describe("cyspbot worker", () => {
@@ -162,6 +173,54 @@ describe("cyspbot worker", () => {
     await expect(response.json()).resolves.toEqual({
       expires_at: "2030-01-01T00:00:00Z",
       token: "ghs_test_token",
+    });
+  });
+
+  it("rejects webhook payloads with an invalid signature", async () => {
+    const body = JSON.stringify({
+      action: "added",
+      installation: {
+        id: 67890,
+      },
+      repositories_added: [],
+      repositories_removed: [],
+    });
+    const headers = githubWebhookHeaders(body, "wrong-secret");
+
+    const response = await SELF.fetch("https://example.test/github/webhooks", {
+      body,
+      headers,
+      method: "POST",
+    });
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({
+      status: 401,
+      title: "Unauthorized",
+      type: "about:blank",
+    });
+  });
+
+  it("routes signed webhook payloads to the installation durable object", async () => {
+    const body = JSON.stringify({
+      action: "added",
+      installation: {
+        id: 67890,
+      },
+      repositories_added: [],
+      repositories_removed: [],
+    });
+    const headers = githubWebhookHeaders(body, "test-webhook-secret");
+
+    const response = await SELF.fetch("https://example.test/github/webhooks", {
+      body,
+      headers,
+      method: "POST",
+    });
+
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toEqual({
+      accepted: true,
     });
   });
 });
