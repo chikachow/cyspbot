@@ -5,7 +5,7 @@
 Rearchitecting `cyspbot` onto Cloudflare's Agents SDK is only a good idea if the service is meant to evolve from a narrow token broker into a long-lived automation control plane per GitHub App installation. If the primary job remains:
 
 - verify GitHub Actions OIDC tokens
-- enforce a fixed token minting policy
+- enforce repository and event-bound token minting policy
 - mint short-lived GitHub installation tokens
 - retain bounded per-installation audit and webhook logs
 
@@ -32,7 +32,7 @@ Today `cyspbot` is already Cloudflare-native:
 - `src/worker/app.ts` is a thin HTTP Worker entrypoint for `/github/claims`, `/github/installations/token`, and `/github/webhooks`.
 - `src/durable-objects/oidc-issuer-verifier-object.ts` keeps one verifier Durable Object per issuer registration and owns JWKS coordination, persistence, and refresh/backoff state.
 - `src/durable-objects/installation-object.ts` keeps one Durable Object per GitHub App installation and stores bounded token-request and webhook logs.
-- `src/github/api.ts` keeps token mint policy narrow and explicit, with repository-scoped installation tokens and fixed permissions.
+- `src/github/api.ts` keeps token mint policy narrow and explicit, with repository-scoped installation tokens and GitHub App-governed permissions.
 - `docs/adr/0001-hosted-github-installation-token-broker.md` and `docs/adr/0002-per-issuer-jwks-verifier-durable-object.md` already document the important persistence and trust boundaries.
 
 That architecture is simple because the core domain is simple:
@@ -338,7 +338,7 @@ State:
 - pending job queue
 - job execution history
 - replay/dedupe markers keyed by `X-GitHub-Delivery`
-- policy version or policy snapshot if policy becomes data-driven
+- policy identifier or snapshot only if policy later becomes data-driven
 
 Key methods:
 

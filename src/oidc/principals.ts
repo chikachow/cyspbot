@@ -6,15 +6,27 @@ export interface AuthenticatedContext {
 
 export interface GitHubActionsPrincipal {
   actor: string | null;
+  baseRef: string | null;
+  environment: string | null;
   eventName: string;
+  headRef: string | null;
+  jobWorkflowRef: string | null;
+  rawSubject: string;
   ref: string | null;
+  refType: string | null;
   repository: string;
   repositoryId: string;
+  repositoryOwnerId: string | null;
+  repositoryVisibility: string | null;
   runAttempt: string | null;
   runId: string | null;
   sha: string | null;
+  subjectContextKind: string | null;
+  subjectContextValue: string | null;
+  subjectRepository: string | null;
   type: "github-actions";
   workflow: string | null;
+  workflowRef: string | null;
 }
 
 export type AuthenticatedPrincipal = GitHubActionsPrincipal;

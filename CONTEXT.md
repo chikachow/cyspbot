@@ -1,6 +1,6 @@
 # Cyspbot
 
-Cyspbot is the hosted automation application for cysp. It currently lets approved GitHub Actions workflows obtain repository-scoped installation tokens without exposing the GitHub App private key outside Cloudflare.
+Cyspbot is the hosted automation application for cysp. It currently lets trusted GitHub Actions workflow runs obtain repository-scoped installation tokens without exposing the GitHub App private key outside Cloudflare.
 
 ## Language
 
@@ -9,7 +9,7 @@ A GitHub Actions workflow invocation that presents a GitHub-issued OIDC token to
 _Avoid_: Client, user, consumer
 
 **Token Minting**:
-The current Cyspbot capability that issues short-lived GitHub installation tokens for approved workflows.
+The current Cyspbot capability that exchanges a trusted GitHub Actions OIDC token for a short-lived GitHub installation token for workflow runs that satisfy Cyspbot's checked-in OIDC trust policy.
 _Avoid_: Cyspbot itself, app login
 
 **Calling Repository**:
@@ -25,8 +25,8 @@ The short-lived GitHub access token minted for the **Calling Repository** throug
 _Avoid_: PAT, app JWT, repository secret
 
 **Token Policy**:
-The Cyspbot-enforced fixed permission set and caller constraints used when minting an **Installation Token**.
-_Avoid_: Requested scope, ad hoc permissions, caller-defined token shape
+The Cyspbot-enforced policy code, OIDC trust conditions, and repository narrowing used when minting an **Installation Token**, with repository permissions inherited from the GitHub App configuration.
+_Avoid_: Requested scope, ad hoc caller-defined permissions, assumption that Cyspbot fixes the permission set, event-name-only policy, separate policy engine
 
 **Audit Log**:
 A bounded record of token minting attempts and outcomes kept by **Cyspbot** for operational review.
@@ -44,6 +44,10 @@ _Avoid_: Permanent event store, analytics stream
 A non-minting Cyspbot endpoint that verifies a **Caller** OIDC token and returns Cyspbot's derived identity without issuing an **Installation Token**.
 _Avoid_: Debug dump, raw JWT inspector
 
+**Token Exchange Endpoint**:
+The primary Cyspbot STS endpoint that accepts a **Caller** OIDC token and returns an **Installation Token** using an OAuth token-exchange contract.
+_Avoid_: installation collection endpoint, raw GitHub passthrough
+
 **Issuer Registration**:
 A Cyspbot configuration entry that defines one trusted OIDC issuer and the verification material and policy Cyspbot uses for that issuer.
 _Avoid_: Dynamic issuer discovery, arbitrary identity provider, issuer profile as a separate concept
@@ -59,9 +63,13 @@ _Avoid_: Permanent key store, token cache, caller-controlled key source
 - Each **Issuer Registration** owns its own verification policy, including JWKS freshness, staleness, and refresh-backoff rules
 - **Cyspbot** derives exactly one **Calling Repository** from the verified OIDC claims
 - **Token Minting** in **Cyspbot** issues an **Installation Token** only for the **Calling Repository**
-- The **Token Policy** is fixed by **Cyspbot**, not selected by the **Caller**
+- The **Token Policy** is fixed by **Cyspbot** for caller context and repository scope, while repository permissions come from the GitHub App configuration
+- The **Token Policy** currently evaluates immutable and workflow-context GitHub OIDC claims such as `sub`, `repository_id`, `repository_owner_id`, `repository_visibility`, and `ref`
 - **Cyspbot** records an **Audit Log** entry for each token minting attempt
+- Repeated audit values such as minted permissions and policy denial reasons may be stored in relational child rows rather than embedded JSON on the main audit row
+- The main audit row prefers domain fields like `timestamp` and `outcome` over HTTP response details
 - The **Claims Endpoint** verifies caller identity and repository installation relationship without issuing an **Installation Token**
+- The **Token Exchange Endpoint** is the primary minting interface; legacy GitHub-specific minting paths are compatibility shims over the same policy
 - The **JWKS Cache** supplies verification keys for an **Issuer Registration**, but never stores issued **Installation Tokens**
 - A **GitHub App Installation** is the GitHub-side authority that allows **Cyspbot** to mint an **Installation Token**
 - The **Webhook Receiver** accepts GitHub webhook deliveries only after signature and envelope validation
@@ -75,7 +83,7 @@ _Avoid_: Permanent key store, token cache, caller-controlled key source
 > **Domain expert:** "No. **Cyspbot** only mints an **Installation Token** for the **Calling Repository** named by the verified OIDC claims."
 
 > **Dev:** "Can the workflow ask for broader permissions when it needs them?"
-> **Domain expert:** "No. The **Token Policy** is fixed by **Cyspbot** for this use case."
+> **Domain expert:** "No. The **Caller** does not choose permissions. The minted token inherits whatever repository permissions the GitHub App currently has."
 
 > **Dev:** "Do we keep the minted tokens for reuse?"
 > **Domain expert:** "No. **Cyspbot** records an **Audit Log**, but it does not cache issued **Installation Tokens**."
@@ -83,7 +91,11 @@ _Avoid_: Permanent key store, token cache, caller-controlled key source
 > **Dev:** "How do we test auth without issuing a token?"
 > **Domain expert:** "Use the **Claims Endpoint** to verify the **Caller** identity and confirm the repository is installed for this app."
 
+> **Dev:** "What decides whether a workflow run is trusted enough to mint?"
+> **Domain expert:** "The checked-in **Token Policy** evaluates the verified GitHub OIDC claims in plain code. The current default policy only permits default-branch `ref` contexts for `schedule`, `workflow_dispatch`, and `push`."
+
 ## Flagged ambiguities
 
 - "target repository" was used loosely; resolved: for v1 the only valid repository is the **Calling Repository** derived from OIDC, not a caller-supplied target.
-- "requested scope" was used loosely; resolved: the **Caller** does not choose permissions in v1, **Cyspbot** applies one fixed **Token Policy**.
+- "requested scope" was used loosely; resolved: the **Caller** does not choose permissions in v1, and Cyspbot narrows repository scope and caller context while GitHub App configuration determines repository permissions.
+- "approved workflow" was used loosely; resolved: Cyspbot currently trusts specific verified OIDC claim patterns under checked-in policy code, not a separate mutable approval registry.

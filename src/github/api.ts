@@ -2,19 +2,33 @@ import { importPKCS8, SignJWT } from "jose";
 
 import type { Env } from "../env.ts";
 import type { GitHubActionsPrincipal } from "../oidc/principals.ts";
+import {
+  evaluateTokenMintPolicy,
+  type TokenMintAuthorizationRepository,
+  type TokenMintPolicyDecision,
+} from "../policy/token-mint-authorization.ts";
 import { maybeMockGitHubApiResponse } from "./test-api.ts";
-
-const fixedTokenPermissions = {
-  contents: "write",
-  pull_requests: "write",
-} as const;
 
 const githubAcceptHeader = "application/vnd.github+json";
 const githubApiVersion = "2022-11-28";
 const githubJwtLifetimeSeconds = 9 * 60;
+const githubStatelessS2STokenHeader = "X-GitHub-Stateless-S2S-Token";
 const privateKeysByPem = new Map<string, Promise<CryptoKey>>();
 
-export class BrokerAuthorizationError extends Error {}
+export class BrokerAuthorizationError extends Error {
+  public readonly policyDecision?: TokenMintPolicyDecision;
+  public readonly repository?: GitHubRepository;
+
+  public constructor(
+    message: string,
+    policyDecision?: TokenMintPolicyDecision,
+    repository?: GitHubRepository,
+  ) {
+    super(message);
+    this.policyDecision = policyDecision;
+    this.repository = repository;
+  }
+}
 
 export class GitHubApiError extends Error {
   public readonly status: number;
@@ -31,11 +45,21 @@ export interface InstallationLookup {
 
 export interface InstallationToken {
   expiresAt: string;
+  permissions: Record<string, string>;
   token: string;
 }
 
-interface GitHubRepository {
+export interface GitHubRepository extends TokenMintAuthorizationRepository {
+  defaultBranchRef: string;
+}
+
+interface GitHubRepositoryApiResponse {
   default_branch: string;
+  id?: number;
+  owner?: {
+    id?: number;
+  };
+  visibility?: unknown;
 }
 
 interface GitHubInstallationResponse {
@@ -44,6 +68,7 @@ interface GitHubInstallationResponse {
 
 interface GitHubInstallationTokenResponse {
   expires_at: string;
+  permissions?: Record<string, unknown>;
   token: string;
 }
 
@@ -66,20 +91,22 @@ export async function resolveInstallationForRepository(
   return { id: body.id };
 }
 
-export async function assertTokenMintPolicy(
+export async function authorizeTokenMintRequest(
   env: Env,
   caller: GitHubActionsPrincipal,
-): Promise<void> {
-  switch (caller.eventName) {
-    case "schedule":
-    case "workflow_dispatch":
-      return;
-    case "push":
-      await assertDefaultBranchPush(env, caller);
-      return;
-    default:
-      throw new BrokerAuthorizationError("event not allowed");
+): Promise<{ policyDecision: TokenMintPolicyDecision; repository: GitHubRepository }> {
+  const repository = await getRepository(env, caller.repository);
+  const policyDecision = evaluateTokenMintPolicy(caller, repository);
+
+  if (policyDecision.decision !== "allow") {
+    throw new BrokerAuthorizationError(
+      "token mint policy denied request",
+      policyDecision,
+      repository,
+    );
   }
+
+  return { policyDecision, repository };
 }
 
 export async function createRepositoryScopedInstallationToken(
@@ -99,36 +126,30 @@ export async function createRepositoryScopedInstallationToken(
     await appAuthenticationHeaders(env),
     {
       body: JSON.stringify({
-        permissions: fixedTokenPermissions,
         repository_ids: [parsedRepositoryId],
       }),
+      headers: {
+        [githubStatelessS2STokenHeader]: "enabled",
+      },
       method: "POST",
     },
   );
 
   const body = (await response.json()) as GitHubInstallationTokenResponse;
 
-  if (typeof body.token !== "string" || typeof body.expires_at !== "string") {
+  if (
+    typeof body.token !== "string" ||
+    typeof body.expires_at !== "string" ||
+    !isStringRecord(body.permissions)
+  ) {
     throw new GitHubApiError(502, "invalid installation token response");
   }
 
   return {
     expiresAt: body.expires_at,
+    permissions: body.permissions,
     token: body.token,
   };
-}
-
-async function assertDefaultBranchPush(env: Env, caller: GitHubActionsPrincipal): Promise<void> {
-  if (caller.ref === null) {
-    throw new BrokerAuthorizationError("missing ref");
-  }
-
-  const repository = await getRepository(env, caller.repository);
-  const expectedRef = `refs/heads/${repository.default_branch}`;
-
-  if (caller.ref !== expectedRef) {
-    throw new BrokerAuthorizationError("push must target default branch");
-  }
 }
 
 async function getRepository(env: Env, repository: string): Promise<GitHubRepository> {
@@ -138,13 +159,31 @@ async function getRepository(env: Env, repository: string): Promise<GitHubReposi
     await appAuthenticationHeaders(env),
   );
 
-  const body = (await response.json()) as GitHubRepository;
+  const body = (await response.json()) as GitHubRepositoryApiResponse;
+  const defaultBranch = body.default_branch;
+  const repositoryId = body.id;
+  const ownerId = body.owner?.id;
+  const visibility = body.visibility;
 
-  if (typeof body.default_branch !== "string" || body.default_branch.length === 0) {
+  if (
+    typeof defaultBranch !== "string" ||
+    defaultBranch.length === 0 ||
+    typeof repositoryId !== "number" ||
+    typeof ownerId !== "number" ||
+    typeof visibility !== "string" ||
+    visibility.length === 0
+  ) {
     throw new GitHubApiError(502, "invalid repository response");
   }
 
-  return body;
+  return {
+    defaultBranch,
+    defaultBranchRef: `refs/heads/${defaultBranch}`,
+    repository,
+    repositoryId: String(repositoryId),
+    repositoryOwnerId: String(ownerId),
+    repositoryVisibility: visibility,
+  };
 }
 
 async function appAuthenticationHeaders(env: Env): Promise<HeadersInit> {
@@ -228,6 +267,7 @@ async function fetchGitHubApi(
     normalizeGitHubApiPath(path),
     method,
     requestHeaders,
+    typeof init?.body === "string" ? init.body : undefined,
   );
 
   if (mockResponse !== null) {
@@ -259,4 +299,12 @@ function ensureTrailingSlash(url: string): string {
 
 function normalizeGitHubApiPath(path: string): string {
   return path.startsWith("/") ? path : `/${path}`;
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  return Object.values(value).every((entry) => typeof entry === "string");
 }

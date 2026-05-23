@@ -15,6 +15,7 @@ export interface Env {
   GITHUB_APP_PRIVATE_KEY_PEM?: string;
   GITHUB_INSTALLATION: DurableObjectNamespace<GitHubInstallationObject>;
   GITHUB_WEBHOOK_SECRET?: string;
+  MAINTENANCE_API_TOKEN?: string;
   OIDC_ISSUER_VERIFIER: DurableObjectNamespace<OidcIssuerVerifierObject>;
   TEST_OIDC_JWKS_CACHE_CONTROL?: string;
   TEST_OIDC_JWKS_JSON?: string;
@@ -22,6 +23,8 @@ export interface Env {
   TEST_GITHUB_DEFAULT_BRANCH?: string;
   TEST_GITHUB_INSTALLATION_ID?: string;
   TEST_GITHUB_MINTED_TOKEN?: string;
+  TEST_GITHUB_REPOSITORY_OWNER_ID?: string;
   TEST_GITHUB_REPOSITORY?: string;
   TEST_GITHUB_REPOSITORY_ID?: string;
+  TEST_GITHUB_REPOSITORY_VISIBILITY?: string;
 }

@@ -76,22 +76,38 @@ function mapGitHubActionsPrincipal(
   const eventName = requiredString(payload, "event_name");
   const repository = requiredString(payload, "repository");
   const repositoryId = requiredString(payload, "repository_id");
+  const subject = requiredString(payload, "sub");
 
-  if (eventName === null || repository === null || repositoryId === null) {
+  if (eventName === null || repository === null || repositoryId === null || subject === null) {
     return null;
   }
 
+  const parsedSubject = parseGitHubOidcSubject(subject);
+  const ref = optionalString(payload, "ref");
+
   return {
     actor: optionalString(payload, "actor"),
+    baseRef: optionalString(payload, "base_ref"),
+    environment: optionalString(payload, "environment"),
     eventName,
-    ref: optionalString(payload, "ref"),
+    headRef: optionalString(payload, "head_ref"),
+    jobWorkflowRef: optionalString(payload, "job_workflow_ref"),
+    rawSubject: subject,
+    ref,
+    refType: optionalString(payload, "ref_type") ?? inferRefType(ref),
     repository,
     repositoryId,
+    repositoryOwnerId: optionalString(payload, "repository_owner_id"),
+    repositoryVisibility: optionalString(payload, "repository_visibility"),
     runAttempt: optionalString(payload, "run_attempt"),
     runId: optionalString(payload, "run_id"),
     sha: optionalString(payload, "sha"),
+    subjectContextKind: parsedSubject.contextKind,
+    subjectContextValue: parsedSubject.contextValue,
+    subjectRepository: parsedSubject.repository,
     type: "github-actions",
     workflow: optionalString(payload, "workflow"),
+    workflowRef: optionalString(payload, "workflow_ref"),
   };
 }
 
@@ -109,4 +125,57 @@ function optionalString(payload: Record<string, unknown>, field: string): string
   }
 
   return typeof value === "string" ? value : null;
+}
+
+function parseGitHubOidcSubject(subject: string): {
+  contextKind: string | null;
+  contextValue: string | null;
+  repository: string | null;
+} {
+  const match = /^repo:([^:]+):([^:]+)(?::(.+))?$/u.exec(subject);
+
+  if (match === null) {
+    return {
+      contextKind: null,
+      contextValue: null,
+      repository: null,
+    };
+  }
+
+  const [, repository, contextKind, rawContextValue] = match;
+
+  return {
+    contextKind: contextKind ?? null,
+    contextValue:
+      rawContextValue === undefined ? null : safeDecodeSubjectComponent(rawContextValue),
+    repository: repository === undefined ? null : safeDecodeSubjectComponent(repository),
+  };
+}
+
+function inferRefType(ref: string | null): string | null {
+  if (ref === null) {
+    return null;
+  }
+
+  if (ref.startsWith("refs/heads/")) {
+    return "branch";
+  }
+
+  if (ref.startsWith("refs/tags/")) {
+    return "tag";
+  }
+
+  if (ref.startsWith("refs/pull/")) {
+    return "pull_request";
+  }
+
+  return null;
+}
+
+function safeDecodeSubjectComponent(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }

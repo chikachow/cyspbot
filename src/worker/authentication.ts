@@ -35,6 +35,14 @@ export async function authenticateRequest(
     };
   }
 
+  return authenticateOidcToken(token, request, env);
+}
+
+export async function authenticateOidcToken(
+  token: string,
+  request: Request,
+  env: Env,
+): Promise<AuthenticateRequestResult> {
   const issuerHint = unverifiedIssuerHint(token);
 
   if (issuerHint === null) {

@@ -1,8 +1,12 @@
 import { createHmac, createPrivateKey } from "node:crypto";
 
+import type { Env } from "../src/env.ts";
+import { env } from "cloudflare:workers";
 import { SELF } from "cloudflare:test";
 import { SignJWT } from "jose";
 import { describe, expect, it } from "vitest";
+
+const workerEnv = env as unknown as Env;
 
 const testPrivateKeyPem = `-----BEGIN PRIVATE KEY-----
 MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC27Vu1+aKPooBG
@@ -33,6 +37,9 @@ cT0XqIpKa8tyk2RAMjqM52QwttVzRnDjhqrpyM+9HsPyP7huvTlkpwLBE8GR7cP3
 guigOK0SOM7v+1ceZuh/bm8=
 -----END PRIVATE KEY-----
 `;
+const tokenExchangeGrantType = "urn:ietf:params:oauth:grant-type:token-exchange";
+const githubInstallationAccessTokenType = "urn:chikachow:github-app-installation-access-token";
+const oidcIdTokenType = "urn:ietf:params:oauth:token-type:id_token";
 
 function authorizationHeaders(
   overrides?: Partial<Record<string, string>>,
@@ -45,18 +52,28 @@ function authorizationHeaders(
 async function createOidcToken(overrides?: Partial<Record<string, string>>): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const privateKey = createPrivateKey(testPrivateKeyPem);
+  const { sub, ...payloadOverrides } = overrides ?? {};
 
   return new SignJWT({
     actor: "dependabot[bot]",
+    base_ref: "",
     event_name: "workflow_dispatch",
+    head_ref: "",
+    job_workflow_ref:
+      "cysp/terraform-provider-contentful/.github/workflows/update-indirect-dependencies.yml@refs/heads/main",
     ref: "refs/heads/main",
+    ref_type: "branch",
     repository: "cysp/terraform-provider-contentful",
     repository_id: "123456789",
+    repository_owner_id: "555555",
+    repository_visibility: "private",
     run_attempt: "1",
     run_id: "987654321",
     sha: "0123456789abcdef0123456789abcdef01234567",
     workflow: "update indirect dependencies",
-    ...overrides,
+    workflow_ref:
+      "cysp/terraform-provider-contentful/.github/workflows/update-indirect-dependencies.yml@refs/heads/main",
+    ...payloadOverrides,
   })
     .setProtectedHeader({ alg: "RS256", kid: "test-key-1" })
     .setAudience("cyspbot")
@@ -64,19 +81,37 @@ async function createOidcToken(overrides?: Partial<Record<string, string>>): Pro
     .setIssuedAt(now - 10)
     .setNotBefore(now - 10)
     .setExpirationTime(now + 300)
-    .setSubject("repo:cysp/terraform-provider-contentful:ref:refs/heads/main")
+    .setSubject(sub ?? "repo:cysp/terraform-provider-contentful:ref:refs/heads/main")
     .sign(privateKey);
 }
 
-function githubWebhookHeaders(body: string, secret: string): Record<string, string> {
+function githubWebhookHeaders(
+  body: string,
+  secret: string,
+  event = "installation_repositories",
+): Record<string, string> {
   const signature = createHmac("sha256", secret).update(body).digest("hex");
 
   return {
     "content-type": "application/json",
     "x-github-delivery": "delivery-123",
-    "x-github-event": "installation_repositories",
+    "x-github-event": event,
     "x-hub-signature-256": `sha256=${signature}`,
   };
+}
+
+async function tokenExchangeRequestBody(
+  overrides?: Partial<Record<string, string>>,
+  requestedTokenType = githubInstallationAccessTokenType,
+): Promise<string> {
+  const subjectToken = await createOidcToken(overrides);
+
+  return new URLSearchParams({
+    grant_type: tokenExchangeGrantType,
+    requested_token_type: requestedTokenType,
+    subject_token: subjectToken,
+    subject_token_type: oidcIdTokenType,
+  }).toString();
 }
 
 describe("cyspbot worker", () => {
@@ -143,6 +178,67 @@ describe("cyspbot worker", () => {
     });
   });
 
+  it("exchanges a github actions oidc token at the sts endpoint", async () => {
+    const response = await SELF.fetch("https://example.test/token", {
+      body: await tokenExchangeRequestBody(),
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("pragma")).toBe("no-cache");
+    const body = (await response.json()) as {
+      access_token: string;
+      expires_in: number;
+      issued_token_type: string;
+      token_type: string;
+    };
+    expect(body.access_token).toBe("ghs_test_token");
+    expect(body.issued_token_type).toBe(githubInstallationAccessTokenType);
+    expect(body.token_type).toBe("Bearer");
+    expect(body.expires_in).toEqual(expect.any(Number));
+    expect(body.expires_in).toBeGreaterThan(0);
+  });
+
+  it("accepts the generic oauth access token type as a requested token hint", async () => {
+    const response = await SELF.fetch("https://example.test/token", {
+      body: await tokenExchangeRequestBody(
+        undefined,
+        "urn:ietf:params:oauth:token-type:access_token",
+      ),
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      access_token: "ghs_test_token",
+      issued_token_type: githubInstallationAccessTokenType,
+      token_type: "Bearer",
+    });
+  });
+
+  it("rejects token exchange requests without a supported requested token type", async () => {
+    const response = await SELF.fetch("https://example.test/token", {
+      body: await tokenExchangeRequestBody(undefined, "urn:example:token-type:unknown"),
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_request",
+    });
+  });
+
   it("rejects disallowed events", async () => {
     const response = await SELF.fetch("https://example.test/github/installations/token", {
       headers: await authorizationHeaders({
@@ -157,6 +253,65 @@ describe("cyspbot worker", () => {
       status: 403,
       title: "Forbidden",
       type: "about:blank",
+    });
+  });
+
+  it("maps disallowed token exchange contexts to oauth token errors", async () => {
+    const response = await SELF.fetch("https://example.test/token", {
+      body: await tokenExchangeRequestBody({
+        event_name: "pull_request",
+        ref: "refs/pull/15/merge",
+        ref_type: "branch",
+        sub: "repo:cysp/terraform-provider-contentful:pull_request",
+      }),
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_target",
+    });
+  });
+
+  it("rejects workflow_dispatch runs that do not target the default branch ref", async () => {
+    const response = await SELF.fetch("https://example.test/token", {
+      body: await tokenExchangeRequestBody({
+        ref: "refs/heads/release-candidate",
+        sub: "repo:cysp/terraform-provider-contentful:ref:refs/heads/release-candidate",
+        workflow_ref:
+          "cysp/terraform-provider-contentful/.github/workflows/update-indirect-dependencies.yml@refs/heads/release-candidate",
+        job_workflow_ref:
+          "cysp/terraform-provider-contentful/.github/workflows/update-indirect-dependencies.yml@refs/heads/release-candidate",
+      }),
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_target",
+    });
+  });
+
+  it("rejects token exchange when the oidc subject repository does not match the caller repository", async () => {
+    const response = await SELF.fetch("https://example.test/token", {
+      body: await tokenExchangeRequestBody({
+        sub: "repo:cysp/other-repo:ref:refs/heads/main",
+      }),
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_target",
     });
   });
 
@@ -215,6 +370,43 @@ describe("cyspbot worker", () => {
       status: 401,
       title: "Unauthorized",
       type: "about:blank",
+    });
+  });
+
+  it("accepts signed github ping webhook deliveries without an installation id", async () => {
+    const body = JSON.stringify({
+      hook: {
+        active: true,
+        app_id: 2419473,
+        config: {
+          content_type: "json",
+          insecure_ssl: "0",
+          secret: "********",
+          url: "https://cyspbot.chikachow.org/github/webhooks",
+        },
+        created_at: "2026-05-23T13:00:07Z",
+        deliveries_url: "https://api.github.com/app/hook/deliveries",
+        events: ["installation_target"],
+        id: 629275372,
+        name: "web",
+        type: "App",
+        updated_at: "2026-05-23T13:00:07Z",
+      },
+      hook_id: 629275372,
+      zen: "Speak like a human.",
+    });
+    const headers = githubWebhookHeaders(body, "test-webhook-secret", "ping");
+
+    const response = await SELF.fetch("https://example.test/github/webhooks", {
+      body,
+      headers,
+      method: "POST",
+    });
+
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toEqual({
+      accepted: true,
+      event: "ping",
     });
   });
 
@@ -287,6 +479,32 @@ describe("cyspbot worker", () => {
     expect(response.status).toBe(202);
     await expect(response.json()).resolves.toEqual({
       accepted: true,
+    });
+  });
+
+  it("runs maintenance migration for existing durable object ids", async () => {
+    const durableObjectId = workerEnv.GITHUB_INSTALLATION.idFromName("67890");
+    const installationStub = workerEnv.GITHUB_INSTALLATION.getByName("67890");
+    await installationStub.runMigrations();
+
+    const response = await SELF.fetch(
+      "https://example.test/internal/durable-objects/github-installations/migrate",
+      {
+        body: JSON.stringify({
+          object_ids: [durableObjectId.toString()],
+        }),
+        headers: {
+          authorization: "Bearer test-maintenance-token",
+          "content-type": "application/json",
+        },
+        method: "POST",
+      },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      migrated: true,
+      object_ids: [durableObjectId.toString()],
     });
   });
 });
