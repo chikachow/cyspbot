@@ -24,6 +24,7 @@ export interface IssuerRegistrationBase {
   audience: string;
   defaultFreshMs: number;
   issuer: string;
+  jwksUri: string;
   mapPrincipal(payload: Record<string, unknown>): AuthenticatedPrincipal | null;
   maxBackoffMs: number;
   maxFreshMs: number;
@@ -34,18 +35,7 @@ export interface IssuerRegistrationBase {
   staleWhileErrorMs: number;
 }
 
-export interface RemoteJwksIssuerRegistration extends IssuerRegistrationBase {
-  jwksUri: string;
-  source: "remote-jwks";
-}
-
-export interface StaticPemIssuerRegistration extends IssuerRegistrationBase {
-  keyId: string | null;
-  publicKeyPemBase64: string;
-  source: "static-public-key";
-}
-
-export type IssuerRegistration = RemoteJwksIssuerRegistration | StaticPemIssuerRegistration;
+export type IssuerRegistration = IssuerRegistrationBase;
 
 export interface VerifyOidcTokenSuccess {
   issuer: string;

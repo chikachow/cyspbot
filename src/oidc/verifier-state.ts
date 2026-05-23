@@ -68,13 +68,9 @@ export function registrationFingerprint(registration: IssuerRegistration): strin
   return JSON.stringify({
     allowedAlgorithms: registration.allowedAlgorithms,
     issuer: registration.issuer,
-    jwksUri: registration.source === "remote-jwks" ? registration.jwksUri : null,
-    keyId: registration.source === "static-public-key" ? registration.keyId : null,
+    jwksUri: registration.jwksUri,
     principalKind: registration.principalKind,
-    publicKeyPemBase64:
-      registration.source === "static-public-key" ? registration.publicKeyPemBase64 : null,
     requireKid: registration.requireKid,
-    source: registration.source,
   });
 }
 

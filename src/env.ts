@@ -16,8 +16,9 @@ export interface Env {
   GITHUB_INSTALLATION: DurableObjectNamespace<GitHubInstallationObject>;
   GITHUB_WEBHOOK_SECRET?: string;
   OIDC_ISSUER_VERIFIER: DurableObjectNamespace<OidcIssuerVerifierObject>;
-  TEST_OIDC_STATIC_KEY_ID?: string;
-  TEST_OIDC_STATIC_PUBLIC_KEY_PEM_BASE64?: string;
+  TEST_OIDC_JWKS_CACHE_CONTROL?: string;
+  TEST_OIDC_JWKS_JSON?: string;
+  TEST_OIDC_JWKS_URI?: string;
   TEST_GITHUB_DEFAULT_BRANCH?: string;
   TEST_GITHUB_INSTALLATION_ID?: string;
   TEST_GITHUB_MINTED_TOKEN?: string;

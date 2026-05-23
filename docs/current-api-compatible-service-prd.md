@@ -258,7 +258,7 @@ Current required issuer registration:
 - Audience: `cyspbot`
 - Allowed algorithms: `RS256`
 - `kid` required: yes
-- Verification source: remote JWKS in production-compatible mode
+- Verification source: remote JWKS
 - JWKS URI: `https://token.actions.githubusercontent.com/.well-known/jwks`
 
 Rationale:
@@ -323,7 +323,7 @@ The service must:
 
 ### 7.2 JWKS handling
 
-For remote JWKS issuers, the verifier must:
+The verifier must:
 
 - Fetch JWKS over HTTPS
 - Accept only fully valid, normalized JWKS snapshots

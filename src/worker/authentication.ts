@@ -52,7 +52,7 @@ export async function authenticateRequest(
   let issuerRegistration;
 
   try {
-    issuerRegistration = await loadIssuerRegistrationByIssuer(env, issuerHint);
+    issuerRegistration = loadIssuerRegistrationByIssuer(env, issuerHint);
   } catch (error) {
     console.error("OIDC issuer registration configuration error", {
       errorMessage: error instanceof Error ? error.message : String(error),

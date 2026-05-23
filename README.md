@@ -115,6 +115,8 @@ The Cloudflare API token should be scoped narrowly to the account and Worker dep
 
 Local development falls back to `GITHUB_APP_PRIVATE_KEY_PEM` from `.dev.vars`; production should use Secrets Store. Cyspbot expects PKCS#8 PEM for both paths.
 
+The test environment uses a deterministic JWKS fixture response so Worker tests still exercise the normal remote-JWKS code path instead of switching the verifier into a separate static-key mode.
+
 ## GitHub Actions usage
 
 Workflows that call Cyspbot directly need `id-token: write`.

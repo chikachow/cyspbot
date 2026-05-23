@@ -71,7 +71,6 @@ describe("verifyOidcToken", () => {
       principalKind: "github-actions",
       refreshBackoffBaseMs: 5 * 1000,
       requireKid: true,
-      source: "remote-jwks",
       staleWhileErrorMs: 10 * 60 * 1000,
     };
     const token = await createToken("missing-key");

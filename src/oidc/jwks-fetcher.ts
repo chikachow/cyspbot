@@ -1,4 +1,3 @@
-import { staticPublicKeyOverrideToJwk } from "./issuer-registrations.ts";
 import { jwksDocumentSchema, type NormalizedJwk, type ParsedJwk } from "./jwks-schema.ts";
 import type { IssuerRegistration } from "./principals.ts";
 
@@ -33,33 +32,6 @@ export async function fetchJwksSnapshot(
   clock: Clock,
   fetchImpl: typeof fetch,
 ): Promise<JwksFetchResult> {
-  if (registration.source === "static-public-key") {
-    try {
-      const jwk = await staticPublicKeyOverrideToJwk(
-        registration.publicKeyPemBase64,
-        registration.keyId,
-      );
-      const normalizedKeys = normalizeJwksDocument({ keys: [jwk] }, registration.allowedAlgorithms);
-      const fetchedAtMs = clock.now();
-
-      return {
-        ok: true,
-        snapshot: {
-          fetchedAtMs,
-          freshUntilMs: Number.MAX_SAFE_INTEGER,
-          keys: normalizedKeys,
-          staleUntilMs: Number.MAX_SAFE_INTEGER,
-        },
-      };
-    } catch (error) {
-      return {
-        kind: "invalid-jwks",
-        message: error instanceof Error ? error.message : String(error),
-        ok: false,
-      };
-    }
-  }
-
   let response: Response;
 
   try {

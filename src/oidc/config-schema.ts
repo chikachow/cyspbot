@@ -53,10 +53,4 @@ export const rawIssuerRegistrationsSchema = z
     }
   });
 
-export const testStaticPublicKeyOverrideSchema = z.object({
-  keyId: z.string().min(1).nullable(),
-  publicKeyPemBase64: z.string().min(1),
-});
-
 export type RawIssuerRegistration = z.infer<typeof rawIssuerRegistrationSchema>;
-export type TestStaticPublicKeyOverride = z.infer<typeof testStaticPublicKeyOverrideSchema>;

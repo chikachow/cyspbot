@@ -87,8 +87,7 @@ export async function verifyOidcToken(
       selection.reason === "no_matching_key" &&
       kid !== null &&
       !refreshAttempted &&
-      canAttemptRefresh(nextState, nowMs) &&
-      registration.source === "remote-jwks"
+      canAttemptRefresh(nextState, nowMs)
     ) {
       const refresh = await maybeRefreshSnapshot(nextState, registration, clock, fetchImpl);
       nextState = refresh.nextState;
