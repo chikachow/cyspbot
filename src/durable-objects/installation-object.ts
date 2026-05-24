@@ -49,6 +49,24 @@ export interface MintInstallationTokenFailure {
   status: number;
 }
 
+export interface ListRepositoryTokenRequestsRequest {
+  limit: number;
+  repositoryId: string;
+}
+
+export interface RepositoryTokenRequestEntry {
+  actor: string | null;
+  eventName: string;
+  expiresAt: string | null;
+  id: number;
+  mintedPermissions: Record<string, string>;
+  oidcContext: Record<string, string | null> | null;
+  outcome: "denied" | "internal_error" | "issued" | "upstream_error";
+  policyReasons: string[];
+  ref: string | null;
+  timestamp: string;
+}
+
 export type MintInstallationTokenResult =
   | MintInstallationTokenFailure
   | MintInstallationTokenSuccess;
@@ -76,6 +94,20 @@ type LegacyTokenRequestRow = Record<"id" | "installation_id" | "status", number>
     | "run_id"
     | "sha"
     | "workflow",
+    string | null
+  >;
+
+type TokenRequestRow = Record<"id" | "installation_id", number> &
+  Record<
+    | "actor"
+    | "event_name"
+    | "expires_at"
+    | "oidc_context_json"
+    | "outcome"
+    | "ref"
+    | "repository"
+    | "repository_id"
+    | "timestamp",
     string | null
   >;
 
@@ -255,6 +287,79 @@ export class GitHubInstallationObject extends DurableObject<Env> {
     return { ok: true };
   }
 
+  public async listRepositoryTokenRequests(
+    request: ListRepositoryTokenRequestsRequest,
+  ): Promise<RepositoryTokenRequestEntry[]> {
+    const limit = Math.max(1, Math.min(request.limit, 20));
+    const rows = this.ctx.storage.sql
+      .exec<TokenRequestRow>(
+        `
+          SELECT
+            id,
+            installation_id,
+            repository_id,
+            repository,
+            event_name,
+            ref,
+            actor,
+            outcome,
+            expires_at,
+            oidc_context_json,
+            timestamp
+          FROM token_requests
+          WHERE repository_id = ?
+          ORDER BY timestamp DESC, id DESC
+          LIMIT ?
+        `,
+        request.repositoryId,
+        limit,
+      )
+      .toArray();
+
+    return rows.map((row) => ({
+      actor: row.actor,
+      eventName: row.event_name ?? "",
+      expiresAt: row.expires_at,
+      id: row.id,
+      mintedPermissions: this.listMintedPermissions(row.id),
+      oidcContext: parseOidcContext(row.oidc_context_json),
+      outcome: normalizeOutcome(row.outcome),
+      policyReasons: this.listPolicyReasons(row.id),
+      ref: row.ref,
+      timestamp: row.timestamp ?? "",
+    }));
+  }
+
+  private listMintedPermissions(tokenRequestId: number): Record<string, string> {
+    return Object.fromEntries(
+      this.ctx.storage.sql
+        .exec<Record<"permission_access" | "permission_name", string>>(
+          `
+            SELECT permission_name, permission_access
+            FROM token_request_minted_permissions
+            WHERE token_request_id = ?
+            ORDER BY permission_name ASC
+          `,
+          tokenRequestId,
+        )
+        .toArray()
+        .map((row) => [row.permission_name, row.permission_access]),
+    );
+  }
+
+  private listPolicyReasons(tokenRequestId: number): string[] {
+    return listRows(
+      this.ctx.storage.sql,
+      `
+        SELECT reason AS value
+        FROM token_request_policy_reasons
+        WHERE token_request_id = ?
+        ORDER BY reason ASC
+      `,
+      tokenRequestId,
+    );
+  }
+
   private async recordAuditLog(entry: {
     principal: GitHubActionsPrincipal;
     expiresAt?: string;
@@ -400,6 +505,45 @@ export class GitHubInstallationObject extends DurableObject<Env> {
       `,
       maxEntries,
     );
+  }
+}
+
+function listRows(sql: SqlStorage, query: string, ...bindings: unknown[]): string[] {
+  return sql
+    .exec<Record<"value", string>>(query, ...bindings)
+    .toArray()
+    .map((row) => row.value);
+}
+
+function normalizeOutcome(
+  outcome: string | null,
+): "denied" | "internal_error" | "issued" | "upstream_error" {
+  if (
+    outcome === "denied" ||
+    outcome === "internal_error" ||
+    outcome === "issued" ||
+    outcome === "upstream_error"
+  ) {
+    return outcome;
+  }
+
+  return "internal_error";
+}
+
+function parseOidcContext(value: string | null): Record<string, string | null> | null {
+  if (value === null) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(value) as Record<string, unknown>;
+    const entries = Object.entries(parsed).filter(
+      ([, entry]) => entry === null || typeof entry === "string",
+    );
+
+    return Object.fromEntries(entries) as Record<string, string | null>;
+  } catch {
+    return null;
   }
 }
 

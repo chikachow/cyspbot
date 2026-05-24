@@ -1,8 +1,12 @@
-# Product Requirements Document: GitHub Actions Installation Token Broker Service
+# Product Requirements Document: Cyspbot GitHub Actions Security Token Service
+
+This document remains the primary contract document for the externally compatible Token Minting and webhook edge surface.
+
+The Dashboard Session and persistence re-cut is now specified separately in [docs/dashboard-d1-recut.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/dashboard-d1-recut.md). Where this document previously described Dashboard Session Durable Objects or installation-local Audit Log persistence as the durable target design, the D1-backed re-cut document supersedes those details.
 
 ## 1. Purpose
 
-The service exists to let trusted GitHub Actions workflow runs obtain short-lived GitHub App installation tokens without exposing the GitHub App private key to GitHub Actions runners or other caller-controlled environments.
+The service exists to let trusted GitHub Actions workflow runs obtain short-lived GitHub App installation access tokens without exposing the GitHub App private key to GitHub Actions runners or other caller-controlled environments.
 
 The service must provide:
 
@@ -19,10 +23,13 @@ This document is a standalone requirements specification for building the servic
 ### In scope
 
 - Verifying GitHub Actions OIDC bearer tokens from a fixed trusted issuer configuration
-- Returning verified caller claims without minting a token
-- Minting repository-scoped GitHub installation tokens for allowed workflow contexts
-- Receiving signed GitHub webhooks and routing them to installation-scoped persistence
-- Maintaining bounded per-installation audit and webhook-delivery logs
+- Returning verified Caller claims without minting a token
+- Minting repository-scoped GitHub App installation access tokens for allowed workflow contexts
+- Authenticating Dashboard Users via GitHub App user authorization
+- Listing repositories visible to an authorized Dashboard User for this GitHub App
+- Rendering the last 5 Audit Log entries for a visible repository
+- Receiving signed GitHub webhooks and routing them to the Installation Coordinator
+- Maintaining the bounded Audit Log and Webhook Delivery Log
 - Coordinating JWKS refresh and verifier state per configured OIDC issuer
 
 ### Out of scope
@@ -32,20 +39,24 @@ This document is a standalone requirements specification for building the servic
 - Caller-selected target repository
 - Token caching or reuse
 - General webhook event processing beyond acceptance, validation, routing, and persistence
-- End-user UI, admin API, or log-query API
-- Secondary broker-side repository allowlists beyond GitHub App installation presence
+- Admin write APIs or mutable repository-visibility allowlists
+- Secondary Cyspbot-side repository allowlists beyond GitHub App Installation presence
 
 ## 3. Users and Callers
 
-### Primary caller
+### Caller
 
 GitHub Actions workflows that can mint GitHub-issued OIDC tokens and present them as bearer tokens.
+
+### Dashboard User
+
+A human GitHub user who authorizes the Cyspbot GitHub App and may inspect only the repositories that GitHub returns for that user and installation context.
 
 ### Upstream authorities
 
 - GitHub OIDC issuer for caller identity
-- GitHub App installation model for repository authorization
-- GitHub REST API for installation lookup, repository metadata, and installation-token minting
+- GitHub App Installation model for repository authorization
+- GitHub REST API for installation lookup, repository metadata, and GitHub App installation access-token minting
 
 ### Operators
 
@@ -55,12 +66,12 @@ Platform operators who configure the trusted OIDC issuer set, GitHub App identit
 
 The service must:
 
-1. Prove that the caller is an authenticated GitHub Actions workflow from a trusted issuer.
+1. Prove that the Caller is an authenticated GitHub Actions workflow from a trusted issuer.
 2. Derive the calling repository from verified OIDC claims rather than caller input.
 3. Confirm the configured GitHub App is installed on that repository.
-4. Mint a fresh installation token only when the verified GitHub OIDC trust context passes policy.
+4. Mint a fresh GitHub App installation access token only when the verified GitHub OIDC trust context passes policy.
 5. Never expose or distribute the GitHub App private key outside the service secret boundary.
-6. Persist bounded operational records for token requests and accepted webhook deliveries.
+6. Persist bounded Audit Log and Webhook Delivery Log records.
 
 ## 5. External API Contract
 
@@ -82,7 +93,15 @@ WWW-Authenticate: Bearer
 
 `POST /token` also relies on OIDC token verification, but it receives the caller's OIDC token through the OAuth token exchange `subject_token` parameter rather than the `Authorization` header.
 
-Authentication is based on OIDC token verification. The service does not accept GitHub PATs, GitHub App JWTs from callers, API keys, cookies, or session credentials.
+Dashboard routes use a separate authentication surface:
+
+- The user authorizes the Cyspbot GitHub App through GitHub App user authorization.
+- Cyspbot exchanges the callback code for a GitHub App user access token.
+- Cyspbot stores encrypted token material in a short-lived server-side Dashboard Session and sends a signed HTTP-only session cookie.
+- Repository visibility for the dashboard comes from GitHub's user-to-server installation repository APIs, not from local installation records alone.
+- Visibility Refresh may upsert positive projection bootstrap rows for repositories GitHub returned for the current Dashboard User, but only Installation Reconciliation may perform full installation-slice replacement, deletion, suspension, or removal decisions.
+
+Token Minting routes still do not accept GitHub PATs, GitHub App JWTs from Callers, or Dashboard Session cookies as substitutes for GitHub Actions OIDC authentication.
 
 ### 5.2 Error format
 
@@ -101,7 +120,7 @@ No additional fields are required for compatibility.
 ### 5.3 `POST /github/claims`
 
 Purpose:
-Verify caller identity and confirm that the configured GitHub App is installed on the calling repository, without evaluating full token-mint policy and without minting a token.
+Verify Caller identity and confirm that the configured GitHub App is installed on the Calling Repository, without evaluating the full Token Policy and without minting a token.
 
 Request:
 
@@ -128,8 +147,8 @@ Behavior:
 
 - The repository and repository ID come from verified OIDC claims.
 - `event_name` and `ref` are echoed from verified claims.
-- This endpoint allows otherwise non-mintable events, provided authentication succeeds and the app installation lookup succeeds.
-- Example: a verified `pull_request` event may return `200` here and still be forbidden for token minting.
+- This endpoint allows events that are not eligible for Token Minting, provided authentication succeeds and the GitHub App Installation lookup succeeds.
+- Example: a verified `pull_request` event may return `200` here and still be forbidden for Token Minting.
 
 Failure behavior:
 
@@ -142,7 +161,7 @@ Failure behavior:
 ### 5.4 `POST /token`
 
 Purpose:
-Primary Security Token Service endpoint. Exchange a trusted GitHub Actions OIDC token for a fresh GitHub installation token for the calling repository, subject to checked-in policy code over verified caller context and repository scope.
+Primary Security Token Service endpoint. Exchange a trusted GitHub Actions OIDC token for a fresh GitHub App installation access token for the calling repository, subject to checked-in policy code over verified caller context and repository scope.
 
 Request:
 
@@ -182,14 +201,14 @@ Success response:
 Required behavior:
 
 - Resolve the GitHub App installation for the repository from verified claims.
-- Enforce token mint policy before token creation.
-- Mint a new installation token with:
+- Enforce the Token Policy before token creation.
+- Mint a new GitHub App installation access token with:
   - repository scope restricted to the calling repository only
   - repository permissions inherited from the current GitHub App configuration for that installation
 - When calling GitHub's `POST /app/installations/{installation_id}/access_tokens`, send `X-GitHub-Stateless-S2S-Token: enabled` to opt in to the temporary stateless token format override
 - Return the GitHub-provided expiry timestamp.
 
-Current default token mint policy:
+Current default Token Policy:
 
 - Requires verified GitHub OIDC claims to map to a GitHub Actions principal with at least:
   - `sub`
@@ -197,7 +216,7 @@ Current default token mint policy:
   - `repository`
   - `repository_id`
 - Evaluates the verified claim set directly in service code against resolved repository metadata.
-- Requires all of the following to permit minting:
+- Requires all of the following to permit Token Minting:
   - `repository_id` matches the resolved repository
   - `repository` matches the resolved repository
   - `repository_owner_id` matches the resolved repository owner
@@ -229,7 +248,7 @@ Error payloads must follow OAuth token endpoint conventions rather than `applica
 ### 5.5 `POST /github/installations/token`
 
 Purpose:
-Legacy compatibility endpoint for callers that still use the original GitHub-specific minting path.
+Legacy compatibility endpoint for callers that still use the original GitHub-specific Token Minting path.
 
 Request:
 
@@ -252,7 +271,7 @@ Success response:
 
 Required behavior:
 
-- Must share the same OIDC verification, installation resolution, policy enforcement, and GitHub minting implementation as `POST /token`
+- Must share the same OIDC verification, GitHub App Installation resolution, Token Policy enforcement, and GitHub token creation implementation as `POST /token`
 - Must preserve the legacy response shape for compatibility
 - Must remain secondary to `POST /token` in all primary documentation
 
@@ -267,7 +286,7 @@ Failure behavior:
 ### 5.6 `POST /github/webhooks`
 
 Purpose:
-Accept authenticated GitHub webhook deliveries, validate the envelope, and route accepted deliveries to installation-scoped persistence.
+Accept authenticated GitHub webhook deliveries, validate the envelope, and route accepted deliveries to the Installation Coordinator.
 
 Request requirements:
 
@@ -318,7 +337,8 @@ Failure behavior:
 
 Post-acceptance behavior:
 
-- Persist the raw JSON body string, delivery ID, event name, signature header, installation ID, and receive timestamp in the installation-scoped webhook log.
+- Persist webhook delivery metadata in D1 for deliveries that reach envelope validation, including rejected deliveries.
+- The first cut stores metadata only, not raw webhook bodies or signature secrets.
 - Signed `ping` deliveries are accepted after signature and JSON validation without requiring `installation.id`.
 - `ping` is endpoint validation rather than installation state, so it should be handled at the Worker edge rather than routed to installation-scoped persistence.
 - No further business-event processing is required for compatibility.
@@ -439,14 +459,14 @@ The service must enforce a checked-in policy implementation for caller eligibili
 
 - No caller-selected permissions
 - No caller-selected repository
-- No token minting for PR-triggered events
-- No token minting for pull requests raised from forked repositories under any circumstance
+- No Token Minting for PR-triggered events
+- No Token Minting for pull requests raised from forked repositories under any circumstance
 - `push`, `schedule`, and `workflow_dispatch` only when the verified OIDC `sub` and `ref` both identify the current default branch ref
 - Repository permissions must be inherited from the GitHub App configuration in effect at mint time
 - Additional verified claims such as `workflow_ref`, `job_workflow_ref`, `environment`, `head_ref`, and `base_ref` must remain available to the policy layer for future stricter checked-in policies
 
 Rationale:
-The implemented service is intentionally narrow. The caller proves identity; Cyspbot decides caller eligibility and repository scope through checked-in policy code; GitHub App configuration decides repository permissions. This prevents workflows from widening scope to arbitrary repositories or using the broker as a generic GitHub token vending endpoint, while intentionally treating the GitHub App configuration as the primary authorization control plane.
+The implemented service is intentionally narrow. The Caller proves identity; Cyspbot decides caller eligibility and repository scope through checked-in policy code; GitHub App configuration decides repository permissions. This prevents workflows from widening scope to arbitrary repositories or using Cyspbot as a generic GitHub token vending endpoint, while intentionally treating the GitHub App configuration as the primary authorization control plane.
 
 ## 7. OIDC Verification Requirements
 
@@ -543,7 +563,7 @@ The service must support:
 - `GET /repos/{owner}/{repo}`
 - `POST /app/installations/{installation_id}/access_tokens`
 
-Required token request body:
+Required GitHub access-token request body:
 
 ```json
 {
@@ -551,7 +571,7 @@ Required token request body:
 }
 ```
 
-Required token request headers:
+Required GitHub access-token request headers:
 
 ```http
 X-GitHub-Stateless-S2S-Token: enabled
@@ -571,47 +591,80 @@ The service intentionally hides internal GitHub authorization details and presen
 
 ## 9. Persistence and Isolation Boundaries
 
-### 9.1 Installation-scoped persistence
+The durable persistence model for the Dashboard Sessions, Repository Visibility Cache, Audit Log, and Webhook Delivery Log is defined in [docs/dashboard-d1-recut.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/dashboard-d1-recut.md).
 
-The service must isolate token-request audit logs and accepted webhook-delivery logs by GitHub App installation ID.
+### 9.1 Audit Log persistence
 
-Required stored token-request fields:
+The service must durably persist Audit Log facts and issued-token facts in the central durable store chosen for the re-cut.
 
-- timestamp
-- repository ID
-- repository name
-- installation ID
-- event name
-- ref
-- actor
+Required stored Audit Log fields include:
+
+- requested-at timestamp
+- Caller repository ID from normalized GitHub-issued OIDC Caller context
+- Caller repository full name normalized from the GitHub-issued OIDC `repository` claim
+- Caller repository full name display snapshot from the original GitHub-issued OIDC `repository` claim, for display and audit evidence only
+- installation ID when live GitHub installation lookup succeeds
+- GitHub Actions event name
+- GitHub ref
+- GitHub ref type
+- GitHub actor
 - outcome
-- token expiry when minting succeeds
-- supplemental OIDC trust context JSON for claims and verifier details not already stored in top-level columns
-- minted permissions in relational child rows when minting succeeds
-- policy rejection reasons in relational child rows when policy blocks the request
+- OIDC subject
+- OIDC issuer
+- OIDC resolved key ID when available
+- GitHub workflow and run identifiers needed for investigation
+- outcome reason codes in relational child rows for policy denials and stable lookup or internal failure reasons
+- issued-token expiry in a 0-or-1 issued-token child row when Token Minting succeeds
+- issued-token permissions in relational child rows when Token Minting succeeds
 
-Required stored webhook fields:
+Normalized columns are the only columns allowed for identity, route resolution, joins, authorization, and uniqueness. Display snapshot columns exist only to show what GitHub reported at the time and must carry a `_display` suffix.
+
+The audit intent row must be written after OIDC authentication produces normalized Caller context and before any live GitHub App Installation or repository lookup. Live GitHub lookup failures after Caller authentication must finalize that row instead of disappearing into transient operational logs.
+
+Terminal audit finalization and issued-token child rows must be written transactionally where the central store supports it. If a token has already been minted but finalization cannot be persisted, the service must return a server error. A persisted `finalization_failed` marker is only guaranteed when the central store can accept that failure update; otherwise the pending audit intent row plus an operational alert is the evidence trail.
+
+### 9.2 Installation Coordinator
+
+The service must preserve an Installation Coordinator for Installation Reconciliation execution.
+
+Required installation-scoped behavior:
+
+- one Installation Coordinator boundary per GitHub App Installation
+- signal coalescing for repeated Installation Reconciliation requests
+- serialized Installation Reconciliation execution for one installation at a time
+- minimal reconstructable Durable Object state only
+
+The Installation Coordinator is not the durable source of truth for the Audit Log, Dashboard Sessions, repository projection, or Repository Visibility Cache.
+
+### 9.3 Webhook Delivery Log persistence
+
+Webhook Delivery Log metadata is required durable audit data. The first cut stores metadata only rather than raw bodies.
+
+Required stored webhook metadata fields:
 
 - receive timestamp
-- installation ID
+- installation ID when present
 - delivery ID
-- event name
-- signature header
-- raw body
+- GitHub webhook event name
+- acceptance result
+- signature validation result
+- response status code
+- optional small metadata JSON for operational debugging
 
 Rationale:
-Installation-scoped persistence keeps operational records close to the authorization boundary and avoids a global shared mutable store for unrelated repositories.
+The target re-cut preserves GitHub App Installation isolation for execution while moving durable facts into one centrally queryable store.
 
-### 9.2 Retention and bounding
+### 9.4 Retention and bounding
 
-Both token-request and webhook logs must be bounded by:
+Retention policy is defined per durable table in the re-cut document. The baseline requirements are:
 
-- maximum age: 180 days by default
-- maximum entries: 5000 by default
+- Audit Log and issued-token child rows: bounded and purged explicitly
+- Dashboard Session rows and Repository Visibility Cache rows: aggressively purged after expiry
+- Installation Reconciliation status and Webhook Delivery Log metadata: bounded by explicit retention windows
 
-The implementation must prune older records by age and then by newest-first entry count.
+The implementation must use explicit cleanup jobs rather than relying only on opportunistic deletion during request handling.
 
-### 9.3 Verifier-state isolation
+### 9.5 Verifier-state isolation
 
 OIDC verification state must be isolated per configured issuer registration.
 
@@ -630,8 +683,8 @@ Issuer-scoped isolation prevents one issuer's refresh policy or corrupted state 
 The service must log operational failures server-side, including:
 
 - authentication failures with coarse reason and request metadata
-- GitHub installation lookup failures
-- token mint failures with mapped status and caller context
+- GitHub App Installation lookup failures
+- Token Minting failures with mapped status and Caller context
 - issuer-registration loading/configuration failures
 
 The public API must remain minimally descriptive even when logs are richer.
@@ -644,11 +697,11 @@ No metrics, tracing schema, or external log-query API are required for compatibi
 
 - The GitHub App private key must not be exposed to callers.
 - The webhook secret must not be exposed to callers.
-- Minted installation tokens must not be persisted for reuse.
+- Minted GitHub App installation access tokens must not be persisted for reuse.
 
 ### 11.2 Caller constraints
 
-- Only verified GitHub Actions OIDC callers are eligible.
+- Only verified GitHub Actions OIDC Callers are eligible.
 - Only configured issuers are trusted.
 - Only the repository asserted by verified claims may receive a token.
 - Only the repository asserted by verified claims may receive a repository-scoped token, while repository permissions are inherited from the GitHub App configuration in effect at mint time.
@@ -666,7 +719,7 @@ No metrics, tracing schema, or external log-query API are required for compatibi
 The service should not disclose detailed validation failures, GitHub authorization internals, or secret/config state beyond coarse HTTP status classes.
 
 Rationale:
-The implemented design prefers a narrow public surface and richer operator-side logs. That is the correct tradeoff for a security broker.
+The implemented design prefers a narrow public surface and richer operator-side logs. That is the correct tradeoff for a Security Token Service.
 
 ## 12. Non-Functional Requirements
 
@@ -676,7 +729,7 @@ The service must preserve the route paths, methods, field names, and status sema
 
 ### 12.2 Statelessness of token issuance
 
-Each token mint request must produce a fresh GitHub installation token. Reuse from local cache is not allowed.
+Each Token Minting request must produce a fresh GitHub App installation access token. Reuse from local cache is not allowed.
 
 ### 12.3 Bounded memory and persistence
 
@@ -691,7 +744,7 @@ The service must correctly handle non-ASCII verified claim values without corrup
 The service must not require any of the following behaviors:
 
 - Caller-supplied permission profiles
-- Cross-repository token minting
+- Cross-repository Token Minting
 - Webhook replay API
 - Audit-log read API
 - Dynamic issuer registration
@@ -704,13 +757,13 @@ These are intentionally absent from the current product surface.
 
 The implementation is acceptable only if all of the following are true:
 
-1. `POST /github/claims` accepts a valid GitHub Actions OIDC bearer token and returns the verified repository identity fields without requiring mintable event context.
+1. `POST /github/claims` accepts a valid GitHub Actions OIDC bearer token and returns the verified repository identity fields without requiring a Token Minting-eligible event context.
 2. `POST /token` accepts an RFC 8693 token exchange request, validates a GitHub Actions OIDC `subject_token`, and returns an OAuth-style token response for allowed workflow contexts.
-3. `POST /github/installations/token` remains available as a compatibility endpoint and shares the same minting policy and upstream GitHub token creation path as `POST /token`.
-4. The minted token request sent upstream is restricted to the calling repository ID, does not send a server-defined `permissions` override, and opts in to GitHub's temporary stateless token format header.
+3. `POST /github/installations/token` remains available as a compatibility endpoint and shares the same Token Policy and upstream GitHub token creation path as `POST /token`.
+4. The GitHub access-token request sent upstream is restricted to the Calling Repository ID, does not send a server-defined `permissions` override, and opts in to GitHub's temporary stateless token format header.
 5. Authentication trusts only configured issuers and verifies against coordinated per-issuer JWKS state with bounded freshness, stale serving, and backoff.
 6. `POST /github/webhooks` rejects malformed, oversized, unsigned, or incorrectly signed deliveries; accepts valid signed JSON deliveries with positive integer `installation.id`; and also accepts signed `ping` validation deliveries without `installation.id`.
-7. Accepted token requests and accepted webhook deliveries are persisted in bounded installation-scoped logs, every token-request audit row records the domain outcome, successful token mints record the actual permission set GitHub returned in relational child rows, and token-request audit entries also record supplemental OIDC trust context plus policy rejection reasons when policy blocks a request.
+7. Authenticated Token Minting attempts are durably persisted in the central Audit Log before live GitHub lookup, every Audit Log row records the domain outcome, successful token mints record the actual permission set GitHub returned in relational child rows, denials and stable failure reasons are recorded in relational child rows, and the final Token Minting response fails closed if the required audit write cannot be persisted.
 8. Errors are returned as minimal `application/problem+json` responses for legacy GitHub-specific endpoints and OAuth-style JSON token responses for `POST /token`.
 9. The GitHub App private key remains inside the service secret boundary and is never returned or persisted in logs or API responses.
 
@@ -718,7 +771,7 @@ The implementation is acceptable only if all of the following are true:
 
 The service does not need to use Cloudflare Workers or Durable Objects internally, but it must preserve the same externally relevant guarantees:
 
-- one installation-scoped persistence boundary for audit and webhook records
+- one Installation Coordinator boundary for Installation Reconciliation execution
 - one issuer-scoped verifier coordination boundary for JWKS state
 - a secure secret boundary for the GitHub App private key
 - no broadening of caller authority, token scope, or public API surface

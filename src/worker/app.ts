@@ -1,7 +1,37 @@
 import type { Env } from "../env.ts";
-import { GitHubApiError, resolveInstallationForRepository } from "../github/api.ts";
+import {
+  clearDashboardSessionCookie,
+  clearDashboardStateCookie,
+  createEncryptedValue,
+  createSignedDashboardOauthStateCookie,
+  createSignedDashboardSessionCookie,
+  decryptValue,
+  randomToken,
+  readDashboardOauthState,
+  readDashboardSessionId,
+} from "../dashboard/auth.ts";
+import {
+  renderDashboardRepositoryDetailsPage,
+  renderDashboardRepositoryListPage,
+} from "../dashboard/html.ts";
+import type {
+  DashboardSessionObject,
+  DashboardRepositoryAccessEntry,
+  DashboardSessionState,
+  StoredDashboardSession,
+} from "../dashboard/session-object.ts";
+import {
+  exchangeGitHubUserCode,
+  getAuthenticatedGitHubUser,
+  GitHubApiError,
+  listGitHubUserInstallationRepositories,
+  listGitHubUserInstallations,
+  refreshGitHubUserAccessToken,
+  resolveInstallationForRepository,
+} from "../github/api.ts";
 import type { AuthenticatedContext } from "../oidc/principals.ts";
 import type {
+  RepositoryTokenRequestEntry,
   MintInstallationTokenResult,
   RunMigrationsResult,
   ReceiveWebhookResult,
@@ -20,6 +50,7 @@ const githubInstallationAccessTokenType = "urn:chikachow:github-app-installation
 const oidcIdTokenType = "urn:ietf:params:oauth:token-type:id_token";
 const jwtTokenType = "urn:ietf:params:oauth:token-type:jwt";
 const oauthAccessTokenType = "urn:ietf:params:oauth:token-type:access_token";
+const dashboardAccessCacheDefaultTtlSeconds = 300;
 
 export const app: ExportedHandler<Env> = {
   async fetch(request, env): Promise<Response> {
@@ -63,6 +94,46 @@ export const app: ExportedHandler<Env> = {
       }
 
       return handleInstallationMigrationRequest(request, env);
+    }
+
+    if (url.pathname === "/dashboard/login/github") {
+      if (request.method !== "GET") {
+        return problemResponse(405, { allow: "GET" });
+      }
+
+      return handleDashboardLoginRequest(request, env);
+    }
+
+    if (url.pathname === "/dashboard/auth/github/callback") {
+      if (request.method !== "GET") {
+        return problemResponse(405, { allow: "GET" });
+      }
+
+      return handleDashboardCallbackRequest(request, env);
+    }
+
+    if (url.pathname === "/dashboard/logout") {
+      if (request.method !== "GET") {
+        return problemResponse(405, { allow: "GET" });
+      }
+
+      return handleDashboardLogoutRequest(request, env);
+    }
+
+    if (url.pathname === "/dashboard") {
+      if (request.method !== "GET") {
+        return problemResponse(405, { allow: "GET" });
+      }
+
+      return handleDashboardRepositoryListRequest(request, env);
+    }
+
+    if (url.pathname.startsWith("/dashboard/repositories/")) {
+      if (request.method !== "GET") {
+        return problemResponse(405, { allow: "GET" });
+      }
+
+      return handleDashboardRepositoryDetailsRequest(request, env, url.pathname);
     }
 
     return problemResponse(404);
@@ -393,6 +464,436 @@ async function handleInstallationMigrationRequest(request: Request, env: Env): P
   } catch {
     return problemResponse(400);
   }
+}
+
+async function handleDashboardLoginRequest(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const returnTo = sanitizeDashboardReturnTo(url.searchParams.get("return_to"));
+  const oauthState = await createSignedDashboardOauthStateCookie(env, returnTo);
+  const authorizeUrl = new URL(
+    "/login/oauth/authorize",
+    env.GITHUB_WEB_BASE_URL ?? "https://github.com",
+  );
+
+  authorizeUrl.searchParams.set("client_id", requireDashboardClientId(env));
+  authorizeUrl.searchParams.set("redirect_uri", dashboardCallbackUrl(request));
+  authorizeUrl.searchParams.set("state", oauthState.state);
+
+  return new Response(null, {
+    headers: {
+      location: authorizeUrl.toString(),
+      "set-cookie": oauthState.cookie,
+    },
+    status: 302,
+  });
+}
+
+async function handleDashboardCallbackRequest(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const code = url.searchParams.get("code");
+  const state = url.searchParams.get("state");
+  const storedState = await readDashboardOauthState(request, env);
+
+  if (
+    code === null ||
+    state === null ||
+    storedState === null ||
+    storedState.state !== state ||
+    !dashboardOauthStateFresh(storedState.issuedAt)
+  ) {
+    return dashboardProblemResponse(400, {
+      "set-cookie": clearDashboardStateCookie(),
+    });
+  }
+
+  try {
+    const token = await exchangeGitHubUserCode(env, code, dashboardCallbackUrl(request));
+    const user = await getAuthenticatedGitHubUser(env, token.accessToken);
+    const sessionId = randomToken();
+    const sessionStub = env.DASHBOARD_SESSION.getByName(sessionId);
+    const session = await createDashboardSessionState(env, user, token);
+
+    await sessionStub.storeSession(session);
+    await refreshDashboardRepositoryAccess(env, sessionStub, token.accessToken);
+
+    const headers = new Headers({
+      location: storedState.returnTo,
+    });
+    headers.append("set-cookie", clearDashboardStateCookie());
+    headers.append("set-cookie", await createSignedDashboardSessionCookie(env, sessionId));
+
+    return new Response(null, {
+      headers,
+      status: 302,
+    });
+  } catch (error) {
+    console.error("Dashboard GitHub callback failed", {
+      errorMessage: error instanceof Error ? error.message : String(error),
+      errorName: error instanceof Error ? error.name : typeof error,
+    });
+
+    return dashboardProblemResponse(502, {
+      "set-cookie": clearDashboardStateCookie(),
+    });
+  }
+}
+
+async function handleDashboardLogoutRequest(request: Request, env: Env): Promise<Response> {
+  const sessionId = await readDashboardSessionId(request, env);
+
+  if (sessionId !== null) {
+    const sessionStub = env.DASHBOARD_SESSION.getByName(sessionId);
+    await sessionStub.clearSession();
+  }
+
+  return new Response(null, {
+    headers: {
+      location: "/dashboard",
+      "set-cookie": clearDashboardSessionCookie(),
+    },
+    status: 302,
+  });
+}
+
+async function handleDashboardRepositoryListRequest(request: Request, env: Env): Promise<Response> {
+  const dashboardSession = await requireDashboardSession(request, env);
+
+  if (!dashboardSession.ok) {
+    return dashboardSession.response;
+  }
+
+  const repositories = [...dashboardSession.repositories].sort((left, right) =>
+    left.fullName.localeCompare(right.fullName),
+  );
+
+  return htmlResponse(
+    renderDashboardRepositoryListPage({
+      githubLogin: dashboardSession.session.githubLogin,
+      repositories,
+    }),
+  );
+}
+
+async function handleDashboardRepositoryDetailsRequest(
+  request: Request,
+  env: Env,
+  pathname: string,
+): Promise<Response> {
+  const dashboardSession = await requireDashboardSession(request, env);
+
+  if (!dashboardSession.ok) {
+    return dashboardSession.response;
+  }
+
+  const repositoryId = pathname.slice("/dashboard/repositories/".length);
+  const repository = dashboardSession.repositories.find(
+    (entry) => entry.githubRepoId === repositoryId,
+  );
+
+  if (repository === undefined) {
+    return dashboardProblemResponse(403);
+  }
+
+  const installationStub = env.GITHUB_INSTALLATION.getByName(String(repository.installationId));
+  const tokenRequests = (await installationStub.listRepositoryTokenRequests({
+    limit: 5,
+    repositoryId: repository.githubRepoId,
+  })) as RepositoryTokenRequestEntry[];
+
+  return htmlResponse(
+    renderDashboardRepositoryDetailsPage({
+      githubLogin: dashboardSession.session.githubLogin,
+      repository,
+      tokenRequests,
+    }),
+  );
+}
+
+async function requireDashboardSession(
+  request: Request,
+  env: Env,
+): Promise<
+  | {
+      ok: true;
+      repositories: DashboardRepositoryAccessEntry[];
+      session: DashboardSessionState;
+    }
+  | { ok: false; response: Response }
+> {
+  const sessionId = await readDashboardSessionId(request, env);
+
+  if (sessionId === null) {
+    return {
+      ok: false,
+      response: dashboardLoginRedirectResponse(request),
+    };
+  }
+
+  const sessionStub = env.DASHBOARD_SESSION.getByName(sessionId);
+  const stored = (await sessionStub.getSession()) as StoredDashboardSession;
+
+  if (stored.session === null) {
+    return {
+      ok: false,
+      response: dashboardLoginRedirectResponse(request),
+    };
+  }
+
+  const tokenResult = await ensureDashboardAccessToken(env, sessionStub, stored.session);
+
+  if (!tokenResult.ok) {
+    return {
+      ok: false,
+      response: tokenResult.response,
+    };
+  }
+
+  let repositories = stored.repositories;
+  let session = tokenResult.session;
+
+  if (
+    session.repositoryAccessCacheExpiresAt === null ||
+    isExpired(session.repositoryAccessCacheExpiresAt)
+  ) {
+    try {
+      repositories = await refreshDashboardRepositoryAccess(
+        env,
+        sessionStub,
+        tokenResult.accessToken,
+      );
+      const refreshed = (await sessionStub.getSession()) as StoredDashboardSession;
+
+      if (refreshed.session !== null) {
+        session = refreshed.session;
+      }
+    } catch (error) {
+      console.error("Dashboard repository access refresh failed", {
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorName: error instanceof Error ? error.name : typeof error,
+      });
+
+      if (error instanceof GitHubApiError && (error.status === 401 || error.status === 403)) {
+        await sessionStub.clearSession();
+
+        return {
+          ok: false,
+          response: dashboardLoginRedirectResponse(request, clearDashboardSessionCookie()),
+        };
+      }
+
+      return {
+        ok: false,
+        response: dashboardProblemResponse(502),
+      };
+    }
+  }
+
+  return {
+    ok: true,
+    repositories,
+    session,
+  };
+}
+
+async function ensureDashboardAccessToken(
+  env: Env,
+  sessionStub: DurableObjectStub<DashboardSessionObject>,
+  session: DashboardSessionState,
+): Promise<
+  | { accessToken: string; ok: true; session: DashboardSessionState }
+  | { ok: false; response: Response }
+> {
+  if (session.accessTokenExpiresAt === null || !isExpiredSoon(session.accessTokenExpiresAt)) {
+    const accessToken = await decryptValue(env, session.accessTokenCiphertext);
+
+    if (accessToken !== null) {
+      return {
+        accessToken,
+        ok: true,
+        session,
+      };
+    }
+  }
+
+  if (session.refreshTokenCiphertext === null) {
+    await sessionStub.clearSession();
+
+    return {
+      ok: false,
+      response: dashboardLoginRedirectResponse(undefined, clearDashboardSessionCookie()),
+    };
+  }
+
+  const refreshToken = await decryptValue(env, session.refreshTokenCiphertext);
+
+  if (refreshToken === null) {
+    await sessionStub.clearSession();
+
+    return {
+      ok: false,
+      response: dashboardLoginRedirectResponse(undefined, clearDashboardSessionCookie()),
+    };
+  }
+
+  try {
+    const refreshedToken = await refreshGitHubUserAccessToken(env, refreshToken);
+    const updatedSession = await createDashboardSessionState(
+      env,
+      {
+        id: session.githubUserId,
+        login: session.githubLogin,
+      },
+      refreshedToken,
+    );
+
+    await sessionStub.storeSession(updatedSession);
+
+    return {
+      accessToken: refreshedToken.accessToken,
+      ok: true,
+      session: updatedSession,
+    };
+  } catch (error) {
+    if (error instanceof GitHubApiError && (error.status === 400 || error.status === 401)) {
+      await sessionStub.clearSession();
+
+      return {
+        ok: false,
+        response: dashboardLoginRedirectResponse(undefined, clearDashboardSessionCookie()),
+      };
+    }
+
+    throw error;
+  }
+}
+
+async function refreshDashboardRepositoryAccess(
+  env: Env,
+  sessionStub: DurableObjectStub<DashboardSessionObject>,
+  accessToken: string,
+): Promise<DashboardRepositoryAccessEntry[]> {
+  const repositoriesById = new Map<string, DashboardRepositoryAccessEntry>();
+  const installations = await listGitHubUserInstallations(env, accessToken);
+
+  for (const installation of installations) {
+    const repositories = await listGitHubUserInstallationRepositories(
+      env,
+      accessToken,
+      installation.id,
+    );
+
+    for (const repository of repositories) {
+      if (!repositoriesById.has(repository.githubRepoId)) {
+        repositoriesById.set(repository.githubRepoId, repository);
+      }
+    }
+  }
+
+  const repositories = [...repositoriesById.values()];
+  await sessionStub.replaceRepositoryAccessCache({
+    expiresAt: new Date(Date.now() + dashboardAccessCacheTtlMs(env)).toISOString(),
+    repositories,
+  });
+
+  return repositories;
+}
+
+async function createDashboardSessionState(
+  env: Env,
+  user: { id: string; login: string },
+  token: {
+    accessToken: string;
+    accessTokenExpiresAt: string | null;
+    refreshToken: string | null;
+    refreshTokenExpiresAt: string | null;
+  },
+): Promise<DashboardSessionState> {
+  return {
+    accessTokenCiphertext: await createEncryptedValue(env, token.accessToken),
+    accessTokenExpiresAt: token.accessTokenExpiresAt,
+    githubLogin: user.login,
+    githubUserId: user.id,
+    refreshTokenCiphertext:
+      token.refreshToken === null ? null : await createEncryptedValue(env, token.refreshToken),
+    refreshTokenExpiresAt: token.refreshTokenExpiresAt,
+    repositoryAccessCacheExpiresAt: null,
+  };
+}
+
+function dashboardAccessCacheTtlMs(env: Env): number {
+  const parsed = Number.parseInt(env.DASHBOARD_ACCESS_CACHE_TTL_SECONDS ?? "", 10);
+
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return dashboardAccessCacheDefaultTtlSeconds * 1000;
+  }
+
+  return parsed * 1000;
+}
+
+function dashboardCallbackUrl(request: Request): string {
+  const url = new URL(request.url);
+
+  return `${url.origin}/dashboard/auth/github/callback`;
+}
+
+function dashboardLoginRedirectResponse(request?: Request, setCookie?: string): Response {
+  const location =
+    request === undefined
+      ? "/dashboard/login/github"
+      : `/dashboard/login/github?return_to=${encodeURIComponent(new URL(request.url).pathname)}`;
+  const headers = new Headers({ location });
+
+  if (setCookie !== undefined) {
+    headers.set("set-cookie", setCookie);
+  }
+
+  return new Response(null, {
+    headers,
+    status: 302,
+  });
+}
+
+function dashboardOauthStateFresh(issuedAt: string): boolean {
+  const issuedAtMs = Date.parse(issuedAt);
+
+  return !Number.isNaN(issuedAtMs) && Date.now() - issuedAtMs <= 10 * 60 * 1000;
+}
+
+function dashboardProblemResponse(status: number, headers?: HeadersInit): Response {
+  return problemResponse(status, headers);
+}
+
+function htmlResponse(body: string): Response {
+  return new Response(body, {
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+    },
+    status: 200,
+  });
+}
+
+function isExpired(value: string): boolean {
+  return Date.parse(value) <= Date.now();
+}
+
+function isExpiredSoon(value: string): boolean {
+  return Date.parse(value) <= Date.now() + 60 * 1000;
+}
+
+function requireDashboardClientId(env: Env): string {
+  if (env.GITHUB_APP_CLIENT_ID === undefined || env.GITHUB_APP_CLIENT_ID.length === 0) {
+    throw new Error("missing dashboard GitHub client id");
+  }
+
+  return env.GITHUB_APP_CLIENT_ID;
+}
+
+function sanitizeDashboardReturnTo(value: string | null): string {
+  if (value === null || !value.startsWith("/dashboard")) {
+    return "/dashboard";
+  }
+
+  return value;
 }
 
 async function verifyGitHubWebhookSignature(

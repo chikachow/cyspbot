@@ -1,6 +1,8 @@
 # cyspbot
 
-Cyspbot is the hosted automation application for cysp. Its current capability is exchanging trusted GitHub Actions OIDC tokens for short-lived GitHub installation tokens without exposing the GitHub App private key outside Cloudflare.
+Cyspbot is the hosted automation application for cysp. It exchanges trusted GitHub Actions OIDC tokens for short-lived GitHub App installation access tokens without exposing the GitHub App private key outside Cloudflare.
+
+The Dashboard Session, Audit Log, Repository Visibility Cache, and persistence architecture are being re-cut. The source of truth for that redesign is [docs/dashboard-d1-recut.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/dashboard-d1-recut.md).
 
 ## Hosted contract
 
@@ -31,7 +33,7 @@ Cyspbot is the hosted automation application for cysp. Its current capability is
       "expires_in": 3600
     }
     ```
-  - When minting the upstream GitHub installation token, Cyspbot currently opts in to GitHub's temporary stateless token override with `X-GitHub-Stateless-S2S-Token: enabled`.
+  - When minting the upstream GitHub App installation access token, Cyspbot currently opts in to GitHub's temporary stateless token override with `X-GitHub-Stateless-S2S-Token: enabled`.
 - `POST /github/claims`
   - Authenticates the caller with a GitHub Actions OIDC token.
   - Confirms the configured GitHub App is installed on the calling repository.
@@ -48,7 +50,7 @@ Cyspbot is the hosted automation application for cysp. Its current capability is
   - Legacy compatibility endpoint.
   - Authenticates the caller with a GitHub Actions OIDC token.
   - Applies the same OIDC trust policy as `POST /token`.
-  - Mints a fresh installation token:
+  - Mints a fresh GitHub App installation access token:
     - scoped to the calling repository only
     - with whatever repository permissions the GitHub App currently has for that repository
   - Returns:
@@ -70,6 +72,18 @@ Cyspbot is the hosted automation application for cysp. Its current capability is
     }
     ```
 
+## Target dashboard surface
+
+The replacement dashboard design uses:
+
+- `GET /login/github`
+- `GET /auth/github/callback`
+- `GET /logout`
+- `GET /dashboard`
+- `GET /dashboard/repositories/:owner/:name`
+
+The intended behavior, persistence model, D1 schema, and rollout sequence are documented in [docs/dashboard-d1-recut.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/dashboard-d1-recut.md).
+
 `POST /token` expects:
 
 ```http
@@ -89,7 +103,7 @@ The GitHub-specific endpoints use minimal `application/problem+json` responses.
 ## Architecture
 
 - Cloudflare Worker for OIDC verification, routing, and GitHub API calls.
-- A checked-in token mint policy function with explicit claim comparisons and allow/deny rules.
+- A checked-in Token Policy function with explicit claim comparisons and allow/deny rules.
 - The current policy evaluates immutable GitHub OIDC identity claims and workflow context claims, including:
   - `sub`
   - `repository_id`
@@ -100,10 +114,9 @@ The GitHub-specific endpoints use minimal `application/problem+json` responses.
   - `workflow_ref`
   - `job_workflow_ref`
   - `environment`
-- One Durable Object per GitHub App installation.
-- Durable Object stores a bounded audit log of token requests only:
-  - retain entries for up to 180 days
-  - retain at most 5000 entries per installation
+- One Durable Object per trusted OIDC issuer for verifier/JWKS coordination.
+- One Durable Object per GitHub App Installation is retained only for Installation Reconciliation signal coalescing and serialized execution in the target re-cut.
+- D1 is the target durable system of record for the Audit Log, Dashboard Sessions, installation/repository projection, Repository Visibility Cache, and Installation Reconciliation status.
 - Cloudflare Secrets Store holds the GitHub App private key.
 - GitHub App installation is repository authorization.
 
@@ -115,8 +128,16 @@ The existing GitHub App registration is the primary authorization control plane 
   - Any permissions granted here can flow through to repository-scoped tokens minted by Cyspbot.
   - Cyspbot still narrows tokens to the calling repository and allowed workflow contexts, but it does not down-scope the app's repository permissions further at mint time.
 
-Cyspbot records each mint attempt in its installation-scoped audit log.
-The main audit row records a generic `timestamp` and a domain-level `outcome` rather than an HTTP status code. Successful mints also record the actual permission set returned by GitHub in relational child rows, and each request stores supplemental OIDC trust context for fields that are not already captured in the main audit row. Policy rejection reasons are stored separately only when policy denies the request.
+Cyspbot records each mint attempt in a central D1 audit record in the target architecture.
+The target Audit Log schema and retention policy are documented in [docs/dashboard-d1-recut.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/dashboard-d1-recut.md).
+
+For the dashboard, GitHub App user authorization is the visibility control plane:
+
+- A signed-in Dashboard User may only see repositories returned by GitHub for that user through:
+  - `GET /user/installations`
+  - `GET /user/installations/{installation_id}/repositories`
+- Installation Tokens still represent what the app can do, not what a human Dashboard User may see.
+- The Repository Visibility Cache is a short-lived D1-backed cache keyed by Dashboard User and GitHub App Installation in the target re-cut.
 
 ## Cloudflare setup
 
@@ -131,11 +152,16 @@ The main audit row records a generic `timestamp` and a domain-level `outcome` ra
    ```
 4. Replace `REPLACE_WITH_SECRETS_STORE_ID` in [wrangler.jsonc](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/wrangler.jsonc).
 5. Replace `REPLACE_WITH_GITHUB_APP_ID` in [wrangler.jsonc](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/wrangler.jsonc).
-6. Verify Wrangler auth:
+6. Configure Dashboard authentication and Dashboard Session secrets for the target dashboard re-cut:
+   - `GITHUB_APP_CLIENT_ID`
+   - `GITHUB_APP_CLIENT_SECRET`
+   - session-token HMAC secret
+   - GitHub user token encryption secret
+7. Verify Wrangler auth:
    ```bash
    pnpm run wrangler:whoami
    ```
-7. Deploy:
+8. Deploy:
    ```bash
    pnpm run deploy:production
    ```
@@ -159,7 +185,7 @@ The Cloudflare API token should be scoped narrowly to the account and Worker dep
 ## Local development
 
 1. Copy `.dev.vars.example` to `.dev.vars`.
-2. Fill in the GitHub App ID and a local PKCS#8 PEM private key.
+2. Fill in the GitHub App ID, GitHub App client credentials, the Dashboard Session secrets required by the target re-cut, and a local PKCS#8 PEM private key.
 3. Install dependencies:
    ```bash
    pnpm install
@@ -180,7 +206,7 @@ The test environment uses a deterministic JWKS fixture response so Worker tests 
 ## GitHub Actions usage
 
 Workflows that call Cyspbot directly need `id-token: write`.
-Under the current policy, token minting is limited to default-branch `ref` contexts for `schedule`, `workflow_dispatch`, and `push`.
+Under the current Token Policy, Token Minting is limited to default-branch `ref` contexts for `schedule`, `workflow_dispatch`, and `push`.
 The current checked-in policy is intentionally narrow, but the claim mapping keeps `workflow_ref`, `job_workflow_ref`, and `environment` available for stricter future checks without changing the endpoint contract.
 
 The reusable GitHub Action client for Cyspbot lives in the separate `cyspbot-action` repository. This repository documents and deploys the hosted Cyspbot service.
@@ -189,4 +215,4 @@ Cyspbot will deny `pull_request`, `pull_request_target`, and any non-default-bra
 
 ## GitHub Webhooks
 
-`POST /github/webhooks` accepts signed GitHub App webhook deliveries for installation-scoped events and also accepts the initial signed `ping` delivery used when GitHub validates a webhook configuration. `ping` is accepted after signature and JSON validation, does not require `installation.id`, and is handled at the Worker edge only because it validates the endpoint rather than any installation-specific state.
+`POST /github/webhooks` accepts signed GitHub App webhook deliveries for installation-scoped events and also accepts the initial signed `ping` delivery used when GitHub validates a webhook configuration. In the target re-cut, webhook deliveries signal Installation Reconciliation through `GitHubInstallationObject`, while Webhook Delivery Log metadata and Installation Reconciliation status live in D1. Full details are in [docs/dashboard-d1-recut.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/dashboard-d1-recut.md).

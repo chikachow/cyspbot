@@ -114,6 +114,22 @@ async function tokenExchangeRequestBody(
   }).toString();
 }
 
+function cookieHeaderValue(setCookie: string): string {
+  return setCookie.split(";", 1)[0] ?? "";
+}
+
+function responseSetCookies(response: Response): string[] {
+  const headers = response.headers as Headers & { getSetCookie?: () => string[] };
+
+  if (typeof headers.getSetCookie === "function") {
+    return headers.getSetCookie();
+  }
+
+  const combined = response.headers.get("set-cookie");
+
+  return combined === null ? [] : combined.split(/,(?=\s*[A-Za-z0-9_]+=)/u);
+}
+
 describe("cyspbot worker", () => {
   it("returns minimal problem details for missing authentication", async () => {
     const response = await SELF.fetch("https://example.test/github/claims", {
@@ -506,5 +522,80 @@ describe("cyspbot worker", () => {
       migrated: true,
       object_ids: [durableObjectId.toString()],
     });
+  });
+
+  it("authorizes the dashboard with GitHub user auth and renders recent repository token requests", async () => {
+    const firstMint = await SELF.fetch("https://example.test/github/installations/token", {
+      headers: await authorizationHeaders(),
+      method: "POST",
+    });
+    expect(firstMint.status).toBe(200);
+
+    const secondMint = await SELF.fetch("https://example.test/github/installations/token", {
+      headers: await authorizationHeaders({
+        actor: "octocat",
+      }),
+      method: "POST",
+    });
+    expect(secondMint.status).toBe(200);
+
+    const dashboardRedirect = await SELF.fetch("https://example.test/dashboard", {
+      redirect: "manual",
+    });
+    expect(dashboardRedirect.status).toBe(302);
+    expect(dashboardRedirect.headers.get("location")).toBe(
+      "/dashboard/login/github?return_to=%2Fdashboard",
+    );
+
+    const loginResponse = await SELF.fetch("https://example.test/dashboard/login/github", {
+      redirect: "manual",
+    });
+    expect(loginResponse.status).toBe(302);
+    const stateCookie = responseSetCookies(loginResponse)[0];
+    expect(stateCookie).toBeDefined();
+    expect(stateCookie).toContain("cyspbot_dashboard_state=");
+    const authorizeUrl = new URL(loginResponse.headers.get("location") ?? "https://example.test");
+    const state = authorizeUrl.searchParams.get("state");
+    expect(state).not.toBeNull();
+
+    const callbackResponse = await SELF.fetch(
+      `https://example.test/dashboard/auth/github/callback?code=test-dashboard-code&state=${encodeURIComponent(state ?? "")}`,
+      {
+        headers: {
+          cookie: cookieHeaderValue(stateCookie!),
+        },
+        redirect: "manual",
+      },
+    );
+    expect(callbackResponse.status).toBe(302);
+    expect(callbackResponse.headers.get("location")).toBe("/dashboard");
+    const sessionCookie = responseSetCookies(callbackResponse).find((cookie) =>
+      cookie.startsWith("cyspbot_dashboard_session="),
+    );
+    expect(sessionCookie).toBeDefined();
+
+    const dashboardResponse = await SELF.fetch("https://example.test/dashboard", {
+      headers: {
+        cookie: cookieHeaderValue(sessionCookie!),
+      },
+    });
+    expect(dashboardResponse.status).toBe(200);
+    const dashboardHtml = await dashboardResponse.text();
+    expect(dashboardHtml).toContain("cysp/terraform-provider-contentful");
+    expect(dashboardHtml).toContain("Repository audit access");
+
+    const repositoryResponse = await SELF.fetch(
+      "https://example.test/dashboard/repositories/123456789",
+      {
+        headers: {
+          cookie: cookieHeaderValue(sessionCookie!),
+        },
+      },
+    );
+    expect(repositoryResponse.status).toBe(200);
+    const repositoryHtml = await repositoryResponse.text();
+    expect(repositoryHtml).toContain("Last 5 token requests");
+    expect(repositoryHtml).toContain("issued");
+    expect(repositoryHtml).toContain("octocat");
   });
 });
