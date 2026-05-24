@@ -79,6 +79,14 @@ export function createApp(
     async fetch(request, env): Promise<Response> {
       const url = new URL(request.url);
 
+      if (url.pathname === "/") {
+        if (request.method !== "GET") {
+          return problemResponse(405, { allow: "GET" });
+        }
+
+        return dashboardRedirectResponse("/dashboard");
+      }
+
       if (url.pathname === "/token") {
         if (request.method !== "POST") {
           return oauthErrorResponse(400, "invalid_request");
@@ -975,6 +983,16 @@ function dashboardLoginRedirectResponse(
 
   return new Response(null, {
     headers,
+    status: 302,
+  });
+}
+
+function dashboardRedirectResponse(location: string): Response {
+  return new Response(null, {
+    headers: {
+      "cache-control": "no-store",
+      location,
+    },
     status: 302,
   });
 }

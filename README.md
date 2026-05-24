@@ -65,6 +65,7 @@ The dashboard, Audit Log, Repository Visibility Cache, and session state are D1-
 
 The dashboard uses GitHub App user authorization and D1-backed sessions:
 
+- `GET /` redirects to `/dashboard`
 - `GET /github/setup`
 - `GET /login/github`
 - `GET /auth/github/callback`

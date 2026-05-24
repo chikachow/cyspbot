@@ -29,12 +29,15 @@ These continue to authenticate GitHub Actions OIDC Callers and use live GitHub A
 
 ### Dashboard authentication
 
+- `GET /`
 - `GET /github/setup`
 - `GET /login/github`
 - `GET /auth/github/callback`
 - `GET /logout`
 
 These routes manage GitHub App user authorization and the local Cyspbot Dashboard Session lifecycle.
+
+The service root redirects to `/dashboard` so `https://cyspbot.chikachow.org/` lands on the authenticated dashboard entrypoint instead of returning a generic not-found response.
 
 GitHub App installation setup redirects use `GET /github/setup`. That route is distinct from dashboard OAuth login:
 

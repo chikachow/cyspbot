@@ -426,6 +426,16 @@ describe("cyspbot worker", () => {
     }
   });
 
+  it("redirects the service root to the dashboard", async () => {
+    const response = await fetchWorker("https://example.test/", {
+      redirect: "manual",
+    });
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe("/dashboard");
+    expect(response.headers.get("cache-control")).toBe("no-store");
+  });
+
   it("returns minimal problem details for missing authentication", async () => {
     const response = await fetchWorker("https://example.test/github/claims", {
       method: "POST",

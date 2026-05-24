@@ -343,7 +343,21 @@ Post-acceptance behavior:
 - `ping` is endpoint validation rather than installation state, so it should be handled at the Worker edge rather than routed to installation-scoped persistence.
 - No further business-event processing is required for compatibility.
 
-### 5.7 `GET /github/setup` for GitHub App installation setup
+### 5.7 `GET /`
+
+Purpose:
+Provide a useful default entrypoint for the hosted service origin.
+
+Behavior:
+
+- Method: `GET`
+- Redirect to `/dashboard`
+- Include `Cache-Control: no-store`
+
+Rationale:
+Cyspbot is an authenticated operational dashboard rather than a marketing site. The root URL should land operators at the dashboard entrypoint and let the dashboard route enforce authentication.
+
+### 5.8 `GET /github/setup` for GitHub App installation setup
 
 Purpose:
 Handle GitHub's post-install and repository-selection update redirect without weakening the dashboard OAuth state requirement.
@@ -370,7 +384,7 @@ Requirement:
 Rationale:
 GitHub distinguishes the Setup URL from the OAuth callback URL. The Setup URL is for install/update onboarding and carries untrusted installation metadata; the OAuth callback is for completing a user authorization flow. Keeping them separate preserves the installed-app onboarding experience while keeping Dashboard Session creation tied to a user-initiated OAuth flow with Cyspbot's signed state cookie.
 
-### 5.8 Unknown routes
+### 5.9 Unknown routes
 
 - Return `404 Not Found` with minimal problem details.
 
