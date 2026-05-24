@@ -1,6 +1,6 @@
 # Add GitHub App user authorization with D1-backed Dashboard Sessions and visibility
 
-Cyspbot will add a read-only dashboard for humans, but the original prototype shape is not the target architecture. The target design authenticates Dashboard Users through GitHub App user authorization, stores Dashboard Sessions and the Repository Visibility Cache in D1, stores the Audit Log centrally in D1, and keeps `GitHubInstallationObject` only as the Installation Coordinator for signal coalescing and serialized Installation Reconciliation. We chose this over keeping Dashboard Session state and audit reads in separate Durable Objects because the dashboard needs repo-centric and cross-installation reads, centrally enforced retention, and one durable source of truth for the Audit Log and current-state projection, while still preserving installation isolation for Installation Reconciliation execution.
+Cyspbot has a read-only dashboard for humans. It authenticates Dashboard Users through GitHub App user authorization, stores Dashboard Sessions and the Repository Visibility Cache in D1, stores the Audit Log centrally in D1, and keeps `GitHubInstallationObject` only as the Installation Coordinator for signal coalescing and serialized Installation Reconciliation. We chose this over keeping Dashboard Session state and audit reads in separate Durable Objects because the dashboard needs repo-centric and cross-installation reads, centrally enforced retention, and one durable source of truth for the Audit Log and current-state projection, while still preserving installation isolation for Installation Reconciliation execution.
 
 ## Considered Options
 
@@ -12,7 +12,7 @@ Cyspbot will add a read-only dashboard for humans, but the original prototype sh
 
 - Dashboard authentication is a second authentication surface and must stay isolated from GitHub Actions OIDC Caller authentication.
 - GitHub remains the authority for dashboard repository visibility through the user-to-server installation repository APIs.
-- D1 becomes the durable system of record for:
+- D1 is the durable system of record for:
   - Audit Log
   - issued Installation Token facts
   - Dashboard Sessions

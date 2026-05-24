@@ -1,5 +1,4 @@
 import type { GitHubInstallationObject } from "./durable-objects/installation-object.ts";
-import type { DashboardSessionObject } from "./dashboard/session-object.ts";
 import type { OidcIssuerVerifierObject } from "./durable-objects/oidc-issuer-verifier-object.ts";
 
 export interface SecretsStoreSecretBinding {
@@ -10,8 +9,8 @@ export interface Env {
   AUDIT_LOG_MAX_ENTRIES?: string;
   AUDIT_LOG_RETENTION_DAYS?: string;
   DASHBOARD_ACCESS_CACHE_TTL_SECONDS?: string;
-  DASHBOARD_SESSION_SECRET?: string;
-  ENABLE_TEST_GITHUB_API?: string;
+  DASHBOARD_SESSION_LOOKUP_SECRET?: string;
+  DASHBOARD_TOKEN_ENCRYPTION_SECRET?: string;
   GITHUB_API_BASE_URL?: string;
   GITHUB_APP_ID: string;
   GITHUB_APP_CLIENT_ID?: string;
@@ -19,23 +18,8 @@ export interface Env {
   GITHUB_APP_PRIVATE_KEY?: SecretsStoreSecretBinding;
   GITHUB_APP_PRIVATE_KEY_PEM?: string;
   GITHUB_WEB_BASE_URL?: string;
-  DASHBOARD_SESSION: DurableObjectNamespace<DashboardSessionObject>;
+  DB: D1Database;
   GITHUB_INSTALLATION: DurableObjectNamespace<GitHubInstallationObject>;
   GITHUB_WEBHOOK_SECRET?: string;
-  MAINTENANCE_API_TOKEN?: string;
   OIDC_ISSUER_VERIFIER: DurableObjectNamespace<OidcIssuerVerifierObject>;
-  TEST_OIDC_JWKS_CACHE_CONTROL?: string;
-  TEST_OIDC_JWKS_JSON?: string;
-  TEST_OIDC_JWKS_URI?: string;
-  TEST_GITHUB_DEFAULT_BRANCH?: string;
-  TEST_GITHUB_DASHBOARD_ACCESS_TOKEN?: string;
-  TEST_GITHUB_DASHBOARD_REFRESH_TOKEN?: string;
-  TEST_GITHUB_DASHBOARD_USER_ID?: string;
-  TEST_GITHUB_DASHBOARD_USER_LOGIN?: string;
-  TEST_GITHUB_INSTALLATION_ID?: string;
-  TEST_GITHUB_MINTED_TOKEN?: string;
-  TEST_GITHUB_REPOSITORY_OWNER_ID?: string;
-  TEST_GITHUB_REPOSITORY?: string;
-  TEST_GITHUB_REPOSITORY_ID?: string;
-  TEST_GITHUB_REPOSITORY_VISIBILITY?: string;
 }

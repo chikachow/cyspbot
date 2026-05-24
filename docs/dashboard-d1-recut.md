@@ -1,12 +1,13 @@
 # Dashboard And Persistence Re-cut
 
-This document is the source of truth for the planned replacement of the current dashboard prototype and Audit Log persistence model.
+This document is the source of truth for the D1-backed dashboard, Audit Log, Repository Visibility Cache, and Webhook Delivery Log implementation.
 
 ## Status
 
-- The currently checked-in dashboard and Dashboard Session implementation is a prototype and is not the target architecture.
-- The target architecture moves the durable Audit Log, Dashboard Sessions, installation projection, and Repository Visibility Cache into D1.
-- `GitHubInstallationObject` remains, but only as the installation-scoped Installation Coordinator for signal coalescing and serialized Installation Reconciliation.
+- The dashboard and Installation Token Issuance Audit Log have been cut over to D1.
+- Dashboard Sessions are D1 rows addressed by an opaque `__Host-cyspbot_dashboard_session` cookie and HMAC lookup hash.
+- `GitHubInstallationObject` remains only as the installation-scoped Installation Coordinator for signal coalescing and serialized Installation Reconciliation.
+- The old Dashboard Session Durable Object, installation-local Audit Log tables, repository-id dashboard route, and Durable Object migration endpoint have been removed.
 
 ## Goals
 

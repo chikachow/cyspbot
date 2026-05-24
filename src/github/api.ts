@@ -7,7 +7,6 @@ import {
   type TokenMintAuthorizationRepository,
   type TokenMintPolicyDecision,
 } from "../policy/token-mint-authorization.ts";
-import { maybeMockGitHubApiResponse } from "./test-api.ts";
 
 const githubAcceptHeader = "application/vnd.github+json";
 const githubApiVersion = "2022-11-28";
@@ -15,6 +14,14 @@ const githubJwtLifetimeSeconds = 9 * 60;
 const githubStatelessS2STokenHeader = "X-GitHub-Stateless-S2S-Token";
 const privateKeysByPem = new Map<string, Promise<CryptoKey>>();
 const dashboardPageSize = 100;
+
+export interface GitHubApiDependencies {
+  fetch: typeof fetch;
+}
+
+const defaultGitHubApiDependencies: GitHubApiDependencies = {
+  fetch: (input, init) => fetch(input, init),
+};
 
 export class BrokerAuthorizationError extends Error {
   public readonly policyDecision?: TokenMintPolicyDecision;
@@ -137,11 +144,13 @@ interface GitHubUserInstallationRepositoriesResponse {
 export async function resolveInstallationForRepository(
   env: Env,
   repository: string,
+  dependencies: GitHubApiDependencies = defaultGitHubApiDependencies,
 ): Promise<InstallationLookup> {
   const response = await fetchGitHubApi(
     env,
     `/repos/${repository}/installation`,
     await appAuthenticationHeaders(env),
+    dependencies,
   );
 
   const body = (await response.json()) as GitHubInstallationResponse;
@@ -156,8 +165,9 @@ export async function resolveInstallationForRepository(
 export async function authorizeTokenMintRequest(
   env: Env,
   caller: GitHubActionsPrincipal,
+  dependencies: GitHubApiDependencies = defaultGitHubApiDependencies,
 ): Promise<{ policyDecision: TokenMintPolicyDecision; repository: GitHubRepository }> {
-  const repository = await getRepository(env, caller.repository);
+  const repository = await getRepository(env, caller.repository, dependencies);
   const policyDecision = evaluateTokenMintPolicy(caller, repository);
 
   if (policyDecision.decision !== "allow") {
@@ -175,6 +185,7 @@ export async function createRepositoryScopedInstallationToken(
   env: Env,
   installationId: number,
   repositoryId: string,
+  dependencies: GitHubApiDependencies = defaultGitHubApiDependencies,
 ): Promise<InstallationToken> {
   const parsedRepositoryId = Number.parseInt(repositoryId, 10);
 
@@ -186,6 +197,7 @@ export async function createRepositoryScopedInstallationToken(
     env,
     `/app/installations/${installationId}/access_tokens`,
     await appAuthenticationHeaders(env),
+    dependencies,
     {
       body: JSON.stringify({
         repository_ids: [parsedRepositoryId],
@@ -218,13 +230,18 @@ export async function exchangeGitHubUserCode(
   env: Env,
   code: string,
   redirectUri: string,
+  dependencies: GitHubApiDependencies = defaultGitHubApiDependencies,
 ): Promise<GitHubUserAccessToken> {
-  const response = await fetchGitHubOAuthToken(env, {
-    client_id: requireGitHubAppClientId(env),
-    client_secret: requireGitHubAppClientSecret(env),
-    code,
-    redirect_uri: redirectUri,
-  });
+  const response = await fetchGitHubOAuthToken(
+    env,
+    {
+      client_id: requireGitHubAppClientId(env),
+      client_secret: requireGitHubAppClientSecret(env),
+      code,
+      redirect_uri: redirectUri,
+    },
+    dependencies,
+  );
 
   return parseGitHubUserAccessTokenResponse(response);
 }
@@ -232,8 +249,14 @@ export async function exchangeGitHubUserCode(
 export async function getAuthenticatedGitHubUser(
   env: Env,
   accessToken: string,
+  dependencies: GitHubApiDependencies = defaultGitHubApiDependencies,
 ): Promise<GitHubAuthenticatedUser> {
-  const response = await fetchGitHubApi(env, "/user", userAuthenticationHeaders(accessToken));
+  const response = await fetchGitHubApi(
+    env,
+    "/user",
+    userAuthenticationHeaders(accessToken),
+    dependencies,
+  );
   const body = (await response.json()) as GitHubUserApiResponse;
 
   if (typeof body.id !== "number" || typeof body.login !== "string" || body.login.length === 0) {
@@ -249,6 +272,7 @@ export async function getAuthenticatedGitHubUser(
 export async function listGitHubUserInstallations(
   env: Env,
   accessToken: string,
+  dependencies: GitHubApiDependencies = defaultGitHubApiDependencies,
 ): Promise<GitHubUserInstallation[]> {
   const installations: GitHubUserInstallation[] = [];
 
@@ -257,6 +281,7 @@ export async function listGitHubUserInstallations(
       env,
       `/user/installations?per_page=${dashboardPageSize}&page=${page}`,
       userAuthenticationHeaders(accessToken),
+      dependencies,
     );
     const body = (await response.json()) as GitHubUserInstallationsResponse;
     const pageInstallations = body.installations;
@@ -281,6 +306,7 @@ export async function listGitHubUserInstallationRepositories(
   env: Env,
   accessToken: string,
   installationId: number,
+  dependencies: GitHubApiDependencies = defaultGitHubApiDependencies,
 ): Promise<GitHubUserRepositoryAccess[]> {
   const repositories: GitHubUserRepositoryAccess[] = [];
 
@@ -289,6 +315,7 @@ export async function listGitHubUserInstallationRepositories(
       env,
       `/user/installations/${installationId}/repositories?per_page=${dashboardPageSize}&page=${page}`,
       userAuthenticationHeaders(accessToken),
+      dependencies,
     );
     const body = (await response.json()) as GitHubUserInstallationRepositoriesResponse;
     const pageRepositories = body.repositories;
@@ -327,22 +354,32 @@ export async function listGitHubUserInstallationRepositories(
 export async function refreshGitHubUserAccessToken(
   env: Env,
   refreshToken: string,
+  dependencies: GitHubApiDependencies = defaultGitHubApiDependencies,
 ): Promise<GitHubUserAccessToken> {
-  const response = await fetchGitHubOAuthToken(env, {
-    client_id: requireGitHubAppClientId(env),
-    client_secret: requireGitHubAppClientSecret(env),
-    grant_type: "refresh_token",
-    refresh_token: refreshToken,
-  });
+  const response = await fetchGitHubOAuthToken(
+    env,
+    {
+      client_id: requireGitHubAppClientId(env),
+      client_secret: requireGitHubAppClientSecret(env),
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+    },
+    dependencies,
+  );
 
   return parseGitHubUserAccessTokenResponse(response);
 }
 
-async function getRepository(env: Env, repository: string): Promise<GitHubRepository> {
+async function getRepository(
+  env: Env,
+  repository: string,
+  dependencies: GitHubApiDependencies,
+): Promise<GitHubRepository> {
   const response = await fetchGitHubApi(
     env,
     `/repos/${repository}`,
     await appAuthenticationHeaders(env),
+    dependencies,
   );
 
   const body = (await response.json()) as GitHubRepositoryApiResponse;
@@ -438,6 +475,7 @@ async function githubAppPrivateKeyPem(env: Env): Promise<string> {
 async function fetchGitHubOAuthToken(
   env: Env,
   params: Record<string, string>,
+  dependencies: GitHubApiDependencies,
 ): Promise<GitHubOauthAccessTokenResponse> {
   const path = "/login/oauth/access_token";
   const requestHeaders = {
@@ -446,28 +484,15 @@ async function fetchGitHubOAuthToken(
     "user-agent": "cyspbot",
   };
   const body = new URLSearchParams(params).toString();
-  const mockResponse = maybeMockGitHubApiResponse(
-    env,
-    path,
-    "POST",
-    new Headers(requestHeaders),
-    body,
-  );
-
-  if (mockResponse !== null) {
-    if (!mockResponse.ok) {
-      throw new GitHubApiError(mockResponse.status, "GitHub OAuth token request failed");
-    }
-
-    return (await mockResponse.json()) as GitHubOauthAccessTokenResponse;
-  }
-
   const baseUrl = env.GITHUB_WEB_BASE_URL ?? "https://github.com";
-  const response = await fetch(new URL(path.replace(/^\//u, ""), ensureTrailingSlash(baseUrl)), {
-    body,
-    headers: requestHeaders,
-    method: "POST",
-  });
+  const response = await dependencies.fetch(
+    new URL(path.replace(/^\//u, ""), ensureTrailingSlash(baseUrl)),
+    {
+      body,
+      headers: requestHeaders,
+      method: "POST",
+    },
+  );
 
   if (!response.ok) {
     throw new GitHubApiError(response.status, "GitHub OAuth token request failed");
@@ -480,35 +505,19 @@ async function fetchGitHubApi(
   env: Env,
   path: string,
   headers: HeadersInit,
+  dependencies: GitHubApiDependencies,
   init?: RequestInit,
 ): Promise<Response> {
   const requestHeaders = new Headers(headers);
-  const method = init?.method ?? "GET";
 
   for (const [name, value] of new Headers(init?.headers)) {
     requestHeaders.set(name, value);
   }
 
-  const mockResponse = maybeMockGitHubApiResponse(
-    env,
-    normalizeGitHubApiPath(path),
-    method,
-    requestHeaders,
-    typeof init?.body === "string" ? init.body : undefined,
-  );
-
-  if (mockResponse !== null) {
-    if (mockResponse.ok) {
-      return mockResponse;
-    }
-
-    throw new GitHubApiError(mockResponse.status, `GitHub API request failed: ${path}`);
-  }
-
   const baseUrl = env.GITHUB_API_BASE_URL ?? "https://api.github.com";
   const requestUrl = new URL(path.replace(/^\//u, ""), ensureTrailingSlash(baseUrl));
 
-  const response = await fetch(requestUrl, {
+  const response = await dependencies.fetch(requestUrl, {
     ...init,
     headers: requestHeaders,
   });
@@ -522,10 +531,6 @@ async function fetchGitHubApi(
 
 function ensureTrailingSlash(url: string): string {
   return url.endsWith("/") ? url : `${url}/`;
-}
-
-function normalizeGitHubApiPath(path: string): string {
-  return path.startsWith("/") ? path : `/${path}`;
 }
 
 function isBooleanRecord(value: unknown): value is Record<string, boolean> {

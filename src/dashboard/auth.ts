@@ -1,7 +1,7 @@
 import type { Env } from "../env.ts";
 
-const dashboardSessionCookieName = "cyspbot_dashboard_session";
-const dashboardStateCookieName = "cyspbot_dashboard_state";
+const dashboardSessionCookieName = "__Host-cyspbot_dashboard_session";
+const dashboardStateCookieName = "__Host-cyspbot_oauth_state";
 const oauthStateMaxAgeSeconds = 10 * 60;
 
 export interface DashboardOauthState {
@@ -31,13 +31,14 @@ export function clearDashboardStateCookie(): string {
 }
 
 export async function createEncryptedValue(env: Env, value: string): Promise<string> {
-  const secret = requireDashboardSessionSecret(env);
+  const secret = requireDashboardTokenEncryptionSecret(env);
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const key = await dashboardAesKey(secret);
+  const keyVersion = "v1";
+  const key = await dashboardAesKey(secret, keyVersion);
   const plaintext = new TextEncoder().encode(value);
   const ciphertext = await crypto.subtle.encrypt({ iv, name: "AES-GCM" }, key, plaintext);
 
-  return `${base64UrlEncode(iv)}.${base64UrlEncode(new Uint8Array(ciphertext))}`;
+  return `${keyVersion}.${base64UrlEncode(iv)}.${base64UrlEncode(new Uint8Array(ciphertext))}`;
 }
 
 export async function createSignedDashboardOauthStateCookie(
@@ -62,12 +63,13 @@ export async function createSignedDashboardOauthStateCookie(
   };
 }
 
-export async function createSignedDashboardSessionCookie(
-  env: Env,
-  sessionId: string,
-): Promise<string> {
-  return serializeCookie(dashboardSessionCookieName, await signPayload(env, { sessionId }), {
+export function createDashboardSessionCookie(
+  rawSessionToken: string,
+  maxAgeSeconds: number,
+): string {
+  return serializeCookie(dashboardSessionCookieName, rawSessionToken, {
     httpOnly: true,
+    maxAge: maxAgeSeconds,
     path: "/",
     sameSite: "Lax",
     secure: true,
@@ -75,15 +77,15 @@ export async function createSignedDashboardSessionCookie(
 }
 
 export async function decryptValue(env: Env, value: string): Promise<string | null> {
-  const secret = requireDashboardSessionSecret(env);
-  const [ivPart, ciphertextPart] = value.split(".", 2);
+  const secret = requireDashboardTokenEncryptionSecret(env);
+  const [keyVersion, ivPart, ciphertextPart] = value.split(".", 3);
 
-  if (ivPart === undefined || ciphertextPart === undefined) {
+  if (keyVersion !== "v1" || ivPart === undefined || ciphertextPart === undefined) {
     return null;
   }
 
   try {
-    const key = await dashboardAesKey(secret);
+    const key = await dashboardAesKey(secret, keyVersion);
     const plaintext = await crypto.subtle.decrypt(
       {
         iv: bytesAsBufferSource(base64UrlDecode(ivPart)),
@@ -110,24 +112,38 @@ export async function readDashboardOauthState(
   ) as Promise<DashboardOauthState | null>;
 }
 
-export async function readDashboardSessionId(request: Request, env: Env): Promise<string | null> {
-  const payload = (await readSignedCookie(request, env, dashboardSessionCookieName)) as {
-    sessionId?: unknown;
-  } | null;
+export function readDashboardSessionToken(request: Request): string | null {
+  const cookieValue = parseCookieHeader(request.headers.get("cookie")).get(
+    dashboardSessionCookieName,
+  );
 
-  return typeof payload?.sessionId === "string" && payload.sessionId.length > 0
-    ? payload.sessionId
-    : null;
+  return cookieValue === undefined || cookieValue.length === 0 ? null : cookieValue;
 }
 
 export function randomToken(): string {
-  return base64UrlEncode(crypto.getRandomValues(new Uint8Array(24)));
+  return base64UrlEncode(crypto.getRandomValues(new Uint8Array(32)));
 }
 
-async function dashboardAesKey(secret: string): Promise<CryptoKey> {
+export async function dashboardSessionTokenHash(
+  env: Env,
+  rawSessionToken: string,
+): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    await digestSecret("dashboard-session-lookup", requireDashboardSessionLookupSecret(env)),
+    { hash: "SHA-256", name: "HMAC" },
+    false,
+    ["sign"],
+  );
+  const digest = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(rawSessionToken));
+
+  return base64UrlEncode(new Uint8Array(digest));
+}
+
+async function dashboardAesKey(secret: string, keyVersion: string): Promise<CryptoKey> {
   return crypto.subtle.importKey(
     "raw",
-    await digestSecret("dashboard-aes", secret),
+    await digestSecret(`dashboard-token-encryption:${keyVersion}`, secret),
     { length: 256, name: "AES-GCM" },
     false,
     ["decrypt", "encrypt"],
@@ -196,7 +212,7 @@ async function readSignedCookie(request: Request, env: Env, name: string): Promi
   }
 
   try {
-    const key = await dashboardHmacKey(requireDashboardSessionSecret(env));
+    const key = await dashboardHmacKey(requireDashboardSessionLookupSecret(env));
     const signatureValid = await crypto.subtle.verify(
       "HMAC",
       key,
@@ -216,11 +232,21 @@ async function readSignedCookie(request: Request, env: Env, name: string): Promi
   }
 }
 
-function requireDashboardSessionSecret(env: Env): string {
-  const secret = env.DASHBOARD_SESSION_SECRET;
+function requireDashboardSessionLookupSecret(env: Env): string {
+  const secret = env.DASHBOARD_SESSION_LOOKUP_SECRET;
 
   if (secret === undefined || secret.length === 0) {
-    throw new Error("missing dashboard session secret");
+    throw new Error("missing dashboard session lookup secret");
+  }
+
+  return secret;
+}
+
+function requireDashboardTokenEncryptionSecret(env: Env): string {
+  const secret = env.DASHBOARD_TOKEN_ENCRYPTION_SECRET;
+
+  if (secret === undefined || secret.length === 0) {
+    throw new Error("missing dashboard token encryption secret");
   }
 
   return secret;
@@ -257,7 +283,7 @@ function serializeCookie(
 async function signPayload(env: Env, payload: unknown): Promise<string> {
   const payloadJson = JSON.stringify(payload);
   const payloadPart = base64UrlEncode(new TextEncoder().encode(payloadJson));
-  const key = await dashboardHmacKey(requireDashboardSessionSecret(env));
+  const key = await dashboardHmacKey(requireDashboardSessionLookupSecret(env));
   const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payloadPart));
 
   return `${payloadPart}.${base64UrlEncode(new Uint8Array(signature))}`;

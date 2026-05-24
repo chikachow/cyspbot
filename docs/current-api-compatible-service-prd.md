@@ -2,7 +2,7 @@
 
 This document remains the primary contract document for the externally compatible Installation Token Issuance and webhook edge surface.
 
-The Dashboard Session and persistence re-cut is now specified separately in [docs/dashboard-d1-recut.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/dashboard-d1-recut.md). Where this document previously described Dashboard Session Durable Objects or installation-local Audit Log persistence as the durable target design, the D1-backed re-cut document supersedes those details.
+Dashboard Sessions, the Audit Log, the Repository Visibility Cache, webhook metadata, and projection state are D1-backed. The detailed storage design is specified in [docs/dashboard-d1-recut.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/dashboard-d1-recut.md).
 
 ## 1. Purpose
 
@@ -347,53 +347,6 @@ Post-acceptance behavior:
 
 - Return `404 Not Found` with minimal problem details.
 
-### 5.8 `POST /internal/durable-objects/github-installations/migrate`
-
-Purpose:
-Temporary maintenance endpoint for forcing lazy Durable Object constructor migrations on existing `GITHUB_INSTALLATION` objects.
-
-Request:
-
-- Method: `POST`
-- Auth: required bearer token matching the configured `MAINTENANCE_API_TOKEN`
-- Content-Type: `application/json`
-- Body:
-
-```json
-{
-  "object_ids": ["0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"]
-}
-```
-
-- `object_ids` must be an array of 64-character hexadecimal Durable Object ID strings
-
-Success response:
-
-- Status: `200 OK`
-- Content-Type: `application/json; charset=utf-8`
-- Body:
-
-```json
-{
-  "migrated": true,
-  "object_ids": ["0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"]
-}
-```
-
-Required behavior:
-
-- For each `object_id`, reconstruct the Durable Object ID using `idFromString`.
-- Get a stub for that exact object.
-- Invoke a no-op maintenance RPC so the object is instantiated and constructor migrations run.
-
-Failure behavior:
-
-- `401` for missing or invalid bearer token
-- `400` for invalid request JSON or invalid Durable Object ID shape
-- `415` for non-JSON request content
-- `404` when `MAINTENANCE_API_TOKEN` is not configured
-- `405` for any method other than `POST`
-
 ## 6. Authentication and Authorization Requirements
 
 ### 6.1 Trusted issuer model
@@ -652,7 +605,7 @@ Required stored webhook metadata fields:
 - optional small metadata JSON for operational debugging
 
 Rationale:
-The target re-cut preserves GitHub App Installation isolation for execution while moving durable facts into one centrally queryable store.
+The D1-backed implementation preserves GitHub App Installation isolation for execution while moving durable facts into one centrally queryable store.
 
 ### 9.4 Retention and bounding
 

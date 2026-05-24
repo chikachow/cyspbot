@@ -28,15 +28,7 @@ export class OidcIssuerVerifierObject extends DurableObject<Env> {
 
   public constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
-    this.fetchImpl = async (input, init) => {
-      const mocked = mockJwksResponse(env, input);
-
-      if (mocked !== null) {
-        return mocked;
-      }
-
-      return fetch(input, init);
-    };
+    this.fetchImpl = fetch;
     void ctx.blockConcurrencyWhile(async () => {
       await this.initializeState();
     });
@@ -108,29 +100,5 @@ function loadRegistration(env: Env, issuer: string) {
     });
 
     return error instanceof Error ? error : new Error(String(error));
-  }
-}
-
-function mockJwksResponse(env: Env, input: RequestInfo | URL): Response | null {
-  if (env.TEST_OIDC_JWKS_URI === undefined || env.TEST_OIDC_JWKS_JSON === undefined) {
-    return null;
-  }
-
-  const requestUrl = input instanceof Request ? input.url : String(input);
-
-  if (requestUrl !== env.TEST_OIDC_JWKS_URI) {
-    return null;
-  }
-
-  try {
-    return Response.json(JSON.parse(env.TEST_OIDC_JWKS_JSON), {
-      headers: {
-        "cache-control": env.TEST_OIDC_JWKS_CACHE_CONTROL ?? "max-age=300",
-        "content-type": "application/json",
-      },
-      status: 200,
-    });
-  } catch {
-    return new Response(null, { status: 500 });
   }
 }

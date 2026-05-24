@@ -1,10 +1,12 @@
 import { createHmac, createPrivateKey } from "node:crypto";
 
 import type { Env } from "../src/env.ts";
+import type { AuthenticateRequestResult } from "../src/worker/authentication.ts";
+import { createApp } from "../src/worker/app.ts";
+import d1SchemaSql from "../migrations/0001_dashboard_d1_recut.sql?raw";
 import { env } from "cloudflare:workers";
-import { SELF } from "cloudflare:test";
 import { SignJWT } from "jose";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 const workerEnv = env as unknown as Env;
 
@@ -40,6 +42,37 @@ guigOK0SOM7v+1ceZuh/bm8=
 const tokenExchangeGrantType = "urn:ietf:params:oauth:grant-type:token-exchange";
 const githubInstallationAccessTokenType = "urn:chikachow:github-app-installation-access-token";
 const oidcIdTokenType = "urn:ietf:params:oauth:token-type:id_token";
+const testRepository = "cysp/terraform-provider-contentful";
+const testRepositoryId = "123456789";
+const testInstallationId = 67890;
+const testRepositoryOwnerId = "555555";
+const testRepositoryVisibility = "private";
+const testDashboardAccessToken = "ghu_test_token";
+const testDashboardRefreshToken = "ghr_test_token";
+const testNow = new Date("2026-05-24T00:00:00.000Z");
+
+const testApp = createApp({
+  authenticateOidcToken: authenticateTestOidcToken,
+  authenticateRequest: authenticateTestRequest,
+  fetch: fetchGitHubTestDouble,
+  now: () => testNow,
+});
+
+function fetchWorker(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const handler = testApp.fetch;
+
+  if (handler === undefined) {
+    throw new Error("test app has no fetch handler");
+  }
+
+  return Promise.resolve(
+    handler(
+      new Request(input, init) as Parameters<typeof handler>[0],
+      workerEnv,
+      {} as ExecutionContext,
+    ),
+  );
+}
 
 function authorizationHeaders(
   overrides?: Partial<Record<string, string>>,
@@ -83,6 +116,260 @@ async function createOidcToken(overrides?: Partial<Record<string, string>>): Pro
     .setExpirationTime(now + 300)
     .setSubject(sub ?? "repo:cysp/terraform-provider-contentful:ref:refs/heads/main")
     .sign(privateKey);
+}
+
+async function authenticateTestRequest(
+  request: Request,
+  env: Env,
+): Promise<AuthenticateRequestResult> {
+  const authorization = request.headers.get("authorization");
+  const [scheme, token] = authorization?.split(/\s+/, 2) ?? [];
+
+  if (scheme?.toLowerCase() !== "bearer" || token === undefined || token.length === 0) {
+    return {
+      httpStatus: 401,
+      ok: false,
+      responseHeaders: {
+        "www-authenticate": "Bearer",
+      },
+    };
+  }
+
+  return authenticateTestOidcToken(token, request, env);
+}
+
+async function authenticateTestOidcToken(
+  token: string,
+  _request: Request,
+  _env: Env,
+): Promise<AuthenticateRequestResult> {
+  const payload = JSON.parse(
+    new TextDecoder().decode(base64UrlToBytes(token.split(".")[1] ?? "")),
+  ) as Record<string, unknown>;
+  const subject = stringClaim(payload, "sub");
+  const parsedSubject = parseGitHubOidcSubject(subject);
+
+  return {
+    context: {
+      issuerRegistration: {
+        allowedAlgorithms: ["RS256"],
+        audience: "cyspbot",
+        defaultFreshMs: 300_000,
+        issuer: "https://token.actions.githubusercontent.com",
+        jwksUri: "https://token.actions.githubusercontent.com/.well-known/jwks",
+        mapPrincipal: () => null,
+        maxBackoffMs: 300_000,
+        maxFreshMs: 900_000,
+        minFreshMs: 60_000,
+        principalKind: "github-actions",
+        refreshBackoffBaseMs: 5_000,
+        requireKid: true,
+        staleWhileErrorMs: 600_000,
+      },
+      principal: {
+        actor: optionalStringClaim(payload, "actor"),
+        baseRef: optionalStringClaim(payload, "base_ref"),
+        environment: optionalStringClaim(payload, "environment"),
+        eventName: stringClaim(payload, "event_name"),
+        headRef: optionalStringClaim(payload, "head_ref"),
+        jobWorkflowRef: optionalStringClaim(payload, "job_workflow_ref"),
+        rawSubject: subject,
+        ref: optionalStringClaim(payload, "ref"),
+        refType: optionalStringClaim(payload, "ref_type"),
+        repository: stringClaim(payload, "repository"),
+        repositoryId: stringClaim(payload, "repository_id"),
+        repositoryOwnerId: optionalStringClaim(payload, "repository_owner_id"),
+        repositoryVisibility: optionalStringClaim(payload, "repository_visibility"),
+        runAttempt: optionalStringClaim(payload, "run_attempt"),
+        runId: optionalStringClaim(payload, "run_id"),
+        sha: optionalStringClaim(payload, "sha"),
+        subjectContextKind: parsedSubject.contextKind,
+        subjectContextValue: parsedSubject.contextValue,
+        subjectRepository: parsedSubject.repository,
+        type: "github-actions",
+        workflow: optionalStringClaim(payload, "workflow"),
+        workflowRef: optionalStringClaim(payload, "workflow_ref"),
+      },
+      resolvedKeyId: "test-key-1",
+    },
+    ok: true,
+  };
+}
+
+async function fetchGitHubTestDouble(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  const request = new Request(input, init);
+  const url = new URL(request.url);
+  const path = `${url.pathname}${url.search}`;
+
+  if (
+    url.hostname === "github.com" &&
+    request.method === "POST" &&
+    url.pathname === "/login/oauth/access_token"
+  ) {
+    return oauthTokenResponse(new TextDecoder().decode(await request.arrayBuffer()));
+  }
+
+  if (url.hostname !== "example.test") {
+    return new Response(null, { status: 404 });
+  }
+
+  if (request.headers.get("authorization") === null) {
+    return new Response(null, { status: 401 });
+  }
+
+  if (
+    request.method === "GET" &&
+    url.pathname === `/__test/github/repos/${testRepository}/installation`
+  ) {
+    return Response.json({ id: testInstallationId });
+  }
+
+  if (request.method === "GET" && url.pathname === `/__test/github/repos/${testRepository}`) {
+    return Response.json({
+      default_branch: "main",
+      id: Number.parseInt(testRepositoryId, 10),
+      owner: {
+        id: Number.parseInt(testRepositoryOwnerId, 10),
+      },
+      visibility: testRepositoryVisibility,
+    });
+  }
+
+  if (
+    request.method === "POST" &&
+    url.pathname === `/__test/github/app/installations/${testInstallationId}/access_tokens`
+  ) {
+    const body = (await request.json()) as Record<string, unknown>;
+
+    if (
+      request.headers.get("x-github-stateless-s2s-token") !== "enabled" ||
+      !Array.isArray(body["repository_ids"]) ||
+      body["repository_ids"][0] !== Number.parseInt(testRepositoryId, 10)
+    ) {
+      return new Response(null, { status: 500 });
+    }
+
+    return Response.json(
+      {
+        expires_at: "2030-01-01T00:00:00Z",
+        permissions: {
+          contents: "write",
+          pull_requests: "write",
+        },
+        token: "ghs_test_token",
+      },
+      { status: 201 },
+    );
+  }
+
+  if (request.method === "GET" && url.pathname === "/__test/github/user") {
+    return Response.json({
+      id: 42,
+      login: "sally",
+    });
+  }
+
+  if (request.method === "GET" && url.pathname === "/__test/github/user/installations") {
+    return Response.json({
+      installations: [{ id: testInstallationId }],
+    });
+  }
+
+  if (
+    request.method === "GET" &&
+    url.pathname === `/__test/github/user/installations/${testInstallationId}/repositories`
+  ) {
+    return Response.json({
+      repositories: [
+        {
+          full_name: testRepository,
+          id: Number.parseInt(testRepositoryId, 10),
+          name: "terraform-provider-contentful",
+          owner: {
+            login: "cysp",
+          },
+          permissions: {
+            admin: true,
+            pull: true,
+            push: true,
+          },
+          private: true,
+        },
+      ],
+    });
+  }
+
+  return new Response(`No test GitHub response for ${request.method} ${path}`, { status: 404 });
+}
+
+function oauthTokenResponse(body: string): Response {
+  const parsedBody = new URLSearchParams(body);
+
+  if (parsedBody.get("grant_type") === "refresh_token") {
+    if (parsedBody.get("refresh_token") !== testDashboardRefreshToken) {
+      return new Response(null, { status: 400 });
+    }
+  } else if (parsedBody.get("code") !== "test-dashboard-code") {
+    return new Response(null, { status: 400 });
+  }
+
+  return Response.json({
+    access_token: testDashboardAccessToken,
+    expires_in: 28800,
+    refresh_token: testDashboardRefreshToken,
+    refresh_token_expires_in: 15897600,
+  });
+}
+
+function stringClaim(payload: Record<string, unknown>, name: string): string {
+  const value = payload[name];
+
+  if (typeof value !== "string") {
+    throw new Error(`missing test claim ${name}`);
+  }
+
+  return value;
+}
+
+function optionalStringClaim(payload: Record<string, unknown>, name: string): string | null {
+  const value = payload[name];
+
+  return typeof value === "string" ? value : null;
+}
+
+function base64UrlToBytes(value: string): Uint8Array {
+  const padded = value.padEnd(value.length + ((4 - (value.length % 4 || 4)) % 4), "=");
+  const base64 = padded.replaceAll("-", "+").replaceAll("_", "/");
+  const binary = atob(base64);
+
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+
+function parseGitHubOidcSubject(subject: string): {
+  contextKind: string | null;
+  contextValue: string | null;
+  repository: string | null;
+} {
+  const match = /^repo:([^:]+):([^:]+)(?::(.+))?$/u.exec(subject);
+
+  if (match === null) {
+    return {
+      contextKind: null,
+      contextValue: null,
+      repository: null,
+    };
+  }
+
+  const [, repository, contextKind, rawContextValue] = match;
+
+  return {
+    contextKind: contextKind ?? null,
+    contextValue: rawContextValue === undefined ? null : decodeURIComponent(rawContextValue),
+    repository: repository === undefined ? null : decodeURIComponent(repository),
+  };
 }
 
 function githubWebhookHeaders(
@@ -131,8 +418,16 @@ function responseSetCookies(response: Response): string[] {
 }
 
 describe("cyspbot worker", () => {
+  beforeAll(async () => {
+    for (const statement of d1SchemaSql.split(/;\s*(?:\n|$)/u)) {
+      if (statement.trim().length > 0) {
+        await workerEnv.DB.prepare(statement).run();
+      }
+    }
+  });
+
   it("returns minimal problem details for missing authentication", async () => {
-    const response = await SELF.fetch("https://example.test/github/claims", {
+    const response = await fetchWorker("https://example.test/github/claims", {
       method: "POST",
     });
 
@@ -147,7 +442,7 @@ describe("cyspbot worker", () => {
   });
 
   it("verifies caller claims without evaluating full token mint policy", async () => {
-    const response = await SELF.fetch("https://example.test/github/claims", {
+    const response = await fetchWorker("https://example.test/github/claims", {
       headers: await authorizationHeaders({
         event_name: "pull_request",
         ref: "refs/pull/12/merge",
@@ -165,7 +460,7 @@ describe("cyspbot worker", () => {
   });
 
   it("accepts tokens whose payload contains non-ascii claim values", async () => {
-    const response = await SELF.fetch("https://example.test/github/claims", {
+    const response = await fetchWorker("https://example.test/github/claims", {
       headers: await authorizationHeaders({
         workflow: "déploiement principal",
       }),
@@ -182,7 +477,7 @@ describe("cyspbot worker", () => {
   });
 
   it("mints a repository-scoped installation token for allowed events", async () => {
-    const response = await SELF.fetch("https://example.test/github/installations/token", {
+    const response = await fetchWorker("https://example.test/github/installations/token", {
       headers: await authorizationHeaders(),
       method: "POST",
     });
@@ -195,7 +490,7 @@ describe("cyspbot worker", () => {
   });
 
   it("exchanges a github actions oidc token at the sts endpoint", async () => {
-    const response = await SELF.fetch("https://example.test/token", {
+    const response = await fetchWorker("https://example.test/token", {
       body: await tokenExchangeRequestBody(),
       headers: {
         "content-type": "application/x-www-form-urlencoded",
@@ -220,7 +515,7 @@ describe("cyspbot worker", () => {
   });
 
   it("accepts the generic oauth access token type as a requested token hint", async () => {
-    const response = await SELF.fetch("https://example.test/token", {
+    const response = await fetchWorker("https://example.test/token", {
       body: await tokenExchangeRequestBody(
         undefined,
         "urn:ietf:params:oauth:token-type:access_token",
@@ -240,7 +535,7 @@ describe("cyspbot worker", () => {
   });
 
   it("rejects token exchange requests without a supported requested token type", async () => {
-    const response = await SELF.fetch("https://example.test/token", {
+    const response = await fetchWorker("https://example.test/token", {
       body: await tokenExchangeRequestBody(undefined, "urn:example:token-type:unknown"),
       headers: {
         "content-type": "application/x-www-form-urlencoded",
@@ -256,7 +551,7 @@ describe("cyspbot worker", () => {
   });
 
   it("rejects disallowed events", async () => {
-    const response = await SELF.fetch("https://example.test/github/installations/token", {
+    const response = await fetchWorker("https://example.test/github/installations/token", {
       headers: await authorizationHeaders({
         event_name: "pull_request",
         ref: "refs/pull/15/merge",
@@ -273,7 +568,7 @@ describe("cyspbot worker", () => {
   });
 
   it("maps disallowed token exchange contexts to oauth token errors", async () => {
-    const response = await SELF.fetch("https://example.test/token", {
+    const response = await fetchWorker("https://example.test/token", {
       body: await tokenExchangeRequestBody({
         event_name: "pull_request",
         ref: "refs/pull/15/merge",
@@ -293,7 +588,7 @@ describe("cyspbot worker", () => {
   });
 
   it("rejects workflow_dispatch runs that do not target the default branch ref", async () => {
-    const response = await SELF.fetch("https://example.test/token", {
+    const response = await fetchWorker("https://example.test/token", {
       body: await tokenExchangeRequestBody({
         ref: "refs/heads/release-candidate",
         sub: "repo:cysp/terraform-provider-contentful:ref:refs/heads/release-candidate",
@@ -315,7 +610,7 @@ describe("cyspbot worker", () => {
   });
 
   it("rejects token exchange when the oidc subject repository does not match the caller repository", async () => {
-    const response = await SELF.fetch("https://example.test/token", {
+    const response = await fetchWorker("https://example.test/token", {
       body: await tokenExchangeRequestBody({
         sub: "repo:cysp/other-repo:ref:refs/heads/main",
       }),
@@ -332,7 +627,7 @@ describe("cyspbot worker", () => {
   });
 
   it("rejects pushes that are not on the current default branch", async () => {
-    const response = await SELF.fetch("https://example.test/github/installations/token", {
+    const response = await fetchWorker("https://example.test/github/installations/token", {
       headers: await authorizationHeaders({
         event_name: "push",
         ref: "refs/heads/feature-branch",
@@ -349,7 +644,7 @@ describe("cyspbot worker", () => {
   });
 
   it("allows pushes on the current default branch", async () => {
-    const response = await SELF.fetch("https://example.test/github/installations/token", {
+    const response = await fetchWorker("https://example.test/github/installations/token", {
       headers: await authorizationHeaders({
         event_name: "push",
         ref: "refs/heads/main",
@@ -375,7 +670,7 @@ describe("cyspbot worker", () => {
     });
     const headers = githubWebhookHeaders(body, "wrong-secret");
 
-    const response = await SELF.fetch("https://example.test/github/webhooks", {
+    const response = await fetchWorker("https://example.test/github/webhooks", {
       body,
       headers,
       method: "POST",
@@ -413,7 +708,7 @@ describe("cyspbot worker", () => {
     });
     const headers = githubWebhookHeaders(body, "test-webhook-secret", "ping");
 
-    const response = await SELF.fetch("https://example.test/github/webhooks", {
+    const response = await fetchWorker("https://example.test/github/webhooks", {
       body,
       headers,
       method: "POST",
@@ -438,7 +733,7 @@ describe("cyspbot worker", () => {
       "content-type": "text/plain",
     };
 
-    const response = await SELF.fetch("https://example.test/github/webhooks", {
+    const response = await fetchWorker("https://example.test/github/webhooks", {
       body,
       headers,
       method: "POST",
@@ -461,7 +756,7 @@ describe("cyspbot worker", () => {
     });
     const headers = githubWebhookHeaders(body, "test-webhook-secret");
 
-    const response = await SELF.fetch("https://example.test/github/webhooks", {
+    const response = await fetchWorker("https://example.test/github/webhooks", {
       body,
       headers,
       method: "POST",
@@ -486,7 +781,7 @@ describe("cyspbot worker", () => {
     });
     const headers = githubWebhookHeaders(body, "test-webhook-secret");
 
-    const response = await SELF.fetch("https://example.test/github/webhooks", {
+    const response = await fetchWorker("https://example.test/github/webhooks", {
       body,
       headers,
       method: "POST",
@@ -498,16 +793,12 @@ describe("cyspbot worker", () => {
     });
   });
 
-  it("runs maintenance migration for existing durable object ids", async () => {
-    const durableObjectId = workerEnv.GITHUB_INSTALLATION.idFromName("67890");
-    const installationStub = workerEnv.GITHUB_INSTALLATION.getByName("67890");
-    await installationStub.runMigrations();
-
-    const response = await SELF.fetch(
+  it("does not expose the obsolete durable object migration endpoint", async () => {
+    const response = await fetchWorker(
       "https://example.test/internal/durable-objects/github-installations/migrate",
       {
         body: JSON.stringify({
-          object_ids: [durableObjectId.toString()],
+          object_ids: [workerEnv.GITHUB_INSTALLATION.idFromName("67890").toString()],
         }),
         headers: {
           authorization: "Bearer test-maintenance-token",
@@ -517,21 +808,17 @@ describe("cyspbot worker", () => {
       },
     );
 
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({
-      migrated: true,
-      object_ids: [durableObjectId.toString()],
-    });
+    expect(response.status).toBe(404);
   });
 
   it("authorizes the dashboard with GitHub user auth and renders recent repository token requests", async () => {
-    const firstMint = await SELF.fetch("https://example.test/github/installations/token", {
+    const firstMint = await fetchWorker("https://example.test/github/installations/token", {
       headers: await authorizationHeaders(),
       method: "POST",
     });
     expect(firstMint.status).toBe(200);
 
-    const secondMint = await SELF.fetch("https://example.test/github/installations/token", {
+    const secondMint = await fetchWorker("https://example.test/github/installations/token", {
       headers: await authorizationHeaders({
         actor: "octocat",
       }),
@@ -539,27 +826,25 @@ describe("cyspbot worker", () => {
     });
     expect(secondMint.status).toBe(200);
 
-    const dashboardRedirect = await SELF.fetch("https://example.test/dashboard", {
+    const dashboardRedirect = await fetchWorker("https://example.test/dashboard", {
       redirect: "manual",
     });
     expect(dashboardRedirect.status).toBe(302);
-    expect(dashboardRedirect.headers.get("location")).toBe(
-      "/dashboard/login/github?return_to=%2Fdashboard",
-    );
+    expect(dashboardRedirect.headers.get("location")).toBe("/login/github?return_to=%2Fdashboard");
 
-    const loginResponse = await SELF.fetch("https://example.test/dashboard/login/github", {
+    const loginResponse = await fetchWorker("https://example.test/login/github", {
       redirect: "manual",
     });
     expect(loginResponse.status).toBe(302);
     const stateCookie = responseSetCookies(loginResponse)[0];
     expect(stateCookie).toBeDefined();
-    expect(stateCookie).toContain("cyspbot_dashboard_state=");
+    expect(stateCookie).toContain("__Host-cyspbot_oauth_state=");
     const authorizeUrl = new URL(loginResponse.headers.get("location") ?? "https://example.test");
     const state = authorizeUrl.searchParams.get("state");
     expect(state).not.toBeNull();
 
-    const callbackResponse = await SELF.fetch(
-      `https://example.test/dashboard/auth/github/callback?code=test-dashboard-code&state=${encodeURIComponent(state ?? "")}`,
+    const callbackResponse = await fetchWorker(
+      `https://example.test/auth/github/callback?code=test-dashboard-code&state=${encodeURIComponent(state ?? "")}`,
       {
         headers: {
           cookie: cookieHeaderValue(stateCookie!),
@@ -570,11 +855,11 @@ describe("cyspbot worker", () => {
     expect(callbackResponse.status).toBe(302);
     expect(callbackResponse.headers.get("location")).toBe("/dashboard");
     const sessionCookie = responseSetCookies(callbackResponse).find((cookie) =>
-      cookie.startsWith("cyspbot_dashboard_session="),
+      cookie.startsWith("__Host-cyspbot_dashboard_session="),
     );
     expect(sessionCookie).toBeDefined();
 
-    const dashboardResponse = await SELF.fetch("https://example.test/dashboard", {
+    const dashboardResponse = await fetchWorker("https://example.test/dashboard", {
       headers: {
         cookie: cookieHeaderValue(sessionCookie!),
       },
@@ -582,10 +867,10 @@ describe("cyspbot worker", () => {
     expect(dashboardResponse.status).toBe(200);
     const dashboardHtml = await dashboardResponse.text();
     expect(dashboardHtml).toContain("cysp/terraform-provider-contentful");
-    expect(dashboardHtml).toContain("Repository audit access");
+    expect(dashboardHtml).toContain("Repository audit");
 
-    const repositoryResponse = await SELF.fetch(
-      "https://example.test/dashboard/repositories/123456789",
+    const repositoryResponse = await fetchWorker(
+      "https://example.test/dashboard/repositories/cysp/terraform-provider-contentful",
       {
         headers: {
           cookie: cookieHeaderValue(sessionCookie!),
@@ -594,8 +879,33 @@ describe("cyspbot worker", () => {
     );
     expect(repositoryResponse.status).toBe(200);
     const repositoryHtml = await repositoryResponse.text();
-    expect(repositoryHtml).toContain("Last 5 token requests");
+    expect(repositoryHtml).toContain("Last 5 issuance attempts");
     expect(repositoryHtml).toContain("issued");
     expect(repositoryHtml).toContain("octocat");
+
+    await workerEnv.DB.prepare(
+      `
+        UPDATE dashboard_users
+        SET session_revoked_after = ?
+        WHERE github_user_id = ?
+      `,
+    )
+      .bind("2026-05-24T00:00:01.000Z", "42")
+      .run();
+
+    const revokedSessionResponse = await fetchWorker("https://example.test/dashboard", {
+      headers: {
+        cookie: cookieHeaderValue(sessionCookie!),
+      },
+      redirect: "manual",
+    });
+
+    expect(revokedSessionResponse.status).toBe(302);
+    expect(revokedSessionResponse.headers.get("location")).toBe(
+      "/login/github?return_to=%2Fdashboard",
+    );
+    expect(responseSetCookies(revokedSessionResponse)).toContain(
+      "__Host-cyspbot_dashboard_session=; Path=/; SameSite=Lax; HttpOnly; Max-Age=0; Secure",
+    );
   });
 });

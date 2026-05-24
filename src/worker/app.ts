@@ -2,43 +2,46 @@ import type { Env } from "../env.ts";
 import {
   clearDashboardSessionCookie,
   clearDashboardStateCookie,
-  createEncryptedValue,
+  createDashboardSessionCookie,
   createSignedDashboardOauthStateCookie,
-  createSignedDashboardSessionCookie,
-  decryptValue,
   randomToken,
   readDashboardOauthState,
-  readDashboardSessionId,
+  readDashboardSessionToken,
 } from "../dashboard/auth.ts";
 import {
   renderDashboardRepositoryDetailsPage,
   renderDashboardRepositoryListPage,
 } from "../dashboard/html.ts";
-import type {
-  DashboardSessionObject,
-  DashboardRepositoryAccessEntry,
-  DashboardSessionState,
-  StoredDashboardSession,
-} from "../dashboard/session-object.ts";
 import {
+  authorizeTokenMintRequest,
+  BrokerAuthorizationError,
+  createRepositoryScopedInstallationToken,
   exchangeGitHubUserCode,
   getAuthenticatedGitHubUser,
   GitHubApiError,
-  listGitHubUserInstallationRepositories,
-  listGitHubUserInstallations,
-  refreshGitHubUserAccessToken,
   resolveInstallationForRepository,
+  type GitHubApiDependencies,
 } from "../github/api.ts";
 import type { AuthenticatedContext } from "../oidc/principals.ts";
-import type {
-  RepositoryTokenRequestEntry,
-  MintInstallationTokenResult,
-  RunMigrationsResult,
-  ReceiveWebhookResult,
-} from "../durable-objects/installation-object.ts";
+import type { SignalInstallationReconciliationResult } from "../durable-objects/installation-object.ts";
 import {
-  authenticateOidcToken,
-  authenticateRequest,
+  createAuditIntent,
+  createDashboardSession,
+  deleteDashboardSession,
+  finalizeAuditEntry,
+  getDashboardRepositoryByFullName,
+  getDashboardSession,
+  listRepositoryAuditEntries,
+  listVisibleDashboardRepositories,
+  markAuditFinalizationFailed,
+  recordWebhookDelivery,
+  refreshDashboardVisibility,
+  userCanSeeRepository,
+} from "../storage/d1.ts";
+import {
+  authenticateOidcToken as defaultAuthenticateOidcToken,
+  authenticateRequest as defaultAuthenticateRequest,
+  type AuthenticateRequestResult,
   githubActionsPrincipal,
 } from "./authentication.ts";
 import { jsonResponse, problemResponse } from "./problem-details.ts";
@@ -50,98 +53,117 @@ const githubInstallationAccessTokenType = "urn:chikachow:github-app-installation
 const oidcIdTokenType = "urn:ietf:params:oauth:token-type:id_token";
 const jwtTokenType = "urn:ietf:params:oauth:token-type:jwt";
 const oauthAccessTokenType = "urn:ietf:params:oauth:token-type:access_token";
-const dashboardAccessCacheDefaultTtlSeconds = 300;
+const dashboardSessionMaxAgeSeconds = 8 * 60 * 60;
 
-export const app: ExportedHandler<Env> = {
-  async fetch(request, env): Promise<Response> {
-    const url = new URL(request.url);
+export interface AppDependencies extends GitHubApiDependencies {
+  authenticateOidcToken(
+    token: string,
+    request: Request,
+    env: Env,
+  ): Promise<AuthenticateRequestResult>;
+  authenticateRequest(request: Request, env: Env): Promise<AuthenticateRequestResult>;
+  now(): Date;
+}
 
-    if (url.pathname === "/token") {
-      if (request.method !== "POST") {
-        return oauthErrorResponse(400, "invalid_request");
-      }
-
-      return handleTokenExchangeRequest(request, env);
-    }
-
-    if (url.pathname === "/github/claims") {
-      if (request.method !== "POST") {
-        return problemResponse(405, { allow: "POST" });
-      }
-
-      return handleClaimsRequest(request, env);
-    }
-
-    if (url.pathname === "/github/installations/token") {
-      if (request.method !== "POST") {
-        return problemResponse(405, { allow: "POST" });
-      }
-
-      return handleInstallationTokenRequest(request, env);
-    }
-
-    if (url.pathname === "/github/webhooks") {
-      if (request.method !== "POST") {
-        return problemResponse(405, { allow: "POST" });
-      }
-
-      return handleGitHubWebhookRequest(request, env);
-    }
-
-    if (url.pathname === "/internal/durable-objects/github-installations/migrate") {
-      if (request.method !== "POST") {
-        return problemResponse(405, { allow: "POST" });
-      }
-
-      return handleInstallationMigrationRequest(request, env);
-    }
-
-    if (url.pathname === "/dashboard/login/github") {
-      if (request.method !== "GET") {
-        return problemResponse(405, { allow: "GET" });
-      }
-
-      return handleDashboardLoginRequest(request, env);
-    }
-
-    if (url.pathname === "/dashboard/auth/github/callback") {
-      if (request.method !== "GET") {
-        return problemResponse(405, { allow: "GET" });
-      }
-
-      return handleDashboardCallbackRequest(request, env);
-    }
-
-    if (url.pathname === "/dashboard/logout") {
-      if (request.method !== "GET") {
-        return problemResponse(405, { allow: "GET" });
-      }
-
-      return handleDashboardLogoutRequest(request, env);
-    }
-
-    if (url.pathname === "/dashboard") {
-      if (request.method !== "GET") {
-        return problemResponse(405, { allow: "GET" });
-      }
-
-      return handleDashboardRepositoryListRequest(request, env);
-    }
-
-    if (url.pathname.startsWith("/dashboard/repositories/")) {
-      if (request.method !== "GET") {
-        return problemResponse(405, { allow: "GET" });
-      }
-
-      return handleDashboardRepositoryDetailsRequest(request, env, url.pathname);
-    }
-
-    return problemResponse(404);
-  },
+const defaultDependencies: AppDependencies = {
+  authenticateOidcToken: defaultAuthenticateOidcToken,
+  authenticateRequest: defaultAuthenticateRequest,
+  fetch: (input, init) => fetch(input, init),
+  now: () => new Date(),
 };
 
-async function handleClaimsRequest(request: Request, env: Env): Promise<Response> {
-  const authentication = await authenticateRequest(request, env);
+export function createApp(
+  dependencies: AppDependencies = defaultDependencies,
+): ExportedHandler<Env> {
+  return {
+    async fetch(request, env): Promise<Response> {
+      const url = new URL(request.url);
+
+      if (url.pathname === "/token") {
+        if (request.method !== "POST") {
+          return oauthErrorResponse(400, "invalid_request");
+        }
+
+        return handleTokenExchangeRequest(request, env, dependencies);
+      }
+
+      if (url.pathname === "/github/claims") {
+        if (request.method !== "POST") {
+          return problemResponse(405, { allow: "POST" });
+        }
+
+        return handleClaimsRequest(request, env, dependencies);
+      }
+
+      if (url.pathname === "/github/installations/token") {
+        if (request.method !== "POST") {
+          return problemResponse(405, { allow: "POST" });
+        }
+
+        return handleInstallationTokenRequest(request, env, dependencies);
+      }
+
+      if (url.pathname === "/github/webhooks") {
+        if (request.method !== "POST") {
+          return problemResponse(405, { allow: "POST" });
+        }
+
+        return handleGitHubWebhookRequest(request, env, dependencies);
+      }
+
+      if (url.pathname === "/login/github") {
+        if (request.method !== "GET") {
+          return problemResponse(405, { allow: "GET" });
+        }
+
+        return handleDashboardLoginRequest(request, env);
+      }
+
+      if (url.pathname === "/auth/github/callback") {
+        if (request.method !== "GET") {
+          return problemResponse(405, { allow: "GET" });
+        }
+
+        return handleDashboardCallbackRequest(request, env, dependencies);
+      }
+
+      if (url.pathname === "/logout") {
+        if (request.method !== "GET") {
+          return problemResponse(405, { allow: "GET" });
+        }
+
+        return handleDashboardLogoutRequest(request, env);
+      }
+
+      if (url.pathname === "/dashboard") {
+        if (request.method !== "GET") {
+          return problemResponse(405, { allow: "GET" });
+        }
+
+        return handleDashboardRepositoryListRequest(request, env, dependencies);
+      }
+
+      if (url.pathname.startsWith("/dashboard/repositories/")) {
+        if (request.method !== "GET") {
+          return problemResponse(405, { allow: "GET" });
+        }
+
+        return handleDashboardRepositoryDetailsRequest(request, env, url.pathname, dependencies);
+      }
+
+      return problemResponse(404);
+    },
+  };
+}
+
+export const app = createApp();
+
+async function handleClaimsRequest(
+  request: Request,
+  env: Env,
+  dependencies: AppDependencies,
+): Promise<Response> {
+  const authentication = await dependencies.authenticateRequest(request, env);
 
   if (!authentication.ok) {
     return problemResponse(authentication.httpStatus, authentication.responseHeaders);
@@ -152,7 +174,11 @@ async function handleClaimsRequest(request: Request, env: Env): Promise<Response
   }
 
   try {
-    await resolveInstallationForRepository(env, authentication.context.principal.repository);
+    await resolveInstallationForRepository(
+      env,
+      authentication.context.principal.repository,
+      dependencies,
+    );
   } catch (error) {
     return responseForGitHubApiError(error);
   }
@@ -165,8 +191,12 @@ async function handleClaimsRequest(request: Request, env: Env): Promise<Response
   });
 }
 
-async function handleInstallationTokenRequest(request: Request, env: Env): Promise<Response> {
-  const authentication = await authenticateRequest(request, env);
+async function handleInstallationTokenRequest(
+  request: Request,
+  env: Env,
+  dependencies: AppDependencies,
+): Promise<Response> {
+  const authentication = await dependencies.authenticateRequest(request, env);
 
   if (!authentication.ok) {
     return problemResponse(authentication.httpStatus, authentication.responseHeaders);
@@ -176,7 +206,7 @@ async function handleInstallationTokenRequest(request: Request, env: Env): Promi
     return problemResponse(403);
   }
 
-  const result = await mintInstallationTokenForContext(env, authentication.context);
+  const result = await mintInstallationTokenForContext(env, authentication.context, dependencies);
 
   if (!result.ok) {
     return problemResponse(result.status);
@@ -191,7 +221,11 @@ async function handleInstallationTokenRequest(request: Request, env: Env): Promi
   );
 }
 
-async function handleTokenExchangeRequest(request: Request, env: Env): Promise<Response> {
+async function handleTokenExchangeRequest(
+  request: Request,
+  env: Env,
+  dependencies: AppDependencies,
+): Promise<Response> {
   if (!isFormUrlEncodedContentType(request.headers.get("content-type"))) {
     return oauthErrorResponse(400, "invalid_request");
   }
@@ -222,7 +256,7 @@ async function handleTokenExchangeRequest(request: Request, env: Env): Promise<R
     return oauthErrorResponse(400, "invalid_request");
   }
 
-  const authentication = await authenticateOidcToken(subjectToken, request, env);
+  const authentication = await dependencies.authenticateOidcToken(subjectToken, request, env);
 
   if (!authentication.ok) {
     return oauthErrorResponse(
@@ -235,7 +269,7 @@ async function handleTokenExchangeRequest(request: Request, env: Env): Promise<R
     return oauthErrorResponse(400, "invalid_request");
   }
 
-  const result = await mintInstallationTokenForContext(env, authentication.context);
+  const result = await mintInstallationTokenForContext(env, authentication.context, dependencies);
 
   if (!result.ok) {
     return oauthErrorResponse(
@@ -246,70 +280,123 @@ async function handleTokenExchangeRequest(request: Request, env: Env): Promise<R
 
   return oauthTokenResponse({
     access_token: result.token,
-    expires_in: expiresInSeconds(result.expiresAt),
+    expires_in: expiresInSeconds(result.expiresAt, dependencies.now()),
     issued_token_type: githubInstallationAccessTokenType,
     token_type: "Bearer",
   });
 }
 
+interface MintResult {
+  expiresAt: string;
+  ok: true;
+  token: string;
+}
+
+type MintInstallationTokenResult = MintResult | { ok: false; status: number };
+
 async function mintInstallationTokenForContext(
   env: Env,
   authenticationContext: AuthenticatedContext,
+  dependencies: AppDependencies,
 ): Promise<MintInstallationTokenResult> {
   const { issuerRegistration, principal, resolvedKeyId } = authenticationContext;
-  let installation;
+  const requestedAt = dependencies.now().toISOString();
+  let auditIntent;
+  let installationId: number | undefined;
 
   try {
-    installation = await resolveInstallationForRepository(env, principal.repository);
+    auditIntent = await createAuditIntent(
+      env,
+      principal,
+      issuerRegistration.issuer,
+      resolvedKeyId,
+      requestedAt,
+    );
   } catch (error) {
-    console.error("GitHub installation lookup failed", {
+    console.error("Installation Token Issuance audit intent write failed", {
+      errorMessage: error instanceof Error ? error.message : String(error),
+      eventName: principal.eventName,
+      repository: principal.repository,
+      repositoryId: principal.repositoryId,
+    });
+
+    return { ok: false, status: 500 };
+  }
+
+  try {
+    const installation = await resolveInstallationForRepository(
+      env,
+      principal.repository,
+      dependencies,
+    );
+    installationId = installation.id;
+
+    await authorizeTokenMintRequest(env, principal, dependencies);
+    const token = await createRepositoryScopedInstallationToken(
+      env,
+      installation.id,
+      principal.repositoryId,
+      dependencies,
+    );
+
+    await finalizeAuditEntry(env, {
+      auditEntryId: auditIntent.id,
+      expiresAt: token.expiresAt,
+      finalizedAt: dependencies.now().toISOString(),
+      installationId: installation.id,
+      outcome: "issued",
+      permissions: token.permissions,
+    });
+
+    return {
+      expiresAt: token.expiresAt,
+      ok: true,
+      token: token.token,
+    };
+  } catch (error) {
+    const status = statusForTokenRequestError(error);
+    const outcome = outcomeForTokenRequestError(error);
+    const reasons = reasonsForTokenRequestError(error);
+
+    console.error("GitHub installation token request failed", {
       errorMessage: error instanceof Error ? error.message : String(error),
       errorName: error instanceof Error ? error.name : typeof error,
       eventName: principal.eventName,
+      installationId,
+      outcome,
       ref: principal.ref,
       repository: principal.repository,
       repositoryId: principal.repositoryId,
     });
 
-    return {
-      ok: false,
-      status: statusForGitHubApiError(error),
-    };
-  }
+    try {
+      await finalizeAuditEntry(env, {
+        auditEntryId: auditIntent.id,
+        finalizedAt: dependencies.now().toISOString(),
+        installationId,
+        outcome,
+        reasons,
+      });
+    } catch (finalizationError) {
+      console.error("Installation Token Issuance audit finalization failed", {
+        auditEntryId: auditIntent.id,
+        errorMessage:
+          finalizationError instanceof Error
+            ? finalizationError.message
+            : String(finalizationError),
+      });
 
-  const stub = env.GITHUB_INSTALLATION.getByName(String(installation.id));
-  return (await stub.mintInstallationToken({
-    installationId: installation.id,
-    issuer: issuerRegistration.issuer,
-    principal,
-    resolvedKeyId,
-  })) as MintInstallationTokenResult;
-}
+      try {
+        await markAuditFinalizationFailed(env, auditIntent.id, dependencies.now().toISOString());
+      } catch {
+        // The pending audit intent remains the durable gap record.
+      }
 
-function responseForGitHubApiError(error: unknown): Response {
-  return problemResponse(statusForGitHubApiError(error));
-}
-
-function statusForGitHubApiError(error: unknown): number {
-  if (error instanceof Response) {
-    return error.status;
-  }
-
-  if (error instanceof GitHubApiError) {
-    if (error.status === 400) {
-      return 500;
+      return { ok: false, status: 500 };
     }
 
-    if (error.status === 401 || error.status === 403 || error.status === 404) {
-      return 403;
-    }
-
-    if (error.status >= 500) {
-      return 502;
-    }
+    return { ok: false, status };
   }
-
-  return 500;
 }
 
 interface InstallationWebhookPayload {
@@ -318,10 +405,16 @@ interface InstallationWebhookPayload {
   };
 }
 
-async function handleGitHubWebhookRequest(request: Request, env: Env): Promise<Response> {
+async function handleGitHubWebhookRequest(
+  request: Request,
+  env: Env,
+  dependencies: AppDependencies,
+): Promise<Response> {
   const secret = env.GITHUB_WEBHOOK_SECRET;
+  const receivedAt = dependencies.now().toISOString();
 
   if (secret === undefined || secret.length === 0) {
+    console.error("webhook_receiver_not_configured", { occurred_at: receivedAt });
     return problemResponse(500);
   }
 
@@ -359,6 +452,16 @@ async function handleGitHubWebhookRequest(request: Request, env: Env): Promise<R
   const valid = await verifyGitHubWebhookSignature(bodyBytes, signatureHeader, secret);
 
   if (!valid) {
+    await recordWebhookDelivery(env, {
+      accepted: false,
+      deliveryId,
+      event,
+      installationId: null,
+      receivedAt,
+      responseStatusCode: 401,
+      signatureValid: false,
+    });
+
     return problemResponse(401);
   }
 
@@ -367,10 +470,30 @@ async function handleGitHubWebhookRequest(request: Request, env: Env): Promise<R
   try {
     payload = JSON.parse(new TextDecoder().decode(bodyBytes)) as InstallationWebhookPayload;
   } catch {
+    await recordWebhookDelivery(env, {
+      accepted: false,
+      deliveryId,
+      event,
+      installationId: null,
+      receivedAt,
+      responseStatusCode: 400,
+      signatureValid: true,
+    });
+
     return problemResponse(400);
   }
 
   if (event === "ping") {
+    await recordWebhookDelivery(env, {
+      accepted: true,
+      deliveryId,
+      event,
+      installationId: null,
+      receivedAt,
+      responseStatusCode: 202,
+      signatureValid: true,
+    });
+
     return jsonResponse(
       {
         accepted: true,
@@ -383,22 +506,49 @@ async function handleGitHubWebhookRequest(request: Request, env: Env): Promise<R
   const installationId = payload.installation?.id;
 
   if (!Number.isInteger(installationId) || installationId === undefined || installationId <= 0) {
+    await recordWebhookDelivery(env, {
+      accepted: false,
+      deliveryId,
+      event,
+      installationId: null,
+      receivedAt,
+      responseStatusCode: 400,
+      signatureValid: true,
+    });
+
     return problemResponse(400);
   }
 
   const stub = env.GITHUB_INSTALLATION.getByName(String(installationId));
+  const result = (await stub.signalInstallationReconciliation({
+    installationId,
+    signalSource: "webhook",
+  })) as SignalInstallationReconciliationResult;
 
-  const result = (await stub.receiveWebhook({
-    body: new TextDecoder().decode(bodyBytes),
+  if (!result.ok) {
+    await recordWebhookDelivery(env, {
+      accepted: false,
+      deliveryId,
+      event,
+      installationId,
+      receivedAt,
+      responseStatusCode: result.status,
+      signatureValid: true,
+    });
+
+    return problemResponse(result.status);
+  }
+
+  await recordWebhookDelivery(env, {
+    accepted: true,
     deliveryId,
     event,
     installationId,
-    signature: signatureHeader,
-  })) as ReceiveWebhookResult;
-
-  if (!result.ok) {
-    return problemResponse(result.status);
-  }
+    metadata: { signal_source: "webhook" },
+    receivedAt,
+    responseStatusCode: 202,
+    signatureValid: true,
+  });
 
   return jsonResponse(
     {
@@ -406,64 +556,6 @@ async function handleGitHubWebhookRequest(request: Request, env: Env): Promise<R
     },
     { status: 202 },
   );
-}
-
-async function handleInstallationMigrationRequest(request: Request, env: Env): Promise<Response> {
-  const configuredToken = env.MAINTENANCE_API_TOKEN;
-
-  if (configuredToken === undefined || configuredToken.length === 0) {
-    return problemResponse(404);
-  }
-
-  const presentedToken = extractBearerToken(request.headers.get("authorization"));
-
-  if (presentedToken !== configuredToken) {
-    return problemResponse(401, { "www-authenticate": "Bearer" });
-  }
-
-  if (!isJsonContentType(request.headers.get("content-type"))) {
-    return problemResponse(415);
-  }
-
-  let payload: { object_ids?: unknown };
-
-  try {
-    payload = (await request.json()) as { object_ids?: unknown };
-  } catch {
-    return problemResponse(400);
-  }
-
-  const objectIds = parseMigrationObjectIds(payload.object_ids);
-
-  if (objectIds === null) {
-    return problemResponse(400);
-  }
-
-  try {
-    const migratedObjectIds: string[] = [];
-
-    for (const objectId of objectIds) {
-      const durableObjectId = env.GITHUB_INSTALLATION.idFromString(objectId);
-      const stub = env.GITHUB_INSTALLATION.get(durableObjectId);
-      const result = (await stub.runMigrations()) as RunMigrationsResult;
-
-      if (!result.ok) {
-        return problemResponse(500);
-      }
-
-      migratedObjectIds.push(objectId);
-    }
-
-    return jsonResponse(
-      {
-        migrated: true,
-        object_ids: migratedObjectIds,
-      },
-      { status: 200 },
-    );
-  } catch {
-    return problemResponse(400);
-  }
 }
 
 async function handleDashboardLoginRequest(request: Request, env: Env): Promise<Response> {
@@ -488,7 +580,11 @@ async function handleDashboardLoginRequest(request: Request, env: Env): Promise<
   });
 }
 
-async function handleDashboardCallbackRequest(request: Request, env: Env): Promise<Response> {
+async function handleDashboardCallbackRequest(
+  request: Request,
+  env: Env,
+  dependencies: AppDependencies,
+): Promise<Response> {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
@@ -499,7 +595,7 @@ async function handleDashboardCallbackRequest(request: Request, env: Env): Promi
     state === null ||
     storedState === null ||
     storedState.state !== state ||
-    !dashboardOauthStateFresh(storedState.issuedAt)
+    !dashboardOauthStateFresh(storedState.issuedAt, dependencies.now())
   ) {
     return dashboardProblemResponse(400, {
       "set-cookie": clearDashboardStateCookie(),
@@ -507,20 +603,39 @@ async function handleDashboardCallbackRequest(request: Request, env: Env): Promi
   }
 
   try {
-    const token = await exchangeGitHubUserCode(env, code, dashboardCallbackUrl(request));
-    const user = await getAuthenticatedGitHubUser(env, token.accessToken);
-    const sessionId = randomToken();
-    const sessionStub = env.DASHBOARD_SESSION.getByName(sessionId);
-    const session = await createDashboardSessionState(env, user, token);
+    const token = await exchangeGitHubUserCode(
+      env,
+      code,
+      dashboardCallbackUrl(request),
+      dependencies,
+    );
+    const user = await getAuthenticatedGitHubUser(env, token.accessToken, dependencies);
+    const rawSessionToken = randomToken();
+    const now = dependencies.now().toISOString();
 
-    await sessionStub.storeSession(session);
-    await refreshDashboardRepositoryAccess(env, sessionStub, token.accessToken);
+    await createDashboardSession(env, {
+      now,
+      rawSessionToken,
+      token,
+      user,
+    });
+
+    const session = await getDashboardSession(env, rawSessionToken, now);
+
+    if (session === null) {
+      throw new Error("created dashboard session could not be read");
+    }
+
+    await refreshDashboardVisibility(env, session, dependencies, now);
 
     const headers = new Headers({
       location: storedState.returnTo,
     });
     headers.append("set-cookie", clearDashboardStateCookie());
-    headers.append("set-cookie", await createSignedDashboardSessionCookie(env, sessionId));
+    headers.append(
+      "set-cookie",
+      createDashboardSessionCookie(rawSessionToken, dashboardSessionMaxAgeSeconds),
+    );
 
     return new Response(null, {
       headers,
@@ -539,11 +654,10 @@ async function handleDashboardCallbackRequest(request: Request, env: Env): Promi
 }
 
 async function handleDashboardLogoutRequest(request: Request, env: Env): Promise<Response> {
-  const sessionId = await readDashboardSessionId(request, env);
+  const rawSessionToken = readDashboardSessionToken(request);
 
-  if (sessionId !== null) {
-    const sessionStub = env.DASHBOARD_SESSION.getByName(sessionId);
-    await sessionStub.clearSession();
+  if (rawSessionToken !== null) {
+    await deleteDashboardSession(env, rawSessionToken);
   }
 
   return new Response(null, {
@@ -555,20 +669,44 @@ async function handleDashboardLogoutRequest(request: Request, env: Env): Promise
   });
 }
 
-async function handleDashboardRepositoryListRequest(request: Request, env: Env): Promise<Response> {
-  const dashboardSession = await requireDashboardSession(request, env);
+async function handleDashboardRepositoryListRequest(
+  request: Request,
+  env: Env,
+  dependencies: AppDependencies,
+): Promise<Response> {
+  const dashboardSession = await requireDashboardSession(request, env, dependencies);
 
   if (!dashboardSession.ok) {
     return dashboardSession.response;
   }
 
-  const repositories = [...dashboardSession.repositories].sort((left, right) =>
-    left.fullName.localeCompare(right.fullName),
+  const now = dependencies.now().toISOString();
+
+  try {
+    await refreshDashboardVisibility(env, dashboardSession.session, dependencies, now);
+  } catch (error) {
+    const response = await responseForDashboardVisibilityRefreshError(
+      env,
+      request,
+      dashboardSession.rawSessionToken,
+      dashboardSession.session.githubUserId,
+      error,
+    );
+
+    if (response !== null) {
+      return response;
+    }
+  }
+
+  const repositories = await listVisibleDashboardRepositories(
+    env,
+    dashboardSession.session.githubUserId,
+    now,
   );
 
   return htmlResponse(
     renderDashboardRepositoryListPage({
-      githubLogin: dashboardSession.session.githubLogin,
+      githubLogin: dashboardSession.session.githubLoginDisplay,
       repositories,
     }),
   );
@@ -578,31 +716,62 @@ async function handleDashboardRepositoryDetailsRequest(
   request: Request,
   env: Env,
   pathname: string,
+  dependencies: AppDependencies,
 ): Promise<Response> {
-  const dashboardSession = await requireDashboardSession(request, env);
+  const dashboardSession = await requireDashboardSession(request, env, dependencies);
 
   if (!dashboardSession.ok) {
     return dashboardSession.response;
   }
 
-  const repositoryId = pathname.slice("/dashboard/repositories/".length);
-  const repository = dashboardSession.repositories.find(
-    (entry) => entry.githubRepoId === repositoryId,
-  );
+  const route = parseDashboardRepositoryRoute(pathname);
 
-  if (repository === undefined) {
-    return dashboardProblemResponse(403);
+  if (route === null) {
+    return dashboardProblemResponse(404);
   }
 
-  const installationStub = env.GITHUB_INSTALLATION.getByName(String(repository.installationId));
-  const tokenRequests = (await installationStub.listRepositoryTokenRequests({
-    limit: 5,
-    repositoryId: repository.githubRepoId,
-  })) as RepositoryTokenRequestEntry[];
+  const now = dependencies.now().toISOString();
+
+  try {
+    await refreshDashboardVisibility(env, dashboardSession.session, dependencies, now);
+  } catch (error) {
+    const response = await responseForDashboardVisibilityRefreshError(
+      env,
+      request,
+      dashboardSession.rawSessionToken,
+      dashboardSession.session.githubUserId,
+      error,
+    );
+
+    if (response !== null) {
+      return response;
+    }
+
+    return dashboardProblemResponse(503);
+  }
+
+  const repository = await getDashboardRepositoryByFullName(env, route.owner, route.name);
+
+  if (repository === null) {
+    return dashboardProblemResponse(404);
+  }
+
+  const authorized = await userCanSeeRepository(
+    env,
+    dashboardSession.session.githubUserId,
+    repository.repositoryId,
+    now,
+  );
+
+  if (!authorized) {
+    return dashboardProblemResponse(404);
+  }
+
+  const tokenRequests = await listRepositoryAuditEntries(env, repository.repositoryId, 5);
 
   return htmlResponse(
     renderDashboardRepositoryDetailsPage({
-      githubLogin: dashboardSession.session.githubLogin,
+      githubLogin: dashboardSession.session.githubLoginDisplay,
       repository,
       tokenRequests,
     }),
@@ -612,235 +781,164 @@ async function handleDashboardRepositoryDetailsRequest(
 async function requireDashboardSession(
   request: Request,
   env: Env,
+  dependencies: AppDependencies,
 ): Promise<
   | {
       ok: true;
-      repositories: DashboardRepositoryAccessEntry[];
-      session: DashboardSessionState;
+      rawSessionToken: string;
+      session: NonNullable<Awaited<ReturnType<typeof getDashboardSession>>>;
     }
   | { ok: false; response: Response }
 > {
-  const sessionId = await readDashboardSessionId(request, env);
+  const rawSessionToken = readDashboardSessionToken(request);
 
-  if (sessionId === null) {
+  if (rawSessionToken === null) {
     return {
       ok: false,
       response: dashboardLoginRedirectResponse(request),
     };
   }
 
-  const sessionStub = env.DASHBOARD_SESSION.getByName(sessionId);
-  const stored = (await sessionStub.getSession()) as StoredDashboardSession;
+  const session = await getDashboardSession(env, rawSessionToken, dependencies.now().toISOString());
 
-  if (stored.session === null) {
+  if (session === null) {
     return {
       ok: false,
-      response: dashboardLoginRedirectResponse(request),
+      response: dashboardLoginRedirectResponse(request, clearDashboardSessionCookie()),
     };
-  }
-
-  const tokenResult = await ensureDashboardAccessToken(env, sessionStub, stored.session);
-
-  if (!tokenResult.ok) {
-    return {
-      ok: false,
-      response: tokenResult.response,
-    };
-  }
-
-  let repositories = stored.repositories;
-  let session = tokenResult.session;
-
-  if (
-    session.repositoryAccessCacheExpiresAt === null ||
-    isExpired(session.repositoryAccessCacheExpiresAt)
-  ) {
-    try {
-      repositories = await refreshDashboardRepositoryAccess(
-        env,
-        sessionStub,
-        tokenResult.accessToken,
-      );
-      const refreshed = (await sessionStub.getSession()) as StoredDashboardSession;
-
-      if (refreshed.session !== null) {
-        session = refreshed.session;
-      }
-    } catch (error) {
-      console.error("Dashboard repository access refresh failed", {
-        errorMessage: error instanceof Error ? error.message : String(error),
-        errorName: error instanceof Error ? error.name : typeof error,
-      });
-
-      if (error instanceof GitHubApiError && (error.status === 401 || error.status === 403)) {
-        await sessionStub.clearSession();
-
-        return {
-          ok: false,
-          response: dashboardLoginRedirectResponse(request, clearDashboardSessionCookie()),
-        };
-      }
-
-      return {
-        ok: false,
-        response: dashboardProblemResponse(502),
-      };
-    }
   }
 
   return {
     ok: true,
-    repositories,
+    rawSessionToken,
     session,
   };
 }
 
-async function ensureDashboardAccessToken(
+async function responseForDashboardVisibilityRefreshError(
   env: Env,
-  sessionStub: DurableObjectStub<DashboardSessionObject>,
-  session: DashboardSessionState,
-): Promise<
-  | { accessToken: string; ok: true; session: DashboardSessionState }
-  | { ok: false; response: Response }
-> {
-  if (session.accessTokenExpiresAt === null || !isExpiredSoon(session.accessTokenExpiresAt)) {
-    const accessToken = await decryptValue(env, session.accessTokenCiphertext);
-
-    if (accessToken !== null) {
-      return {
-        accessToken,
-        ok: true,
-        session,
-      };
-    }
-  }
-
-  if (session.refreshTokenCiphertext === null) {
-    await sessionStub.clearSession();
-
-    return {
-      ok: false,
-      response: dashboardLoginRedirectResponse(undefined, clearDashboardSessionCookie()),
-    };
-  }
-
-  const refreshToken = await decryptValue(env, session.refreshTokenCiphertext);
-
-  if (refreshToken === null) {
-    await sessionStub.clearSession();
-
-    return {
-      ok: false,
-      response: dashboardLoginRedirectResponse(undefined, clearDashboardSessionCookie()),
-    };
-  }
-
-  try {
-    const refreshedToken = await refreshGitHubUserAccessToken(env, refreshToken);
-    const updatedSession = await createDashboardSessionState(
-      env,
-      {
-        id: session.githubUserId,
-        login: session.githubLogin,
-      },
-      refreshedToken,
-    );
-
-    await sessionStub.storeSession(updatedSession);
-
-    return {
-      accessToken: refreshedToken.accessToken,
-      ok: true,
-      session: updatedSession,
-    };
-  } catch (error) {
-    if (error instanceof GitHubApiError && (error.status === 400 || error.status === 401)) {
-      await sessionStub.clearSession();
-
-      return {
-        ok: false,
-        response: dashboardLoginRedirectResponse(undefined, clearDashboardSessionCookie()),
-      };
-    }
-
-    throw error;
-  }
-}
-
-async function refreshDashboardRepositoryAccess(
-  env: Env,
-  sessionStub: DurableObjectStub<DashboardSessionObject>,
-  accessToken: string,
-): Promise<DashboardRepositoryAccessEntry[]> {
-  const repositoriesById = new Map<string, DashboardRepositoryAccessEntry>();
-  const installations = await listGitHubUserInstallations(env, accessToken);
-
-  for (const installation of installations) {
-    const repositories = await listGitHubUserInstallationRepositories(
-      env,
-      accessToken,
-      installation.id,
-    );
-
-    for (const repository of repositories) {
-      if (!repositoriesById.has(repository.githubRepoId)) {
-        repositoriesById.set(repository.githubRepoId, repository);
-      }
-    }
-  }
-
-  const repositories = [...repositoriesById.values()];
-  await sessionStub.replaceRepositoryAccessCache({
-    expiresAt: new Date(Date.now() + dashboardAccessCacheTtlMs(env)).toISOString(),
-    repositories,
+  request: Request,
+  rawSessionToken: string,
+  githubUserId: string,
+  error: unknown,
+): Promise<Response | null> {
+  console.error("dashboard_visibility_refresh_failed", {
+    error_class: error instanceof Error ? error.name : typeof error,
+    errorMessage: error instanceof Error ? error.message : String(error),
+    github_user_id: githubUserId,
+    path: new URL(request.url).pathname,
   });
 
-  return repositories;
-}
+  if (error instanceof GitHubApiError && (error.status === 401 || error.status === 403)) {
+    await deleteDashboardSession(env, rawSessionToken);
 
-async function createDashboardSessionState(
-  env: Env,
-  user: { id: string; login: string },
-  token: {
-    accessToken: string;
-    accessTokenExpiresAt: string | null;
-    refreshToken: string | null;
-    refreshTokenExpiresAt: string | null;
-  },
-): Promise<DashboardSessionState> {
-  return {
-    accessTokenCiphertext: await createEncryptedValue(env, token.accessToken),
-    accessTokenExpiresAt: token.accessTokenExpiresAt,
-    githubLogin: user.login,
-    githubUserId: user.id,
-    refreshTokenCiphertext:
-      token.refreshToken === null ? null : await createEncryptedValue(env, token.refreshToken),
-    refreshTokenExpiresAt: token.refreshTokenExpiresAt,
-    repositoryAccessCacheExpiresAt: null,
-  };
-}
-
-function dashboardAccessCacheTtlMs(env: Env): number {
-  const parsed = Number.parseInt(env.DASHBOARD_ACCESS_CACHE_TTL_SECONDS ?? "", 10);
-
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return dashboardAccessCacheDefaultTtlSeconds * 1000;
+    return dashboardLoginRedirectResponse(request, clearDashboardSessionCookie());
   }
 
-  return parsed * 1000;
+  return null;
+}
+
+function responseForGitHubApiError(error: unknown): Response {
+  return problemResponse(statusForGitHubApiError(error));
+}
+
+function statusForGitHubApiError(error: unknown): number {
+  if (error instanceof Response) {
+    return error.status;
+  }
+
+  if (error instanceof GitHubApiError) {
+    if (error.status === 400) {
+      return 500;
+    }
+
+    if (error.status === 401 || error.status === 403 || error.status === 404) {
+      return 403;
+    }
+
+    if (error.status >= 500) {
+      return 502;
+    }
+  }
+
+  return 500;
+}
+
+function statusForTokenRequestError(error: unknown): number {
+  if (error instanceof BrokerAuthorizationError) {
+    return 403;
+  }
+
+  return statusForGitHubApiError(error);
+}
+
+function outcomeForTokenRequestError(
+  error: unknown,
+): "denied" | "internal_error" | "upstream_error" {
+  if (error instanceof BrokerAuthorizationError) {
+    return "denied";
+  }
+
+  if (error instanceof GitHubApiError) {
+    return error.status >= 500 ? "upstream_error" : "denied";
+  }
+
+  return "internal_error";
+}
+
+function reasonsForTokenRequestError(error: unknown): string[] {
+  if (error instanceof BrokerAuthorizationError) {
+    return error.policyDecision?.reasons.map(mapPolicyReason) ?? [];
+  }
+
+  if (error instanceof GitHubApiError) {
+    if (error.status === 404) {
+      return ["github_installation_not_found"];
+    }
+
+    if (error.status === 429) {
+      return ["github_upstream_rate_limited"];
+    }
+
+    if (error.status >= 500) {
+      return ["github_upstream_unavailable"];
+    }
+
+    return ["github_upstream_unexpected_response"];
+  }
+
+  return ["internal_unexpected_error"];
+}
+
+function mapPolicyReason(reason: string): string {
+  const mapped: Record<string, string> = {
+    event_not_allowed: "policy_event_denied",
+    ref_mismatch: "policy_ref_denied",
+    ref_type_mismatch: "policy_ref_type_denied",
+    repository_id_mismatch: "policy_repository_id_mismatch",
+    repository_mismatch: "policy_repository_name_mismatch",
+    repository_owner_id_mismatch: "policy_repository_owner_id_mismatch",
+    repository_visibility_mismatch: "policy_repository_visibility_mismatch",
+    subject_context_kind_mismatch: "policy_subject_mismatch",
+    subject_context_not_allowed: "policy_subject_mismatch",
+    subject_context_value_mismatch: "policy_subject_mismatch",
+    subject_repository_mismatch: "policy_subject_mismatch",
+  };
+
+  return mapped[reason] ?? "internal_unexpected_error";
 }
 
 function dashboardCallbackUrl(request: Request): string {
   const url = new URL(request.url);
 
-  return `${url.origin}/dashboard/auth/github/callback`;
+  return `${url.origin}/auth/github/callback`;
 }
 
 function dashboardLoginRedirectResponse(request?: Request, setCookie?: string): Response {
   const location =
     request === undefined
-      ? "/dashboard/login/github"
-      : `/dashboard/login/github?return_to=${encodeURIComponent(new URL(request.url).pathname)}`;
+      ? "/login/github"
+      : `/login/github?return_to=${encodeURIComponent(new URL(request.url).pathname)}`;
   const headers = new Headers({ location });
 
   if (setCookie !== undefined) {
@@ -853,10 +951,10 @@ function dashboardLoginRedirectResponse(request?: Request, setCookie?: string): 
   });
 }
 
-function dashboardOauthStateFresh(issuedAt: string): boolean {
+function dashboardOauthStateFresh(issuedAt: string, now: Date): boolean {
   const issuedAtMs = Date.parse(issuedAt);
 
-  return !Number.isNaN(issuedAtMs) && Date.now() - issuedAtMs <= 10 * 60 * 1000;
+  return !Number.isNaN(issuedAtMs) && now.getTime() - issuedAtMs <= 10 * 60 * 1000;
 }
 
 function dashboardProblemResponse(status: number, headers?: HeadersInit): Response {
@@ -866,18 +964,41 @@ function dashboardProblemResponse(status: number, headers?: HeadersInit): Respon
 function htmlResponse(body: string): Response {
   return new Response(body, {
     headers: {
+      "cache-control": "no-store",
+      "content-security-policy":
+        "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'",
       "content-type": "text/html; charset=utf-8",
+      "x-frame-options": "DENY",
     },
     status: 200,
   });
 }
 
-function isExpired(value: string): boolean {
-  return Date.parse(value) <= Date.now();
-}
+function parseDashboardRepositoryRoute(pathname: string): { name: string; owner: string } | null {
+  const prefix = "/dashboard/repositories/";
 
-function isExpiredSoon(value: string): boolean {
-  return Date.parse(value) <= Date.now() + 60 * 1000;
+  if (!pathname.startsWith(prefix)) {
+    return null;
+  }
+
+  const parts = pathname.slice(prefix.length).split("/");
+
+  if (parts.length !== 2 || parts[0] === undefined || parts[1] === undefined) {
+    return null;
+  }
+
+  try {
+    const owner = decodeURIComponent(parts[0]);
+    const name = decodeURIComponent(parts[1]);
+
+    if (owner.length === 0 || name.length === 0) {
+      return null;
+    }
+
+    return { name, owner };
+  } catch {
+    return null;
+  }
 }
 
 function requireDashboardClientId(env: Env): string {
@@ -889,11 +1010,19 @@ function requireDashboardClientId(env: Env): string {
 }
 
 function sanitizeDashboardReturnTo(value: string | null): string {
-  if (value === null || !value.startsWith("/dashboard")) {
+  if (value === null) {
     return "/dashboard";
   }
 
-  return value;
+  if (value === "/dashboard") {
+    return value;
+  }
+
+  if (parseDashboardRepositoryRoute(value) !== null) {
+    return value;
+  }
+
+  return "/dashboard";
 }
 
 async function verifyGitHubWebhookSignature(
@@ -954,36 +1083,6 @@ function isFormUrlEncodedContentType(contentType: string | null): boolean {
   return contentType.split(";", 1)[0]?.trim().toLowerCase() === "application/x-www-form-urlencoded";
 }
 
-function extractBearerToken(authorizationHeader: string | null): string | null {
-  if (authorizationHeader === null) {
-    return null;
-  }
-
-  const [scheme, token] = authorizationHeader.split(/\s+/, 2);
-
-  if (scheme?.toLowerCase() !== "bearer" || token === undefined || token.length === 0) {
-    return null;
-  }
-
-  return token;
-}
-
-function parseMigrationObjectIds(value: unknown): string[] | null {
-  if (!Array.isArray(value)) {
-    return null;
-  }
-
-  const objectIds = [...new Set(value)];
-
-  if (
-    !objectIds.every((objectId) => typeof objectId === "string" && /^[0-9a-f]{64}$/u.test(objectId))
-  ) {
-    return null;
-  }
-
-  return objectIds;
-}
-
 function singleFormValue(form: URLSearchParams, key: string): string | null {
   const values = form.getAll(key);
 
@@ -1037,12 +1136,12 @@ function oauthStatusForMintFailure(status: number): number {
   return 500;
 }
 
-function expiresInSeconds(expiresAt: string): number {
+function expiresInSeconds(expiresAt: string, now: Date): number {
   const expiresAtMs = Date.parse(expiresAt);
 
   if (Number.isNaN(expiresAtMs)) {
     return 0;
   }
 
-  return Math.max(0, Math.floor((expiresAtMs - Date.now()) / 1000));
+  return Math.max(0, Math.floor((expiresAtMs - now.getTime()) / 1000));
 }

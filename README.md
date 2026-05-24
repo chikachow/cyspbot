@@ -2,7 +2,7 @@
 
 Cyspbot is the hosted automation application for cysp. It exchanges trusted GitHub Actions OIDC tokens for short-lived GitHub App installation access tokens without exposing the GitHub App private key outside Cloudflare.
 
-The Dashboard Session, Audit Log, Repository Visibility Cache, and persistence architecture are being re-cut. The source of truth for that redesign is [docs/dashboard-d1-recut.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/dashboard-d1-recut.md).
+The dashboard, Audit Log, Repository Visibility Cache, and session state are D1-backed. The detailed persistence design is [docs/dashboard-d1-recut.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/dashboard-d1-recut.md).
 
 ## Hosted contract
 
@@ -60,21 +60,10 @@ The Dashboard Session, Audit Log, Repository Visibility Cache, and persistence a
       "expires_at": "2026-05-19T12:34:56Z"
     }
     ```
-- `POST /internal/durable-objects/github-installations/migrate`
-  - Temporary maintenance endpoint for forcing constructor-driven migrations on existing `GITHUB_INSTALLATION` Durable Objects.
-  - Requires `Authorization: Bearer <MAINTENANCE_API_TOKEN>`.
-  - Expects a JSON body containing `object_ids`, each a 64-hex Durable Object ID string returned by Cloudflare's Durable Objects object-list API.
-  - Returns:
-    ```json
-    {
-      "migrated": true,
-      "object_ids": ["0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"]
-    }
-    ```
 
-## Target dashboard surface
+## Dashboard surface
 
-The replacement dashboard design uses:
+The dashboard uses GitHub App user authorization and D1-backed sessions:
 
 - `GET /login/github`
 - `GET /auth/github/callback`
@@ -82,7 +71,7 @@ The replacement dashboard design uses:
 - `GET /dashboard`
 - `GET /dashboard/repositories/:owner/:name`
 
-The intended behavior, persistence model, D1 schema, and rollout sequence are documented in [docs/dashboard-d1-recut.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/dashboard-d1-recut.md).
+Repository detail URLs use the current `owner/name` display path. The route resolves that locator to the immutable GitHub repository id internally and authorizes every detail page from fresh Repository Visibility Cache rows.
 
 `POST /token` expects:
 
@@ -115,8 +104,8 @@ The GitHub-specific endpoints use minimal `application/problem+json` responses.
   - `job_workflow_ref`
   - `environment`
 - One Durable Object per trusted OIDC issuer for verifier/JWKS coordination.
-- One Durable Object per GitHub App Installation is retained only for Installation Reconciliation signal coalescing and serialized execution in the target re-cut.
-- D1 is the target durable system of record for the Audit Log, Dashboard Sessions, installation/repository projection, Repository Visibility Cache, and Installation Reconciliation state and run history.
+- One Durable Object per GitHub App Installation is retained only for Installation Reconciliation signal coalescing and serialized execution.
+- D1 is the durable system of record for the Audit Log, Dashboard Sessions, installation/repository projection, Repository Visibility Cache, Webhook Delivery Log metadata, and Installation Reconciliation state and run history.
 - Cloudflare Secrets Store holds the GitHub App private key.
 - GitHub App installation is repository authorization.
 
@@ -128,8 +117,7 @@ The existing GitHub App registration is the primary authorization control plane 
   - Any permissions granted here can flow through to repository-scoped tokens issued by Cyspbot.
   - Cyspbot still narrows tokens to the calling repository and allowed workflow contexts, but it does not down-scope the app's repository permissions further at issuance time.
 
-Cyspbot records each issuance attempt in a central D1 audit record in the target architecture.
-The target Audit Log schema and retention policy are documented in [docs/dashboard-d1-recut.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/dashboard-d1-recut.md).
+Cyspbot records each authenticated issuance attempt in a central D1 audit row before live GitHub lookup. A successful token response requires the terminal audit row and issued-token child rows to persist.
 
 For the dashboard, GitHub App user authorization is the visibility control plane:
 
@@ -137,7 +125,7 @@ For the dashboard, GitHub App user authorization is the visibility control plane
   - `GET /user/installations`
   - `GET /user/installations/{installation_id}/repositories`
 - Installation Tokens still represent what the app can do, not what a human Dashboard User may see.
-- The Repository Visibility Cache is a short-lived D1-backed cache keyed by Dashboard User and GitHub App Installation in the target re-cut.
+- The Repository Visibility Cache is a short-lived D1-backed cache keyed by Dashboard User and GitHub App Installation.
 
 ## Cloudflare setup
 
@@ -152,16 +140,17 @@ For the dashboard, GitHub App user authorization is the visibility control plane
    ```
 4. Replace `REPLACE_WITH_SECRETS_STORE_ID` in [wrangler.jsonc](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/wrangler.jsonc).
 5. Replace `REPLACE_WITH_GITHUB_APP_ID` in [wrangler.jsonc](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/wrangler.jsonc).
-6. Configure Dashboard authentication and Dashboard Session secrets for the target dashboard re-cut:
+6. Configure Dashboard authentication and Dashboard Session secrets:
    - `GITHUB_APP_CLIENT_ID`
    - `GITHUB_APP_CLIENT_SECRET`
-   - session-token HMAC secret
-   - GitHub user token encryption secret
-7. Verify Wrangler auth:
+   - `DASHBOARD_SESSION_LOOKUP_SECRET`
+   - `DASHBOARD_TOKEN_ENCRYPTION_SECRET`
+7. Create or bind the D1 database named `cyspbot`, then apply migrations from [migrations](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/migrations).
+8. Verify Wrangler auth:
    ```bash
    pnpm run wrangler:whoami
    ```
-8. Deploy:
+9. Deploy:
    ```bash
    pnpm run deploy:production
    ```
@@ -185,7 +174,7 @@ The Cloudflare API token should be scoped narrowly to the account and Worker dep
 ## Local development
 
 1. Copy `.dev.vars.example` to `.dev.vars`.
-2. Fill in the GitHub App ID, GitHub App client credentials, the Dashboard Session secrets required by the target re-cut, and a local PKCS#8 PEM private key.
+2. Fill in the GitHub App ID, GitHub App client credentials, Dashboard Session secrets, and a local PKCS#8 PEM private key.
 3. Install dependencies:
    ```bash
    pnpm install
@@ -201,7 +190,7 @@ The Cloudflare API token should be scoped narrowly to the account and Worker dep
 
 Local development falls back to `GITHUB_APP_PRIVATE_KEY_PEM` from `.dev.vars`; production should use Secrets Store. Cyspbot expects PKCS#8 PEM for both paths.
 
-The test environment uses a deterministic JWKS fixture response so Worker tests still exercise the normal remote-JWKS code path instead of switching the verifier into a separate static-key mode.
+Worker tests inject auth and GitHub API test doubles at the app boundary. Production code does not branch on test-only environment variables.
 
 ## GitHub Actions usage
 
@@ -215,4 +204,4 @@ Cyspbot will deny `pull_request`, `pull_request_target`, and any non-default-bra
 
 ## GitHub Webhooks
 
-`POST /github/webhooks` accepts signed GitHub App webhook deliveries for installation-scoped events and also accepts the initial signed `ping` delivery used when GitHub validates a webhook configuration. In the target re-cut, webhook deliveries signal Installation Reconciliation through `GitHubInstallationObject`, while Webhook Delivery Log metadata and Installation Reconciliation state and run history live in D1. Full details are in [docs/dashboard-d1-recut.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/dashboard-d1-recut.md).
+`POST /github/webhooks` accepts signed GitHub App webhook deliveries for installation-scoped events and also accepts the initial signed `ping` delivery used when GitHub validates a webhook configuration. Webhook deliveries signal Installation Reconciliation through `GitHubInstallationObject`; Webhook Delivery Log metadata and Installation Reconciliation state live in D1. Raw webhook bodies are not retained.

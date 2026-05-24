@@ -1,91 +1,46 @@
-import type { DashboardRepositoryAccessEntry } from "./session-object.ts";
-
-export interface DashboardTokenRequestView {
-  actor: string | null;
-  eventName: string;
-  expiresAt: string | null;
-  id: number;
-  mintedPermissions: Record<string, string>;
-  oidcContext: Record<string, string | null> | null;
-  outcome: "denied" | "internal_error" | "issued" | "upstream_error";
-  policyReasons: string[];
-  ref: string | null;
-  timestamp: string;
-}
+import type {
+  DashboardAuditEntry,
+  DashboardRepository,
+  DashboardRepositoryListItem,
+} from "../storage/d1.ts";
 
 export function renderDashboardRepositoryListPage(input: {
   githubLogin: string;
-  repositories: DashboardRepositoryAccessEntry[];
+  repositories: DashboardRepositoryListItem[];
 }): string {
-  const repositoryItems =
-    input.repositories.length === 0
-      ? `<li class="empty">No repositories are currently visible for this GitHub user and app installation set.</li>`
-      : input.repositories
-          .map(
-            (repository) => `
-              <li class="repo-card">
-                <a href="/dashboard/repositories/${escapeHtml(repository.githubRepoId)}">
-                  <strong>${escapeHtml(repository.fullName)}</strong>
-                </a>
-                <span>${repository.private ? "private" : "public"}</span>
-                <span>installation ${repository.installationId}</span>
-              </li>`,
-          )
-          .join("");
+  const activeRepositories = input.repositories.filter(
+    (repository) => repository.archivedAt === null,
+  );
+  const archivedRepositories = input.repositories.filter(
+    (repository) => repository.archivedAt !== null,
+  );
 
   return renderPage({
     body: `
       <header class="page-header">
         <div>
           <p class="eyebrow">Cyspbot Dashboard</p>
-          <h1>Repository audit access</h1>
+          <h1>Repository audit</h1>
           <p>Signed in as <strong>${escapeHtml(input.githubLogin)}</strong>.</p>
         </div>
-        <a class="secondary-link" href="/dashboard/logout">Sign out</a>
+        <a class="secondary-link" href="/logout">Sign out</a>
       </header>
-      <section class="panel">
-        <h2>Accessible repositories</h2>
-        <ul class="repo-list">${repositoryItems}</ul>
-      </section>`,
+      ${renderRepositorySection("Active repositories", activeRepositories)}
+      ${archivedRepositories.length === 0 ? "" : renderRepositorySection("Archived repositories", archivedRepositories)}`,
     title: "Cyspbot dashboard",
   });
 }
 
 export function renderDashboardRepositoryDetailsPage(input: {
   githubLogin: string;
-  repository: DashboardRepositoryAccessEntry;
-  tokenRequests: DashboardTokenRequestView[];
+  repository: DashboardRepository;
+  tokenRequests: DashboardAuditEntry[];
 }): string {
   const rows =
     input.tokenRequests.length === 0
-      ? `<tr><td colspan="7" class="empty">No token requests recorded for this repository.</td></tr>`
+      ? `<tr><td colspan="8" class="empty">No Installation Token Issuance rows are recorded for this repository.</td></tr>`
       : input.tokenRequests
-          .map((request) => {
-            const workflow =
-              request.oidcContext?.["workflow"] ?? request.oidcContext?.["workflow_ref"];
-            const permissions = Object.entries(request.mintedPermissions)
-              .map(([name, access]) => `${escapeHtml(name)}=${escapeHtml(access)}`)
-              .join(", ");
-            const reasons = request.policyReasons.map(escapeHtml).join(", ");
-            const workflowOrPermissions = workflow ?? (permissions.length > 0 ? permissions : "");
-            const reasonsPermissionsOrExpiry =
-              reasons.length > 0
-                ? reasons
-                : permissions.length > 0
-                  ? permissions
-                  : (request.expiresAt ?? "");
-
-            return `
-              <tr>
-                <td>${escapeHtml(request.timestamp)}</td>
-                <td>${escapeHtml(request.outcome)}</td>
-                <td>${escapeHtml(request.eventName)}</td>
-                <td>${escapeHtml(request.ref ?? "")}</td>
-                <td>${escapeHtml(request.actor ?? "")}</td>
-                <td>${escapeHtml(workflowOrPermissions)}</td>
-                <td>${escapeHtml(reasonsPermissionsOrExpiry)}</td>
-              </tr>`;
-          })
+          .map((request) => renderAuditRow(input.repository.fullNameDisplay, request))
           .join("");
 
   return renderPage({
@@ -93,43 +48,115 @@ export function renderDashboardRepositoryDetailsPage(input: {
       <header class="page-header">
         <div>
           <p class="eyebrow">Cyspbot Dashboard</p>
-          <h1>${escapeHtml(input.repository.fullName)}</h1>
+          <h1>${escapeHtml(input.repository.fullNameDisplay)}</h1>
           <p>Signed in as <strong>${escapeHtml(input.githubLogin)}</strong>.</p>
         </div>
         <div class="header-actions">
           <a class="secondary-link" href="/dashboard">All repositories</a>
-          <a class="secondary-link" href="/dashboard/logout">Sign out</a>
+          <a class="secondary-link" href="/logout">Sign out</a>
         </div>
       </header>
       <section class="panel meta-grid">
         <div>
           <h2>Repository</h2>
-          <p>${escapeHtml(input.repository.fullName)}</p>
+          <p>${escapeHtml(input.repository.fullNameDisplay)}</p>
         </div>
         <div>
-          <h2>Installation</h2>
-          <p>${input.repository.installationId}</p>
+          <h2>Repository ID</h2>
+          <p>${input.repository.repositoryId}</p>
+        </div>
+        <div>
+          <h2>Visibility</h2>
+          <p>${escapeHtml(input.repository.repositoryVisibility)}</p>
         </div>
       </section>
       <section class="panel">
-        <h2>Last 5 token requests</h2>
+        <h2>Last 5 issuance attempts</h2>
         <table>
           <thead>
             <tr>
-              <th>Timestamp</th>
+              <th>Requested</th>
+              <th>State</th>
               <th>Outcome</th>
               <th>Event</th>
               <th>Ref</th>
               <th>Actor</th>
-              <th>Workflow or permissions</th>
-              <th>Reasons, permissions, or expiry</th>
+              <th>Token</th>
+              <th>Reasons</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
         </table>
       </section>`,
-    title: input.repository.fullName,
+    title: input.repository.fullNameDisplay,
   });
+}
+
+function renderRepositorySection(
+  title: string,
+  repositories: DashboardRepositoryListItem[],
+): string {
+  const rows =
+    repositories.length === 0
+      ? `<tr><td colspan="5" class="empty">No repositories are currently visible.</td></tr>`
+      : repositories
+          .map((repository) => {
+            const [owner, name] = repository.fullNameDisplay.split("/", 2);
+            const href =
+              owner === undefined || name === undefined
+                ? "/dashboard"
+                : `/dashboard/repositories/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`;
+
+            return `
+              <tr>
+                <td><a href="${escapeHtml(href)}">${escapeHtml(repository.fullNameDisplay)}</a></td>
+                <td>${escapeHtml(repository.repositoryVisibility)}</td>
+                <td>${repository.installationId}</td>
+                <td>${escapeHtml(repository.lastInstallationTokenIssuanceAt ?? "")}</td>
+                <td>${escapeHtml(repository.lastOutcome ?? "")}</td>
+              </tr>`;
+          })
+          .join("");
+
+  return `
+    <section class="panel">
+      <h2>${escapeHtml(title)}</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Repository</th>
+            <th>Visibility</th>
+            <th>Installation</th>
+            <th>Last issuance</th>
+            <th>Last outcome</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </section>`;
+}
+
+function renderAuditRow(currentFullNameDisplay: string, request: DashboardAuditEntry): string {
+  const permissions = Object.entries(request.permissions)
+    .map(([name, access]) => `${escapeHtml(name)}=${escapeHtml(access)}`)
+    .join(", ");
+  const reasons = request.reasons.map(escapeHtml).join(", ");
+  const recordedAs =
+    request.fullNameDisplay === currentFullNameDisplay
+      ? ""
+      : `<p class="muted">recorded as ${escapeHtml(request.fullNameDisplay)}</p>`;
+
+  return `
+    <tr>
+      <td>${escapeHtml(request.requestedAt)}${recordedAs}</td>
+      <td>${escapeHtml(request.auditState)}</td>
+      <td>${escapeHtml(request.outcome ?? "")}</td>
+      <td>${escapeHtml(request.eventName)}</td>
+      <td>${escapeHtml(request.ref ?? "")}</td>
+      <td>${escapeHtml(request.actor ?? "")}</td>
+      <td>${escapeHtml(request.expiresAt ?? "")}${permissions.length === 0 ? "" : `<p class="muted">${permissions}</p>`}</td>
+      <td>${reasons}</td>
+    </tr>`;
 }
 
 function escapeHtml(value: string): string {
@@ -151,116 +178,107 @@ function renderPage(input: { body: string; title: string }): string {
     <style>
       :root {
         color-scheme: light;
-        --bg: #f2ede2;
-        --card: rgba(255, 253, 248, 0.92);
-        --ink: #172119;
-        --muted: #526152;
-        --accent: #0f6b42;
-        --line: rgba(23, 33, 25, 0.14);
+        --bg: #f7f7f4;
+        --panel: #ffffff;
+        --ink: #151716;
+        --muted: #5c625f;
+        --accent: #0b5c74;
+        --line: #d9ddda;
+        --status: #eef6f8;
       }
       * { box-sizing: border-box; }
       body {
         margin: 0;
         min-height: 100vh;
-        font-family: Georgia, "Iowan Old Style", serif;
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         color: var(--ink);
-        background:
-          radial-gradient(circle at top left, rgba(15, 107, 66, 0.18), transparent 32%),
-          linear-gradient(180deg, #fbf7ef 0%, var(--bg) 100%);
+        background: var(--bg);
       }
       main {
-        max-width: 1080px;
+        width: min(1180px, calc(100vw - 32px));
         margin: 0 auto;
-        padding: 32px 20px 64px;
-      }
-      .page-header, .panel, .repo-card {
-        backdrop-filter: blur(14px);
+        padding: 28px 0 56px;
       }
       .page-header {
         display: flex;
         gap: 16px;
         justify-content: space-between;
         align-items: flex-start;
-        margin-bottom: 24px;
+        margin-bottom: 20px;
       }
       .panel {
-        background: var(--card);
+        background: var(--panel);
         border: 1px solid var(--line);
-        border-radius: 18px;
-        padding: 20px;
-        box-shadow: 0 18px 40px rgba(23, 33, 25, 0.08);
+        border-radius: 8px;
+        padding: 18px;
+        margin-bottom: 16px;
       }
       .eyebrow {
-        margin: 0 0 8px;
+        margin: 0 0 6px;
         text-transform: uppercase;
-        letter-spacing: 0.12em;
         color: var(--muted);
         font-size: 12px;
+        font-weight: 700;
       }
       h1, h2, p { margin-top: 0; }
-      h1 { margin-bottom: 8px; font-size: clamp(2rem, 5vw, 3.5rem); }
+      h1 { margin-bottom: 8px; font-size: 28px; }
+      h2 { margin-bottom: 14px; font-size: 17px; }
       a { color: var(--accent); }
       .secondary-link {
         display: inline-flex;
         align-items: center;
-        min-height: 42px;
-        padding: 0 14px;
-        border-radius: 999px;
+        min-height: 38px;
+        padding: 0 12px;
+        border-radius: 6px;
         border: 1px solid var(--line);
         text-decoration: none;
-        background: rgba(255, 255, 255, 0.72);
+        background: #fff;
       }
-      .repo-list {
-        list-style: none;
-        padding: 0;
-        margin: 0;
-        display: grid;
-        gap: 12px;
-      }
-      .repo-card {
-        display: flex;
-        gap: 12px;
-        flex-wrap: wrap;
-        justify-content: space-between;
-        align-items: center;
-        padding: 16px;
-        border-radius: 14px;
-        border: 1px solid var(--line);
-        background: rgba(255, 255, 255, 0.72);
+      .secondary-link:focus-visible, a:focus-visible {
+        outline: 3px solid rgba(11, 92, 116, 0.35);
+        outline-offset: 2px;
       }
       .meta-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
         gap: 16px;
-        margin-bottom: 24px;
       }
       .header-actions {
         display: flex;
-        gap: 12px;
+        gap: 10px;
         flex-wrap: wrap;
       }
       table {
         width: 100%;
         border-collapse: collapse;
-        font-size: 0.95rem;
+        table-layout: fixed;
+        font-size: 14px;
       }
       th, td {
         text-align: left;
-        padding: 12px 10px;
+        padding: 10px 8px;
         border-bottom: 1px solid var(--line);
         vertical-align: top;
+        overflow-wrap: anywhere;
       }
-      .empty {
+      th {
+        color: var(--muted);
+        font-size: 12px;
+        text-transform: uppercase;
+      }
+      .empty, .muted {
         color: var(--muted);
       }
-      @media (max-width: 720px) {
+      .muted {
+        margin: 4px 0 0;
+        font-size: 12px;
+      }
+      @media (max-width: 760px) {
         .page-header { flex-direction: column; }
         table, thead, tbody, th, td, tr { display: block; }
         thead { display: none; }
-        td {
-          padding-left: 0;
-          padding-right: 0;
-        }
+        tr { border-bottom: 1px solid var(--line); padding: 8px 0; }
+        td { border-bottom: 0; padding: 6px 0; }
       }
     </style>
   </head>

@@ -13,7 +13,7 @@ let validatedRawRegistrations: readonly RawIssuerRegistration[] | null = null;
 export class OidcConfigurationError extends Error {}
 
 export function loadIssuerRegistrationByIssuer(
-  env: Env,
+  _env: Env,
   issuer: string,
 ): IssuerRegistration | null {
   const rawRegistration = validatedRawIssuerRegistrations().find(
@@ -29,11 +29,7 @@ export function loadIssuerRegistrationByIssuer(
     audience: rawRegistration.audience,
     defaultFreshMs: rawRegistration.defaultFreshMs,
     issuer: rawRegistration.issuer,
-    jwksUri:
-      rawRegistration.issuer === "https://token.actions.githubusercontent.com" &&
-      env.TEST_OIDC_JWKS_URI !== undefined
-        ? env.TEST_OIDC_JWKS_URI
-        : rawRegistration.jwksUri,
+    jwksUri: rawRegistration.jwksUri,
     mapPrincipal:
       rawRegistration.principalKind === "github-actions"
         ? mapGitHubActionsPrincipal
