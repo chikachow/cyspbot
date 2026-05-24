@@ -33,13 +33,13 @@ export function renderDashboardRepositoryListPage(input: {
 
 export function renderDashboardRepositoryDetailsPage(input: {
   githubLogin: string;
+  issuanceAttempts: DashboardAuditEntry[];
   repository: DashboardRepository;
-  tokenRequests: DashboardAuditEntry[];
 }): string {
   const rows =
-    input.tokenRequests.length === 0
+    input.issuanceAttempts.length === 0
       ? `<tr><td colspan="8" class="empty">No Installation Token Issuance rows are recorded for this repository.</td></tr>`
-      : input.tokenRequests
+      : input.issuanceAttempts
           .map((request) => renderAuditRow(input.repository.fullNameDisplay, request))
           .join("");
 

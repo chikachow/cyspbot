@@ -5,7 +5,7 @@ cyspbot is a hosted Security Token Service for GitHub Actions workflows. It veri
 The current product is intentionally narrow:
 
 - `POST /token` is the primary token exchange endpoint.
-- `POST /github/claims` verifies caller identity and GitHub App installation presence without minting a token.
+- `POST /github/claims` verifies caller identity and GitHub App installation presence without issuing an Installation Token.
 - `POST /github/webhooks` accepts signed GitHub App webhooks, records metadata, and signals installation reconciliation.
 - `GET /dashboard` is a read-only operational dashboard for repository visibility and recent Installation Token Issuance audit history.
 
@@ -90,7 +90,7 @@ Installation Token Issuance is allowed only when all implemented checks pass:
 - `ref_type` is `branch`
 - `repository`, `repository_id`, `repository_owner_id`, and `repository_visibility` match live GitHub repository metadata
 
-The caller cannot choose a target repository or permission profile. The issued token is scoped to the calling repository, and cyspbot requests checked-in permissions sufficient to commit changes and raise pull requests: `contents: write` and `pull_requests: write`. The current GitHub App installation permissions remain the upper bound.
+The caller cannot choose a repository or permission profile. The issued token is scoped to the Calling Repository, and cyspbot requests checked-in permissions sufficient to commit changes and raise pull requests: `contents: write` and `pull_requests: write`. The current GitHub App installation permissions remain the upper bound.
 
 cyspbot denies `push`, `pull_request`, `pull_request_target`, forked pull request contexts, non-default-branch refs, tag refs, and unsupported event names.
 
@@ -110,7 +110,7 @@ Excluded from the current product surface:
 - caller-selected permission profiles
 - dynamic OIDC issuer discovery
 - webhook replay from cyspbot-retained raw payloads
-- making Cloudflare Agents SDK the primary broker architecture
+- rearchitecting the security boundary for modernization alone
 
 ## GitHub App Configuration
 
@@ -191,7 +191,7 @@ permissions:
   id-token: write
 ```
 
-The reusable GitHub Action client for this hosted service lives in the separate `cyspbot-app-token-action` repository.
+The reusable GitHub Action for this hosted service lives in the separate `cyspbot-app-token-action` repository.
 
 ## Repository Workflows
 

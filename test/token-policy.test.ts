@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { GitHubActionsPrincipal } from "../src/oidc/principals.ts";
-import { evaluateTokenMintPolicy } from "../src/policy/token-mint-authorization.ts";
+import { evaluateTokenPolicy } from "../src/policy/token-policy.ts";
 
 const repository = {
   defaultBranch: "main",
@@ -38,9 +38,9 @@ const principal: GitHubActionsPrincipal = {
     "cysp/terraform-provider-contentful/.github/workflows/update-indirect-dependencies.yml@refs/heads/main",
 };
 
-describe("token mint policy", () => {
+describe("Token Policy", () => {
   it("allows default-branch workflow dispatch with PR-authoring permissions", () => {
-    const decision = evaluateTokenMintPolicy(principal, repository);
+    const decision = evaluateTokenPolicy(principal, repository);
 
     expect(decision).toEqual({
       decision: "allow",
@@ -54,7 +54,7 @@ describe("token mint policy", () => {
   });
 
   it("allows default-branch schedule with PR-authoring permissions", () => {
-    const decision = evaluateTokenMintPolicy(
+    const decision = evaluateTokenPolicy(
       {
         ...principal,
         eventName: "schedule",
@@ -73,7 +73,7 @@ describe("token mint policy", () => {
   });
 
   it("denies push while preserving the event type", () => {
-    const decision = evaluateTokenMintPolicy(
+    const decision = evaluateTokenPolicy(
       {
         ...principal,
         eventName: "push",

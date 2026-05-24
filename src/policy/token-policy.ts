@@ -1,6 +1,6 @@
 import type { GitHubActionsPrincipal } from "../oidc/principals.ts";
 
-export interface TokenMintAuthorizationRepository {
+export interface TokenPolicyRepository {
   defaultBranch: string;
   repository: string;
   repositoryId: string;
@@ -8,25 +8,25 @@ export interface TokenMintAuthorizationRepository {
   repositoryVisibility: string;
 }
 
-export interface TokenMintAllowPolicyDecision {
+export interface TokenPolicyAllowDecision {
   decision: "allow";
   eventType: string;
   permissions: Record<string, string>;
   reasons: string[];
 }
 
-export interface TokenMintDenyPolicyDecision {
+export interface TokenPolicyDenyDecision {
   decision: "deny";
   eventType: string;
   reasons: string[];
 }
 
-export type TokenMintPolicyDecision = TokenMintAllowPolicyDecision | TokenMintDenyPolicyDecision;
+export type TokenPolicyDecision = TokenPolicyAllowDecision | TokenPolicyDenyDecision;
 
-export function evaluateTokenMintPolicy(
+export function evaluateTokenPolicy(
   principal: GitHubActionsPrincipal,
-  repository: TokenMintAuthorizationRepository,
-): TokenMintPolicyDecision {
+  repository: TokenPolicyRepository,
+): TokenPolicyDecision {
   const reasons: string[] = [];
 
   if (principal.eventName === "pull_request" || principal.eventName === "pull_request_target") {

@@ -481,7 +481,7 @@ describe("cyspbot worker", () => {
     });
   });
 
-  it("verifies caller claims without evaluating full token mint policy", async () => {
+  it("verifies caller claims without evaluating the full Token Policy", async () => {
     const response = await fetchWorker("https://example.test/github/claims", {
       headers: await authorizationHeaders({
         event_name: "pull_request",
@@ -888,17 +888,17 @@ describe("cyspbot worker", () => {
     );
   });
 
-  it("authorizes the dashboard with GitHub user auth and renders recent repository token requests", async () => {
-    const firstMint = await fetchWorker("https://example.test/token", {
+  it("authorizes the dashboard with GitHub user auth and renders recent Installation Token Issuance attempts", async () => {
+    const firstIssuance = await fetchWorker("https://example.test/token", {
       body: await tokenExchangeRequestBody(),
       headers: {
         "content-type": "application/x-www-form-urlencoded",
       },
       method: "POST",
     });
-    expect(firstMint.status).toBe(200);
+    expect(firstIssuance.status).toBe(200);
 
-    const secondMint = await fetchWorker("https://example.test/token", {
+    const secondIssuance = await fetchWorker("https://example.test/token", {
       body: await tokenExchangeRequestBody({
         actor: "octocat",
       }),
@@ -907,7 +907,7 @@ describe("cyspbot worker", () => {
       },
       method: "POST",
     });
-    expect(secondMint.status).toBe(200);
+    expect(secondIssuance.status).toBe(200);
 
     const dashboardRedirect = await fetchWorker("https://example.test/dashboard", {
       redirect: "manual",

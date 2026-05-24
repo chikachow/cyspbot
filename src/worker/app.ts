@@ -13,13 +13,13 @@ import {
   renderDashboardRepositoryListPage,
 } from "../dashboard/html.ts";
 import {
-  authorizeTokenMintRequest,
-  BrokerAuthorizationError,
+  authorizeInstallationTokenIssuance,
   createRepositoryScopedInstallationToken,
   exchangeGitHubUserCode,
   getAuthenticatedGitHubUser,
   GitHubApiError,
   resolveInstallationForRepository,
+  TokenPolicyDeniedError,
   type GitHubApiDependencies,
 } from "../github/api.ts";
 import type { AuthenticatedContext } from "../oidc/principals.ts";
@@ -245,12 +245,12 @@ async function handleTokenExchangeRequest(
     return oauthErrorResponse(400, "invalid_request");
   }
 
-  const result = await mintInstallationTokenForContext(env, authentication.context, dependencies);
+  const result = await issueInstallationTokenForContext(env, authentication.context, dependencies);
 
   if (!result.ok) {
     return oauthErrorResponse(
-      oauthStatusForMintFailure(result.status),
-      oauthErrorCodeForMintFailure(result.status),
+      oauthStatusForIssuanceFailure(result.status),
+      oauthErrorCodeForIssuanceFailure(result.status),
     );
   }
 
@@ -262,19 +262,21 @@ async function handleTokenExchangeRequest(
   });
 }
 
-interface MintResult {
+interface InstallationTokenIssuanceSuccess {
   expiresAt: string;
   ok: true;
   token: string;
 }
 
-type MintInstallationTokenResult = MintResult | { ok: false; status: number };
+type InstallationTokenIssuanceResult =
+  | InstallationTokenIssuanceSuccess
+  | { ok: false; status: number };
 
-async function mintInstallationTokenForContext(
+async function issueInstallationTokenForContext(
   env: Env,
   authenticationContext: AuthenticatedContext,
   dependencies: AppDependencies,
-): Promise<MintInstallationTokenResult> {
+): Promise<InstallationTokenIssuanceResult> {
   const { issuerRegistration, principal, resolvedKeyId } = authenticationContext;
   const requestedAt = dependencies.now().toISOString();
   let auditIntent;
@@ -307,7 +309,7 @@ async function mintInstallationTokenForContext(
     );
     installationId = installation.id;
 
-    const authorization = await authorizeTokenMintRequest(
+    const authorization = await authorizeInstallationTokenIssuance(
       env,
       installation.id,
       principal,
@@ -336,11 +338,11 @@ async function mintInstallationTokenForContext(
       token: token.token,
     };
   } catch (error) {
-    const status = statusForTokenRequestError(error);
-    const outcome = outcomeForTokenRequestError(error);
-    const reasons = reasonsForTokenRequestError(error);
+    const status = statusForInstallationTokenIssuanceError(error);
+    const outcome = outcomeForInstallationTokenIssuanceError(error);
+    const reasons = reasonsForInstallationTokenIssuanceError(error);
 
-    console.error("GitHub installation token request failed", {
+    console.error("Installation Token Issuance failed", {
       errorMessage: error instanceof Error ? error.message : String(error),
       errorName: error instanceof Error ? error.name : typeof error,
       errorStatus: error instanceof GitHubApiError ? error.status : undefined,
@@ -749,13 +751,13 @@ async function handleDashboardRepositoryDetailsRequest(
     return dashboardProblemResponse(404);
   }
 
-  const tokenRequests = await listRepositoryAuditEntries(env, repository.repositoryId, 5);
+  const issuanceAttempts = await listRepositoryAuditEntries(env, repository.repositoryId, 5);
 
   return htmlResponse(
     renderDashboardRepositoryDetailsPage({
       githubLogin: dashboardSession.session.githubLoginDisplay,
+      issuanceAttempts,
       repository,
-      tokenRequests,
     }),
   );
 }
@@ -846,18 +848,18 @@ function statusForGitHubApiError(error: unknown): number {
   return 500;
 }
 
-function statusForTokenRequestError(error: unknown): number {
-  if (error instanceof BrokerAuthorizationError) {
+function statusForInstallationTokenIssuanceError(error: unknown): number {
+  if (error instanceof TokenPolicyDeniedError) {
     return 403;
   }
 
   return statusForGitHubApiError(error);
 }
 
-function outcomeForTokenRequestError(
+function outcomeForInstallationTokenIssuanceError(
   error: unknown,
 ): "denied" | "internal_error" | "upstream_error" {
-  if (error instanceof BrokerAuthorizationError) {
+  if (error instanceof TokenPolicyDeniedError) {
     return "denied";
   }
 
@@ -868,8 +870,8 @@ function outcomeForTokenRequestError(
   return "internal_error";
 }
 
-function reasonsForTokenRequestError(error: unknown): string[] {
-  if (error instanceof BrokerAuthorizationError) {
+function reasonsForInstallationTokenIssuanceError(error: unknown): string[] {
+  if (error instanceof TokenPolicyDeniedError) {
     return error.policyDecision?.reasons.map(mapPolicyReason) ?? [];
   }
 
@@ -1125,7 +1127,7 @@ function oauthErrorResponse(status: number, error: string): Response {
   );
 }
 
-function oauthErrorCodeForMintFailure(status: number): string {
+function oauthErrorCodeForIssuanceFailure(status: number): string {
   if (status === 403) {
     return "invalid_target";
   }
@@ -1133,7 +1135,7 @@ function oauthErrorCodeForMintFailure(status: number): string {
   return "server_error";
 }
 
-function oauthStatusForMintFailure(status: number): number {
+function oauthStatusForIssuanceFailure(status: number): number {
   if (status === 403) {
     return 400;
   }

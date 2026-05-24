@@ -2,13 +2,21 @@
 
 cyspbot is the maintainer's hosted automation application. It lets trusted GitHub Actions workflow runs obtain repository-scoped GitHub App installation access tokens without exposing the GitHub App private key outside Cloudflare.
 
-The primary current product specification is [docs/current-api-compatible-service-prd.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/current-api-compatible-service-prd.md). Historical ADRs and future architecture reports are supporting material; they do not override the current product specification.
+The primary current product specification is [docs/current-api-compatible-service-prd.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/current-api-compatible-service-prd.md). Historical ADRs are supporting material; they do not override the current product specification.
 
 ## Language
 
 **Caller**:
 A GitHub Actions workflow invocation that presents a GitHub-issued OIDC token to **cyspbot**.
 _Avoid_: Client, user, consumer
+
+**Authenticated Principal**:
+The cyspbot-internal identity shape produced after an OIDC token has been cryptographically verified, issuer policy has been applied, and the claims have been mapped to a trusted caller model.
+_Avoid_: Raw JWT claims, unverified subject, Dashboard User
+
+**GitHub Actions Principal**:
+The current concrete **Authenticated Principal** implementation for a **Caller**. It contains the verified GitHub Actions OIDC claims and parsed subject context used by the **Token Policy**.
+_Avoid_: Dashboard User, GitHub user, repository owner
 
 **Dashboard User**:
 A human GitHub user who authorizes the cyspbot GitHub App for dashboard access and browses repository audit history through cyspbot's web UI.
@@ -82,10 +90,19 @@ _Avoid_: Dynamic issuer discovery, arbitrary identity provider, issuer profile a
 A short-lived cyspbot-held store of verification keys for a trusted **Issuer Registration**, which may remain briefly usable during upstream key-distribution failures.
 _Avoid_: Permanent key store, token cache, caller-controlled key source
 
+**JWKS Snapshot**:
+A validated, normalized point-in-time JWKS document held in the **JWKS Cache** with cyspbot-owned fresh-until and stale-until bounds.
+_Avoid_: Raw JWKS response, partial key set, permanent key record
+
+**OIDC Verifier State**:
+The per-issuer Durable Object state that contains the current **JWKS Snapshot**, the issuer-registration fingerprint, and refresh-backoff counters for one **Issuer Registration**.
+_Avoid_: Trust configuration, token cache, global verifier state
+
 ## Relationships
 
 - The current product surface is `POST /token`, `POST /github/claims`, `POST /github/webhooks`, and the GitHub App user authorization dashboard routes.
 - A **Caller** authenticates to **cyspbot** with a GitHub OIDC token
+- A verified **Caller** is represented internally as a **GitHub Actions Principal**, which is the current **Authenticated Principal** type
 - A **Dashboard User** authenticates to **cyspbot** by authorizing the cyspbot GitHub App and establishing a **Dashboard Session**
 - cyspbot verifies a **Caller** only against a trusted **Issuer Registration**
 - Each **Issuer Registration** owns its own verification policy, including JWKS freshness, staleness, and refresh-backoff rules
@@ -99,6 +116,7 @@ _Avoid_: Permanent key store, token cache, caller-controlled key source
 - The **Claims Endpoint** verifies caller identity and repository installation relationship without issuing an **Installation Token**
 - The **Token Exchange Endpoint** is the only public interface for **Installation Token Issuance**
 - The **JWKS Cache** supplies verification keys for an **Issuer Registration**, but never stores issued **Installation Tokens**
+- The **JWKS Cache** stores only validated **JWKS Snapshots** coordinated through **OIDC Verifier State**
 - A **GitHub App Installation** is the GitHub-side authority that allows **cyspbot** to issue an **Installation Token**
 - cyspbot determines dashboard repository visibility from the intersection GitHub reports for a **Dashboard User**, a **GitHub App Installation**, and that installation's repositories
 - Dashboard repository list and detail pages authorize from the live GitHub response for the current **Dashboard User**

@@ -3,11 +3,11 @@ import { importPKCS8, SignJWT } from "jose";
 import type { Env } from "../env.ts";
 import type { GitHubActionsPrincipal } from "../oidc/principals.ts";
 import {
-  evaluateTokenMintPolicy,
-  type TokenMintAllowPolicyDecision,
-  type TokenMintAuthorizationRepository,
-  type TokenMintPolicyDecision,
-} from "../policy/token-mint-authorization.ts";
+  evaluateTokenPolicy,
+  type TokenPolicyAllowDecision,
+  type TokenPolicyDecision,
+  type TokenPolicyRepository,
+} from "../policy/token-policy.ts";
 
 const githubAcceptHeader = "application/vnd.github+json";
 const githubApiVersion = "2022-11-28";
@@ -24,13 +24,13 @@ const defaultGitHubApiDependencies: GitHubApiDependencies = {
   fetch: (input, init) => fetch(input, init),
 };
 
-export class BrokerAuthorizationError extends Error {
-  public readonly policyDecision?: TokenMintPolicyDecision;
+export class TokenPolicyDeniedError extends Error {
+  public readonly policyDecision?: TokenPolicyDecision;
   public readonly repository?: GitHubRepository;
 
   public constructor(
     message: string,
-    policyDecision?: TokenMintPolicyDecision,
+    policyDecision?: TokenPolicyDecision,
     repository?: GitHubRepository,
   ) {
     super(message);
@@ -48,7 +48,7 @@ export class GitHubApiError extends Error {
   }
 }
 
-export interface InstallationLookup {
+export interface ResolvedGitHubAppInstallation {
   id: number;
 }
 
@@ -58,7 +58,7 @@ export interface InstallationToken {
   token: string;
 }
 
-export interface GitHubRepository extends TokenMintAuthorizationRepository {
+export interface GitHubRepository extends TokenPolicyRepository {
   defaultBranchRef: string;
 }
 
@@ -140,7 +140,7 @@ export async function resolveInstallationForRepository(
   env: Env,
   repository: string,
   dependencies: GitHubApiDependencies = defaultGitHubApiDependencies,
-): Promise<InstallationLookup> {
+): Promise<ResolvedGitHubAppInstallation> {
   const response = await fetchGitHubApi(
     env,
     `/repos/${repository}/installation`,
@@ -157,12 +157,12 @@ export async function resolveInstallationForRepository(
   return { id: body.id };
 }
 
-export async function authorizeTokenMintRequest(
+export async function authorizeInstallationTokenIssuance(
   env: Env,
   installationId: number,
   caller: GitHubActionsPrincipal,
   dependencies: GitHubApiDependencies = defaultGitHubApiDependencies,
-): Promise<{ policyDecision: TokenMintAllowPolicyDecision; repository: GitHubRepository }> {
+): Promise<{ policyDecision: TokenPolicyAllowDecision; repository: GitHubRepository }> {
   const metadataToken = await createRepositoryMetadataToken(
     env,
     installationId,
@@ -170,11 +170,11 @@ export async function authorizeTokenMintRequest(
     dependencies,
   );
   const repository = await getRepository(env, caller.repository, metadataToken.token, dependencies);
-  const policyDecision = evaluateTokenMintPolicy(caller, repository);
+  const policyDecision = evaluateTokenPolicy(caller, repository);
 
   if (policyDecision.decision !== "allow") {
-    throw new BrokerAuthorizationError(
-      "token mint policy denied request",
+    throw new TokenPolicyDeniedError(
+      "Token Policy denied Installation Token Issuance",
       policyDecision,
       repository,
     );

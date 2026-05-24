@@ -1,6 +1,6 @@
 # cyspbot Product Documentation
 
-This directory separates current product facts from design history and future options.
+This directory separates current product facts from design history.
 
 ## Current Product Sources
 
@@ -16,10 +16,6 @@ The ADRs capture decisions that led to the current state. They are historical re
 - [ADR 0001: Hosted GitHub installation token broker](adr/0001-hosted-github-installation-token-broker.md)
 - [ADR 0002: Per-issuer JWKS verifier Durable Object](adr/0002-per-issuer-jwks-verifier-durable-object.md)
 - [ADR 0003: Dashboard user authorization](adr/0003-dashboard-user-authorization.md)
-
-## Future Options
-
-- [Cloudflare Agents SDK architecture report](cloudflare-agents-sdk-rearchitecture-report.md) is a future architecture option analysis. Its current recommendation is not to move the implemented broker path to Agents SDK unless cyspbot becomes an installation-scoped automation runtime.
 
 ## Roadmap Boundary
 
@@ -41,8 +37,8 @@ Future implementation:
 
 Non-goals unless explicitly redesigned:
 
-- caller-selected target repositories
+- caller-selected repositories
 - caller-selected GitHub permission profiles
 - dynamic issuer discovery from untrusted tokens
 - raw webhook payload archival or cyspbot-local replay
-- rewriting the security broker around Cloudflare Agents SDK for modernization alone
+- rearchitecting the security boundary for modernization alone

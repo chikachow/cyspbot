@@ -732,7 +732,6 @@ The service does not include any of the following behaviors:
 - Dynamic issuer registration
 - Generic JWT introspection endpoint
 - Partial or opportunistic webhook acceptance without signature validation
-- Agents SDK-based broker routing
 
 These are intentionally absent from the current product surface.
 
