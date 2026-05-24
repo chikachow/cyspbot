@@ -125,7 +125,7 @@ Dashboard setup uses separate GitHub App URLs:
 
 ## Cloudflare Setup
 
-Production is configured for the custom domain `cyspbot.chikachow.org`.
+Production is configured for the custom domain `cyspbot.chikachow.org`. The production Worker also enables its `workers.dev` route for operational smoke tests when the custom domain is blocked by local network policy. The custom domain remains the canonical GitHub App setup, OAuth callback, and webhook URL.
 
 1. Convert the downloaded GitHub App key to PKCS#8:
 
