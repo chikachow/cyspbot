@@ -4,7 +4,7 @@ This document is the primary product specification for the implemented cyspbot s
 
 Use this document to answer "what does cyspbot do today?" before consulting historical ADRs or future architecture notes. The documentation map is [docs/README.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/README.md).
 
-Dashboard Sessions, the Audit Log, webhook metadata, and projection state are D1-backed. The detailed storage reference is [docs/dashboard-d1-recut.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/dashboard-d1-recut.md).
+Dashboard Sessions, the Audit Log, webhook metadata, and reconciliation signal state are D1-backed. The detailed storage reference is [docs/dashboard-d1-recut.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/dashboard-d1-recut.md).
 
 ## 1. Purpose
 
@@ -44,14 +44,14 @@ This document is a standalone current-state specification for the service.
 - General webhook event processing beyond acceptance, validation, routing, and persistence
 - Admin write APIs or mutable repository-visibility allowlists
 - Secondary cyspbot-side repository allowlists beyond GitHub App Installation presence
-- Full Installation Reconciliation execution and deletion/suspension projection replacement in the current implementation
+- Full Installation Reconciliation execution in the current implementation
 
 ### Future implementation
 
 The following work is not implemented in the current product surface:
 
 - full Installation Reconciliation execution for one GitHub App Installation at a time
-- full installation-slice projection replacement, including deletion, suspension, and repository-removal decisions
+- full installation-slice reconciliation execution
 - scheduled retry dispatch for due or failed reconciliation work
 - cleanup jobs for expired Dashboard Sessions, Audit Log retention, reconciliation run history, and Webhook Delivery Log metadata
 - dashboard diagnostics for reconciliation failures when operational support needs it
@@ -116,7 +116,7 @@ Dashboard routes use a separate authentication surface:
 - cyspbot exchanges the callback code for a GitHub App user access token.
 - cyspbot stores encrypted token material in a short-lived server-side Dashboard Session and sends a signed HTTP-only session cookie.
 - Repository visibility for the dashboard comes from GitHub's user-to-server installation repository APIs, not from local installation records alone.
-- Dashboard repository access checks may upsert positive projection bootstrap rows for repositories GitHub returned for the current Dashboard User. Future Installation Reconciliation is the only path that performs full installation-slice replacement, deletion, suspension, or removal decisions.
+- Dashboard repository access checks do not persist repository visibility or projection rows.
 
 Installation Token Issuance routes still do not accept GitHub PATs, GitHub App JWTs from Callers, or Dashboard Session cookies as substitutes for GitHub Actions OIDC authentication.
 
@@ -358,7 +358,6 @@ Behavior:
 - Installation setup callbacks are not sufficient to create a Dashboard Session.
 - The service does not trust `installation_id` for authorization, because setup URLs are externally reachable and the query parameter can be spoofed.
 - The service clears any stale cyspbot OAuth state cookie and redirects to `/login/github?return_to=%2Fdashboard`.
-- `GET /auth/github/callback` keeps a defensive compatibility fallback for setup-shaped callbacks, but that fallback does not exchange an unstateful `code` and redirects into `/login/github`.
 
 Rationale:
 GitHub distinguishes the Setup URL from the OAuth callback URL. The Setup URL is for install/update onboarding and carries untrusted installation metadata; the OAuth callback is for completing a user authorization flow. Keeping them separate preserves the installed-app onboarding experience while keeping Dashboard Session creation tied to a user-initiated OAuth flow with cyspbot's signed state cookie.
@@ -616,9 +615,8 @@ Future implementation:
 
 - serialized Installation Reconciliation execution for one installation at a time
 - scheduled retry dispatch for due reconciliation work
-- full installation-slice replacement, deletion, suspension, and removal decisions
 
-The Installation Coordinator is not the durable source of truth for the Audit Log, Dashboard Sessions, or repository projection.
+The Installation Coordinator is not the durable source of truth for the Audit Log or Dashboard Sessions.
 
 ### 9.3 Webhook Delivery Log persistence
 
@@ -747,7 +745,7 @@ The current implementation satisfies these behavior checks:
 3. The caller-visible GitHub access-token request sent upstream is restricted to the Calling Repository ID, sends the checked-in `contents: write` and `pull_requests: write` permissions selected by the Token Policy, and opts in to GitHub's temporary stateless token format header.
 4. Authentication trusts only configured issuers and verifies against coordinated per-issuer JWKS state with bounded freshness, stale serving, and backoff.
 5. `POST /github/webhooks` rejects malformed, oversized, unsigned, or incorrectly signed deliveries; accepts valid signed JSON deliveries with positive integer `installation.id`; and also accepts signed `ping` validation deliveries without `installation.id`.
-6. GitHub App installation setup callbacks are handled at `GET /github/setup`, never create a Dashboard Session, never trust `installation_id` for authorization, clear stale OAuth state, and redirect to `/login/github?return_to=%2Fdashboard`. Setup-shaped callbacks that arrive at `GET /auth/github/callback` are treated only as compatibility fallback and never exchange an unstateful `code`.
+6. GitHub App installation setup callbacks are handled at `GET /github/setup`, never create a Dashboard Session, never trust `installation_id` for authorization, clear stale OAuth state, and redirect to `/login/github?return_to=%2Fdashboard`.
 7. Authenticated Installation Token Issuance attempts are durably persisted in the central Audit Log before live GitHub lookup, every Audit Log row records the domain outcome, successful issuances record the actual permission set GitHub returned in relational child rows, denials and stable failure reasons are recorded in relational child rows, and the final Installation Token Issuance response fails closed if the required audit write cannot be persisted.
 8. Errors are returned as OAuth-style JSON token responses for `POST /token` and as minimal `application/problem+json` responses for non-token routes.
 9. The GitHub App private key remains inside the service secret boundary and is never returned or persisted in logs or API responses.

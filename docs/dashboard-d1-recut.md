@@ -46,7 +46,6 @@ GitHub App installation setup redirects use `GET /github/setup`. That route is d
 - cyspbot does not trust `installation_id`, because the setup URL is externally reachable and the query parameter can be spoofed.
 - cyspbot does not create a Dashboard Session from a setup callback.
 - If a setup callback has a positive integer `installation_id` plus `setup_action=install` or `setup_action=update`, cyspbot clears any stale OAuth state cookie and redirects to `/login/github?return_to=%2Fdashboard`.
-- `GET /auth/github/callback` keeps the same redirect behavior as a defensive compatibility fallback for setup-shaped callbacks, but the target GitHub App configuration uses `/github/setup`.
 - This preserves the requirement that Dashboard Sessions are created only from a user-initiated, state-bound GitHub App user authorization flow.
 
 ### Dashboard
@@ -78,7 +77,6 @@ Behavior:
 
 - Audit Log persistence
 - issued Installation Token detail persistence
-- current installation/repository/membership projection
 - Dashboard Sessions
 - Installation Reconciliation state and run history
 - Webhook Delivery Log metadata
@@ -95,22 +93,21 @@ Naming rule:
 
 Table ownership guardrail:
 
-| Table family                                                                                  | Data class                                         | Writer                                                                               | May authorize?                         |
-| --------------------------------------------------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------ | -------------------------------------- |
-| `installation_token_issuance_audit_entries` and child rows                                    | Durable Audit Log facts                            | Installation Token Issuance                                                          | No                                     |
-| `issued_installation_tokens` and child rows                                                   | Durable issued Installation Token facts            | Installation Token Issuance                                                          | No                                     |
-| `dashboard_users` and `dashboard_sessions`                                                    | Durable Dashboard User and Dashboard Session state | Dashboard authentication                                                             | Yes, for dashboard authentication only |
-| `github_app_installations`, `github_repositories`, and `github_app_installation_repositories` | Current GitHub-derived installation projection     | Installation Reconciliation; positive bootstrap upserts from dashboard access checks | No                                     |
-| `installation_reconciliation_states` and `installation_reconciliation_runs`                   | Durable scheduler state and future run history     | Installation Reconciliation signal path; future executor and retry dispatcher        | No                                     |
-| `webhook_delivery_log_entries`                                                                | Durable operational metadata                       | Webhook Receiver                                                                     | No                                     |
+| Table family                                                                | Data class                                         | Writer                                                                        | May authorize?                         |
+| --------------------------------------------------------------------------- | -------------------------------------------------- | ----------------------------------------------------------------------------- | -------------------------------------- |
+| `installation_token_issuance_audit_entries` and child rows                  | Durable Audit Log facts                            | Installation Token Issuance                                                   | No                                     |
+| `issued_installation_tokens` and child rows                                 | Durable issued Installation Token facts            | Installation Token Issuance                                                   | No                                     |
+| `dashboard_users` and `dashboard_sessions`                                  | Durable Dashboard User and Dashboard Session state | Dashboard authentication                                                      | Yes, for dashboard authentication only |
+| `installation_reconciliation_states` and `installation_reconciliation_runs` | Durable scheduler state and future run history     | Installation Reconciliation signal path; future executor and retry dispatcher | No                                     |
+| `webhook_delivery_log_entries`                                              | Durable operational metadata                       | Webhook Receiver                                                              | No                                     |
 
 ### `GitHubInstallationObject` is authoritative only for
 
 - installation-local Installation Reconciliation signal coalescing
 - minimal installation-local coordination state
 
-It is not authoritative for the Audit Log, repository projection, or Dashboard Sessions.
-Its local state is reconstructable from D1 plus a new incoming signal; no audit, projection, visibility, session, retry counter, or durable failure history exists only inside the Durable Object.
+It is not authoritative for the Audit Log or Dashboard Sessions.
+Its local state is reconstructable from D1 plus a new incoming signal; no audit, visibility, session, retry counter, or durable failure history exists only inside the Durable Object.
 
 Future implementation uses this Durable Object for serialized Installation Reconciliation execution.
 
@@ -125,13 +122,12 @@ All tables are created with foreign keys enabled.
 Cross-cutting schema guardrails:
 
 - Identity columns store the most immutable identifier available from GitHub. Mutable names and logins are display metadata or route locators only.
-- Current projection tables may be corrected by GitHub reconciliation, but historical fact tables remain stable evidence even when GitHub state changes later.
 - Nullable columns mean "not yet known", "not returned by GitHub", or "not applicable at this stage"; do not use `NULL` as a third business outcome when an explicit status or reason code is needed.
 - JSON is avoided for queryable facts. Use child rows for repeated values that dashboard reads, retention jobs, or audit exports need to filter or summarize.
 - Secret material is never stored raw. Hashes support lookup only; encrypted blobs support future decrypt-and-use flows only when a separate key version is present.
-- Foreign keys are used for D1-owned lifecycle coupling, but not from durable audit facts to mutable projection rows.
+- Foreign keys are used for D1-owned lifecycle coupling, but durable audit facts intentionally stand on their own.
 - Every table that participates in time-based cleanup has either a direct expiry timestamp or a retention-driving timestamp with an index.
-- A writer may add data only inside its owned table family unless this document explicitly allows a bootstrap write.
+- A writer may add data only inside its owned table family.
 
 ### Dashboard Users
 
@@ -218,92 +214,6 @@ Future refresh-token path:
 - A successful refresh rotates the Dashboard Session id, rotates the raw session token, replaces the encrypted token blob, and updates plaintext expiry fields in one transaction.
 - A failed refresh deletes the Dashboard Session and redirects the Dashboard User to `/login/github`.
 
-### GitHub App Installations
-
-```sql
-CREATE TABLE github_app_installations (
-  installation_id INTEGER PRIMARY KEY,
-  github_account_id TEXT,
-  github_account_login_display TEXT,
-  github_account_type TEXT,
-  repository_selection TEXT NOT NULL,
-  suspended_at TEXT,
-  deleted_at TEXT,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-);
-```
-
-Notes:
-
-- `installation_id` is the immutable GitHub App Installation key and the aggregate key for Installation Reconciliation.
-- `github_account_id`, `github_account_login_display`, and `github_account_type` describe the account that owns the installation. They are projection metadata, not dashboard-user authorization facts.
-- `repository_selection` records GitHub's installation selection mode, but it is not used to infer repository membership; membership comes from explicit repository edges.
-- `suspended_at` and `deleted_at` are soft-state markers from GitHub. Reads treat either marker as making the installation inactive unless a route documents a historical view.
-- Trade-off: the projection keeps installation account metadata even though token issuance remains live against GitHub. This supports dashboard context and reconciliation operations without making projection authoritative for token issuance.
-
-### GitHub Repositories
-
-```sql
-CREATE TABLE github_repositories (
-  repository_id INTEGER PRIMARY KEY,
-  owner_login_display TEXT NOT NULL,
-  repository_name_display TEXT NOT NULL,
-  full_name_display TEXT NOT NULL,
-  full_name_normalized TEXT NOT NULL,
-  github_owner_id TEXT,
-  repository_visibility TEXT NOT NULL,
-  archived_at TEXT,
-  deleted_at TEXT,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-);
-
-CREATE UNIQUE INDEX github_repositories_active_full_name_normalized
-  ON github_repositories(full_name_normalized)
-  WHERE deleted_at IS NULL;
-
-CREATE INDEX github_repositories_by_archived_at ON github_repositories(archived_at);
-CREATE INDEX github_repositories_by_deleted_at ON github_repositories(deleted_at);
-```
-
-Notes:
-
-- `repository_id` is the immutable repository identity.
-- `owner_login_display`, `repository_name_display`, and `full_name_display` are current GitHub display metadata and may change on rename or transfer.
-- `full_name_normalized` is lowercased `owner/name` used for routing and uniqueness.
-- Display metadata columns are not used for authorization, joins, route resolution, or uniqueness.
-- Soft-deleted rows are retained for a finite window.
-- `github_owner_id` is retained as GitHub-issued owner identity evidence; it is not enough to authorize dashboard access.
-- `repository_visibility` is current projection metadata for display and filtering, not the Token Policy's live visibility check.
-- `archived_at` and `deleted_at` are separate because archived repositories can still have useful audit history, while deleted repositories should disappear from normal navigation after retention.
-- Trade-off: current-name uniqueness intentionally rejects alias-history routing. That makes route resolution simple and prevents old names from becoming accidental authorization keys.
-
-### GitHub App Installation Repositories
-
-```sql
-CREATE TABLE github_app_installation_repositories (
-  installation_id INTEGER NOT NULL,
-  repository_id INTEGER NOT NULL,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  PRIMARY KEY (installation_id, repository_id),
-  FOREIGN KEY (installation_id) REFERENCES github_app_installations(installation_id) ON DELETE CASCADE,
-  FOREIGN KEY (repository_id) REFERENCES github_repositories(repository_id) ON DELETE CASCADE
-);
-
-CREATE INDEX github_app_installation_repositories_by_repository_id
-  ON github_app_installation_repositories(repository_id);
-```
-
-Notes:
-
-- This is current-state projection only.
-- Membership edges are hard-deleted immediately when Installation Reconciliation removes them.
-- The composite primary key prevents duplicate membership evidence for the same installation and repository.
-- `created_at` and `updated_at` are edge-lifecycle metadata only; they are not interpreted as first-installed or last-authorized timestamps without checking GitHub's contract.
-- Trade-off: hard-deleting removed edges keeps current-state reads simple, but loses membership history. Historical token issuance remains available through Audit Log rows, which intentionally do not depend on this edge table.
-
 ### Dashboard repository access checks
 
 Notes:
@@ -311,9 +221,8 @@ Notes:
 - The dashboard does not persist a per-user repository visibility cache.
 - On each dashboard list or detail request, cyspbot calls GitHub's user-to-server installation and installation-repository APIs with the Dashboard User's GitHub User Access Token.
 - A repository is authorized for the response only when GitHub returns it during that request.
-- Dashboard access checks may upsert the `github_app_installations`, `github_repositories`, and `github_app_installation_repositories` projection rows needed to display the GitHub-returned repositories and join audit history by immutable repository ID.
-- Those upserts are bootstrapping writes from GitHub's user-to-server installation repository API response; they do not delete repositories, delete installation membership edges, mark repositories or installations as deleted, or infer visibility for repositories GitHub did not return for the user.
-- Future Installation Reconciliation is the only writer that performs full installation-slice replacement, deletion, suspension, or removal decisions.
+- Dashboard access checks render from the GitHub response and join audit history by immutable repository ID.
+- They do not persist repository visibility, installation membership, repository names, or installation projection rows.
 
 ### Audit Log
 
@@ -370,11 +279,11 @@ Notes:
 - A durable `finalization_failed` row is only guaranteed when cyspbot can persist the failure marker after a partial terminal-write failure.
 - If D1 is unavailable and the failure marker cannot be persisted, the original `pending` intent row is the durable gap record and the runtime emits an operational error suitable for alerting.
 - Pre-authentication failures that never produce normalized Caller context stay in operational logs, not this table.
-- Audit Log rows intentionally do not foreign-key to current projection tables because audit durability does not depend on Installation Reconciliation timing or projection retention.
+- Audit Log rows intentionally do not foreign-key to mutable GitHub current-state tables.
 - `audit_state` separates write lifecycle from the domain `outcome`. A row can be `pending` before GitHub lookup or token creation has produced a terminal outcome.
 - `requested_at` is the stable event time for retention and ordering; `finalized_at` is the terminal write time and may lag.
 - `installation_id` is nullable to preserve authenticated attempts that fail before GitHub returns an installation.
-- Caller repository columns duplicate OIDC-derived identity rather than referencing projection so the evidence survives renames, transfers, and projection cleanup.
+- Caller repository columns duplicate OIDC-derived identity so the evidence survives renames and transfers.
 - `oidc_resolved_key_id` is nullable because not every verification failure has a resolved key; when present it supports key-rotation forensics without storing raw JWTs.
 - `outcome` is nullable while `audit_state = 'pending'`; finalized rows set it to exactly one terminal domain outcome.
 - Trade-off: the table is intentionally wide for first-order audit facts. This avoids fragile JSON parsing in dashboard and export paths while keeping repeated reason and permission data in child tables.
@@ -489,8 +398,7 @@ CREATE TABLE installation_reconciliation_runs (
   error_code TEXT,
   error_message TEXT,
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  FOREIGN KEY (installation_id) REFERENCES github_app_installations(installation_id) ON DELETE CASCADE
+  updated_at TEXT NOT NULL
 );
 
 CREATE INDEX installation_reconciliation_runs_by_installation_started_at
@@ -530,7 +438,6 @@ CREATE TABLE installation_reconciliation_states (
   consecutive_failure_count INTEGER NOT NULL DEFAULT 0,
   next_retry_at TEXT,
   updated_at TEXT NOT NULL,
-  FOREIGN KEY (installation_id) REFERENCES github_app_installations(installation_id) ON DELETE CASCADE,
   FOREIGN KEY (current_run_id) REFERENCES installation_reconciliation_runs(id),
   FOREIGN KEY (last_successful_run_id) REFERENCES installation_reconciliation_runs(id),
   FOREIGN KEY (last_failed_run_id) REFERENCES installation_reconciliation_runs(id)
@@ -562,8 +469,7 @@ CREATE TABLE webhook_delivery_log_entries (
   delivery_accepted INTEGER NOT NULL CHECK (delivery_accepted IN (0, 1)),
   webhook_signature_valid INTEGER NOT NULL CHECK (webhook_signature_valid IN (0, 1)),
   response_status_code INTEGER NOT NULL,
-  delivery_metadata_json TEXT,
-  FOREIGN KEY (installation_id) REFERENCES github_app_installations(installation_id)
+  delivery_metadata_json TEXT
 );
 
 CREATE INDEX webhook_delivery_log_entries_by_received_at
@@ -616,7 +522,6 @@ Semantics:
 Not stored here:
 
 - Audit Log
-- repository projection
 - Dashboard Sessions
 - durable retry counters or error state already recorded in D1
 
@@ -653,11 +558,11 @@ Rules:
   - repositories without history sort by `full_name_display ASC`
 - use GitHub-returned `full_name` for display
 
-Current summary projection strategy:
+Current summary strategy:
 
 - compute on read from `installation_token_issuance_audit_entries`
 
-Future implementation may add a SQL-side summary column or materialized projection if query cost requires it.
+Future implementation may add a SQL-side summary table if query cost requires it.
 
 ### Dashboard details
 
@@ -669,22 +574,20 @@ Route semantics:
 
 - The repository detail route uses the current normalized `owner/name` as a user-facing locator only.
 - If a repository has been renamed or transferred, old `owner/name` URLs return `404`.
-- `/dashboard` is the canonical entrypoint and generates links from current projection rows.
+- `/dashboard` is the canonical entrypoint and generates links from repositories GitHub returns for the current Dashboard User.
 - Alias-history routing is not implemented; historical names remain audit display evidence only.
 
 Resolution:
 
 1. fetch the Dashboard User's GitHub-visible installation repository slices
 2. if GitHub does not return the requested current `owner/name`, return `404`
-3. upsert positive projection bootstrap rows for repositories GitHub returned
-4. resolve the current repository projection by normalized `owner/name`
-5. if GitHub access checks fail, return `503`
-6. query last 5 `installation_token_issuance_audit_entries` rows by `caller_repository_id`
-7. left join optional `issued_installation_tokens` and `issued_installation_token_permissions`
+3. if GitHub access checks fail, return `503`
+4. query last 5 `installation_token_issuance_audit_entries` rows by `caller_repository_id`
+5. left join optional `issued_installation_tokens` and `issued_installation_token_permissions`
 
 UI behavior:
 
-- header shows current repository name from projection
+- header shows the repository name returned by GitHub
 - rows show request-level facts first
 - `issued` rows inline `expires_at` and compact permissions summary
 - if historical `caller_repository_full_name_display` differs from current `full_name_display`, show a small “recorded as …” note on that row
@@ -746,18 +649,18 @@ Dashboard list page:
 Repository detail page:
 
 - The server authorizes by the current GitHub user-to-server repository response before rendering any audit rows.
-- Header uses current projection `full_name_display`.
+- Header uses the GitHub-returned `full_name`.
 - Route params are a locator only; after resolution, all audit queries and UI row identity use immutable `repository_id`.
 - Show the last 5 Installation Token Issuance rows in reverse request time.
 - Outcome-specific visual treatment keeps text labels present without color dependence.
 - Policy or failure reason codes are shown as stable machine-readable codes first; optional display copy may be added beside them in future UI work.
 - For issued rows, show token expiry and returned permissions, but never show token values, token hashes, or secret-derived fingerprints.
-- If `caller_repository_full_name_display` differs from current projection display name, the row shows "recorded as ...".
+- If `caller_repository_full_name_display` differs from the GitHub-returned display name, the row shows "recorded as ...".
 - If a row has `audit_state = 'pending'` or `finalization_failed`, the audit state is shown explicitly rather than inferring success or denial from missing child rows.
 
 Navigation and routing:
 
-- `/dashboard` is the canonical entrypoint and produces links using current projection `owner/name`.
+- `/dashboard` is the canonical entrypoint and produces links using GitHub-returned `owner/name`.
 - Detail links use URL-encoded current display owner/name, not `repository_id`.
 - Client-side routing is not used; browser navigation makes normal GET requests so authorization runs server-side for every page.
 - Old repository names after rename or transfer return `404`; do not implement client-side alias redirects.
@@ -827,7 +730,7 @@ Installation Token Issuance remains live against GitHub:
 - finalize `installation_token_issuance_audit_entries` and any child rows in D1
 - if the finalization write fails, return a server error even if GitHub already issued the token
 
-Installation Token Issuance does not update installation or repository projection opportunistically.
+Installation Token Issuance does not update dashboard or reconciliation current-state tables opportunistically.
 
 ## Operational security events
 
@@ -864,7 +767,6 @@ Auth and redirect controls:
 - The OAuth state cookie uses `Path=/`, does not set a `Domain` attribute, and is `HttpOnly`, `Secure`, and `SameSite=Lax`.
 - `/auth/github/callback` validates the returned `state` before exchanging a dashboard OAuth code.
 - `/github/setup` does not create a Dashboard Session, does not trust `installation_id`, and redirects recognized install/update setup callbacks to `/login/github?return_to=%2Fdashboard` after clearing stale OAuth state.
-- `/auth/github/callback` defensively redirects setup-shaped callbacks to `/login/github?return_to=%2Fdashboard`, but it does not exchange a setup callback code without valid OAuth state.
 - Return targets are validated against an explicit allowlist of dashboard route shapes:
   - `/dashboard`
   - `/dashboard/repositories/:owner/:name`
@@ -880,12 +782,12 @@ These checks are ordered by request flow and describe the current implementation
 4. Repository detail access fetches current GitHub visibility and shows audit data only when GitHub returns the requested repository for the current Dashboard User. The failure case being guarded is historical audit evidence leaking to a user who no longer has GitHub visibility.
 5. Installation Token Issuance writes the audit intent before live GitHub lookup or token creation. The failure case being guarded is an issued token with no durable authenticated request record.
 6. Installation Token Issuance finalizes the audit row and child rows after GitHub response. The failure case being guarded is a dashboard-visible success without the returned expiry and permissions GitHub actually issued.
-7. Webhook receipt validates signature and envelope before signaling reconciliation, then records delivery metadata without storing the raw body. The failure case being guarded is unsigned input mutating projection state or creating a long-lived webhook payload archive.
-8. Webhook receipt signals `GitHubInstallationObject`, which records pending reconciliation state in D1. The failure case being guarded is unsigned input mutating projection state or creating a long-lived webhook payload archive.
+7. Webhook receipt validates signature and envelope before signaling reconciliation, then records delivery metadata without storing the raw body. The failure case being guarded is unsigned input mutating state or creating a long-lived webhook payload archive.
+8. Webhook receipt signals `GitHubInstallationObject`, which records pending reconciliation state in D1. The failure case being guarded is unsigned input mutating state or creating a long-lived webhook payload archive.
 
 Future implementation:
 
-9. Installation Reconciliation is serialized by `GitHubInstallationObject` and committed atomically per installation slice. The failure case being guarded is concurrent or partial projection replacement that mixes old and new GitHub state.
+9. Installation Reconciliation is serialized by `GitHubInstallationObject`. The failure case being guarded is concurrent per-installation repair work.
 10. Retry recovery treats expired reconciliation leases as lost work and schedules another pass. The failure case being guarded is a permanently stuck installation after Worker termination.
 11. Cleanup runs from a scheduled Worker and respects retention indexes and state references. The failure case being guarded is relying on read traffic for retention or deleting run rows still referenced by scheduler state.
 
@@ -894,21 +796,16 @@ Future implementation:
 ### Writer ownership
 
 - Installation Token Issuance writes only Audit Log tables
-- Dashboard authentication and dashboard access checks write:
+- Dashboard authentication writes:
   - `dashboard_users`
   - `dashboard_sessions`
-  - positive projection bootstrap rows for GitHub-returned visible repositories only
 - Webhook Receiver writes:
   - `webhook_delivery_log_entries`
 - Installation Reconciliation signal handling writes:
-  - placeholder `github_app_installations` rows when a signal arrives for an installation not yet present
   - `installation_reconciliation_states`
 
 Future Installation Reconciliation execution writes:
 
-- `github_app_installations`
-- `github_repositories`
-- `github_app_installation_repositories`
 - `installation_reconciliation_states`
 - `installation_reconciliation_runs`
 
@@ -925,10 +822,9 @@ Future Installation Reconciliation execution writes:
 2. DO creates an `installation_reconciliation_runs` row with `run_status = 'running'`, a random `run_token`, and a `5 minute` lease
 3. DO updates `installation_reconciliation_states` with `reconciliation_state = 'running'`, `current_run_id`, and clears `reconciliation_requested`
 4. the running pass renews the run lease every `2 minutes` by updating the run row with a matching `run_token`
-5. Installation Reconciliation fetches the authoritative installation snapshot from GitHub
-6. if the snapshot is complete, replace/update installation projection atomically in D1
-7. on success, mark the run `succeeded`, set `last_successful_run_id`, reset `consecutive_failure_count` to `0`, set `reconciliation_state = 'idle'` if no signal arrived while running or `pending` if one did, and clear `current_run_id`
-8. on failure, mark the run `failed`, set `last_failed_run_id`, increment `consecutive_failure_count`, set `reconciliation_state = 'backoff'`, set `next_retry_at`, clear `current_run_id`, and leave `reconciliation_requested = 1`
+5. Installation Reconciliation performs the future per-installation repair work
+6. on success, mark the run `succeeded`, set `last_successful_run_id`, reset `consecutive_failure_count` to `0`, set `reconciliation_state = 'idle'` if no signal arrived while running or `pending` if one did, and clear `current_run_id`
+7. on failure, mark the run `failed`, set `last_failed_run_id`, increment `consecutive_failure_count`, set `reconciliation_state = 'backoff'`, set `next_retry_at`, clear `current_run_id`, and leave `reconciliation_requested = 1`
 
 Future crash recovery rule:
 
@@ -945,18 +841,9 @@ Future crash recovery rule:
 - it pokes the corresponding `GitHubInstallationObject`
 - the DO is the sole per-installation executor
 
-### Future Projection Atomicity Rule
-
-- installation projection replacement is atomic per installation
-- do not partially replace `github_app_installation_repositories`
-- if GitHub fetch is incomplete or inconsistent, leave previous projection intact
-- installation-scoped route normalization and projection uniqueness use the normalized full-name key, not raw display casing
-
 ## Retention and cleanup
 
 - `installation_token_issuance_audit_entries` and all child rows: `180 days`
-- soft-deleted `github_repositories`: `180 days`
-- soft-deleted `github_app_installations`: `180 days`
 - `dashboard_sessions`:
   - invalidated sessions: delete immediately
   - expired sessions: purge within `24 hours`
@@ -972,17 +859,16 @@ Future cleanup runs from a scheduled Worker job, not only opportunistically on r
 - Installation Token Issuance writes mandatory D1 Audit Log intent and finalization rows.
 - Dashboard authentication routes use D1-backed Dashboard Sessions.
 - Dashboard repository list and detail routes use GitHub App user authorization plus current GitHub user-to-server repository responses.
-- Dashboard access checks perform positive projection bootstrap upserts for repositories returned by GitHub's user-to-server installation repository APIs.
 - `GitHubInstallationObject` records pending Installation Reconciliation signals and state in D1.
 - Webhook delivery metadata is written to D1 and accepted installation events signal `GitHubInstallationObject`.
 - The old Dashboard Session Durable Object, installation-local Audit Log ownership, repository-id dashboard route, and Durable Object migration endpoint are removed.
 
 Future implementation:
 
-- implement full Installation Reconciliation execution and full installation-slice replacement
+- implement full Installation Reconciliation execution
 - add a scheduled retry dispatcher
 - add cleanup jobs for Dashboard Sessions, Audit Log retention, Installation Reconciliation state, and Webhook Delivery Log rows
-- add repository list summary projection only if query cost requires it
+- add repository list summary tables only if query cost requires it
 - add operator diagnostics UI or reports for Installation Reconciliation failures
 - add future permission-intersection Audit Log fields only when that feature actually exists
 
@@ -993,14 +879,13 @@ Any future implementation keeps exactly one authoritative read path for any give
 ### D1 table scope
 
 Current state:
-D1 table scope is split between durable facts, current GitHub-derived projection, and operational metadata.
+D1 table scope is split between durable facts and operational metadata.
 
 Guardrails:
 
 - Audit Log rows and issued Installation Token child rows are durable facts and do not authorize dashboard repository detail access.
-- Repository projection rows are current-state GitHub-derived data and do not authorize dashboard repository detail access.
 - Dashboard repository detail access is authorized only by the current GitHub user-to-server repository response.
-- Audit Log rows intentionally do not foreign-key to projection rows.
+- Audit Log rows intentionally do not foreign-key to mutable GitHub current-state tables.
 
 ### Installation Coordinator scope
 
@@ -1012,7 +897,7 @@ Guardrails:
 - It coalesces Installation Reconciliation signals.
 - Future Installation Reconciliation execution is serialized through this boundary.
 - Its local state is reconstructable from D1 plus a new signal.
-- It does not become the durable owner of audit records, projection rows, visibility rows, sessions, retry counters, or failure history.
+- It does not become the durable owner of audit records, visibility rows, sessions, retry counters, or failure history.
 
 ### Repository route semantics
 
@@ -1023,7 +908,7 @@ Guardrails:
 
 - Resolve detail routes by current normalized `owner/name`, then use immutable `repository_id` internally.
 - Return `404` for old names after rename or transfer.
-- Generate canonical detail links from `/dashboard` using current projection display names.
+- Generate canonical detail links from `/dashboard` using GitHub-returned display names.
 - Keep historical names as audit-row display evidence only; do not add alias-history routing until there is a concrete product need.
 
 ### Installation Token Issuance strictness

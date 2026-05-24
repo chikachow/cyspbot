@@ -30,51 +30,6 @@ CREATE INDEX IF NOT EXISTS dashboard_sessions_by_idle_expires_at
 CREATE INDEX IF NOT EXISTS dashboard_sessions_by_absolute_expires_at
   ON dashboard_sessions(absolute_expires_at);
 
-CREATE TABLE IF NOT EXISTS github_app_installations (
-  installation_id INTEGER PRIMARY KEY,
-  github_account_id TEXT,
-  github_account_login_display TEXT,
-  github_account_type TEXT,
-  repository_selection TEXT NOT NULL,
-  suspended_at TEXT,
-  deleted_at TEXT,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS github_repositories (
-  repository_id INTEGER PRIMARY KEY,
-  owner_login_display TEXT NOT NULL,
-  repository_name_display TEXT NOT NULL,
-  full_name_display TEXT NOT NULL,
-  full_name_normalized TEXT NOT NULL,
-  github_owner_id TEXT,
-  repository_visibility TEXT NOT NULL,
-  archived_at TEXT,
-  deleted_at TEXT,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-);
-
-CREATE UNIQUE INDEX IF NOT EXISTS github_repositories_active_full_name_normalized
-  ON github_repositories(full_name_normalized)
-  WHERE deleted_at IS NULL;
-CREATE INDEX IF NOT EXISTS github_repositories_by_archived_at ON github_repositories(archived_at);
-CREATE INDEX IF NOT EXISTS github_repositories_by_deleted_at ON github_repositories(deleted_at);
-
-CREATE TABLE IF NOT EXISTS github_app_installation_repositories (
-  installation_id INTEGER NOT NULL,
-  repository_id INTEGER NOT NULL,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  PRIMARY KEY (installation_id, repository_id),
-  FOREIGN KEY (installation_id) REFERENCES github_app_installations(installation_id) ON DELETE CASCADE,
-  FOREIGN KEY (repository_id) REFERENCES github_repositories(repository_id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS github_app_installation_repositories_by_repository_id
-  ON github_app_installation_repositories(repository_id);
-
 CREATE TABLE IF NOT EXISTS installation_token_issuance_audit_entries (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   requested_at TEXT NOT NULL,
@@ -146,8 +101,7 @@ CREATE TABLE IF NOT EXISTS installation_reconciliation_runs (
   error_code TEXT,
   error_message TEXT,
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  FOREIGN KEY (installation_id) REFERENCES github_app_installations(installation_id) ON DELETE CASCADE
+  updated_at TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS installation_reconciliation_runs_by_installation_started_at
@@ -166,7 +120,6 @@ CREATE TABLE IF NOT EXISTS installation_reconciliation_states (
   consecutive_failure_count INTEGER NOT NULL DEFAULT 0,
   next_retry_at TEXT,
   updated_at TEXT NOT NULL,
-  FOREIGN KEY (installation_id) REFERENCES github_app_installations(installation_id) ON DELETE CASCADE,
   FOREIGN KEY (current_run_id) REFERENCES installation_reconciliation_runs(id),
   FOREIGN KEY (last_successful_run_id) REFERENCES installation_reconciliation_runs(id),
   FOREIGN KEY (last_failed_run_id) REFERENCES installation_reconciliation_runs(id)
@@ -183,8 +136,7 @@ CREATE TABLE IF NOT EXISTS webhook_delivery_log_entries (
   delivery_accepted INTEGER NOT NULL CHECK (delivery_accepted IN (0, 1)),
   webhook_signature_valid INTEGER NOT NULL CHECK (webhook_signature_valid IN (0, 1)),
   response_status_code INTEGER NOT NULL,
-  delivery_metadata_json TEXT,
-  FOREIGN KEY (installation_id) REFERENCES github_app_installations(installation_id)
+  delivery_metadata_json TEXT
 );
 
 CREATE INDEX IF NOT EXISTS webhook_delivery_log_entries_by_received_at

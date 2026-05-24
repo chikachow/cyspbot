@@ -83,9 +83,6 @@ export interface GitHubUserRepositoryAccess {
   fullName: string;
   githubRepoId: string;
   installationId: number;
-  name: string;
-  ownerLogin: string;
-  permissions: Record<string, boolean>;
   private: boolean;
 }
 
@@ -132,11 +129,6 @@ interface GitHubUserRepositoryAccessApiResponse {
   archived?: unknown;
   full_name?: unknown;
   id?: number;
-  name?: unknown;
-  owner?: {
-    login?: unknown;
-  };
-  permissions?: unknown;
   private?: unknown;
 }
 
@@ -370,20 +362,14 @@ export async function listGitHubUserInstallationRepositories(
     for (const repository of pageRepositories) {
       if (
         typeof repository.id === "number" &&
-        typeof repository.name === "string" &&
         typeof repository.full_name === "string" &&
-        typeof repository.owner?.login === "string" &&
-        typeof repository.private === "boolean" &&
-        isBooleanRecord(repository.permissions)
+        typeof repository.private === "boolean"
       ) {
         repositories.push({
           archived: repository.archived === true,
           fullName: repository.full_name,
           githubRepoId: String(repository.id),
           installationId,
-          name: repository.name,
-          ownerLogin: repository.owner.login,
-          permissions: repository.permissions,
           private: repository.private,
         });
       }
@@ -588,14 +574,6 @@ async function fetchGitHubApi(
 
 function ensureTrailingSlash(url: string): string {
   return url.endsWith("/") ? url : `${url}/`;
-}
-
-function isBooleanRecord(value: unknown): value is Record<string, boolean> {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    return false;
-  }
-
-  return Object.values(value).every((entry) => typeof entry === "boolean");
 }
 
 function isStringRecord(value: unknown): value is Record<string, string> {

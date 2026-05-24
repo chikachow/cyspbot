@@ -8,7 +8,6 @@ export interface SecretsStoreSecretBinding {
 export interface Env {
   AUDIT_LOG_MAX_ENTRIES?: string;
   AUDIT_LOG_RETENTION_DAYS?: string;
-  DASHBOARD_ACCESS_CACHE_TTL_SECONDS?: string;
   DASHBOARD_SESSION_LOOKUP_SECRET?: string;
   DASHBOARD_TOKEN_ENCRYPTION_SECRET?: string;
   GITHUB_API_BASE_URL?: string;

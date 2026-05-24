@@ -583,10 +583,6 @@ async function handleDashboardCallbackRequest(
   const state = url.searchParams.get("state");
   const storedState = await readDashboardOauthState(request, env);
 
-  if ((state === null || storedState === null) && isGitHubAppInstallationSetupCallback(url)) {
-    return dashboardLoginRedirectResponse(undefined, clearDashboardStateCookie(), "/dashboard");
-  }
-
   if (
     code === null ||
     state === null ||

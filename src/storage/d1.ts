@@ -79,13 +79,6 @@ type SessionRow = Record<"encrypted_github_user_token_blob" | "github_user_id", 
   > &
   Record<"id", number>;
 
-type RepositoryRow = Record<
-  "full_name_display" | "full_name_normalized" | "repository_visibility",
-  string
-> &
-  Record<"archived_at", string | null> &
-  Record<"repository_id", number>;
-
 type AuditRow = Record<
   | "audit_state"
   | "caller_repository_full_name_display"
@@ -409,7 +402,6 @@ export async function listAccessibleDashboardRepositories(
       installation.id,
       dependencies,
     );
-    await upsertDashboardRepositoryAccess(env, installation.id, repositories, now);
     repositoryAccesses.push(...repositories);
   }
 
@@ -455,45 +447,29 @@ export async function getAccessibleDashboardRepositoryByFullName(
       installation.id,
       dependencies,
     );
-    await upsertDashboardRepositoryAccess(env, installation.id, repositories, now);
 
     visibleRepository ??=
       repositories.find(
         (repository) => normalizeRepositoryFullName(repository.fullName) === fullNameNormalized,
       ) ?? null;
+
+    if (visibleRepository !== null) {
+      break;
+    }
   }
 
   if (visibleRepository === null) {
     return null;
   }
 
-  const repository = await env.DB.prepare(
-    `
-      SELECT
-        repository_id,
-        full_name_display,
-        full_name_normalized,
-        repository_visibility,
-        archived_at
-      FROM github_repositories
-      WHERE full_name_normalized = ?
-        AND deleted_at IS NULL
-      LIMIT 1
-    `,
-  )
-    .bind(fullNameNormalized)
-    .first<RepositoryRow>();
-
-  if (repository === null) {
-    return null;
-  }
+  const repositoryId = parseRepositoryId(visibleRepository.githubRepoId);
 
   return {
-    archivedAt: repository.archived_at,
-    fullNameDisplay: repository.full_name_display,
-    fullNameNormalized: repository.full_name_normalized,
-    repositoryId: repository.repository_id,
-    repositoryVisibility: repository.repository_visibility,
+    archivedAt: visibleRepository.archived ? now : null,
+    fullNameDisplay: visibleRepository.fullName,
+    fullNameNormalized,
+    repositoryId,
+    repositoryVisibility: visibleRepository.private ? "private" : "public",
   };
 }
 
@@ -587,81 +563,6 @@ export async function recordWebhookDelivery(
       input.metadata === undefined ? null : JSON.stringify(input.metadata),
     )
     .run();
-}
-
-async function upsertDashboardRepositoryAccess(
-  env: Env,
-  installationId: number,
-  repositories: GitHubUserRepositoryAccess[],
-  checkedAt: string,
-): Promise<void> {
-  const statements: D1PreparedStatement[] = [
-    env.DB.prepare(
-      `
-        INSERT INTO github_app_installations (
-          installation_id,
-          repository_selection,
-          created_at,
-          updated_at
-        ) VALUES (?, 'unknown', ?, ?)
-        ON CONFLICT(installation_id) DO UPDATE SET
-          updated_at = excluded.updated_at
-      `,
-    ).bind(installationId, checkedAt, checkedAt),
-  ];
-
-  for (const repository of repositories) {
-    const repositoryId = parseRepositoryId(repository.githubRepoId);
-    const fullNameNormalized = normalizeRepositoryFullName(repository.fullName);
-
-    statements.push(
-      env.DB.prepare(
-        `
-          INSERT INTO github_repositories (
-            repository_id,
-            owner_login_display,
-            repository_name_display,
-            full_name_display,
-            full_name_normalized,
-            repository_visibility,
-            created_at,
-            updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-          ON CONFLICT(repository_id) DO UPDATE SET
-            owner_login_display = excluded.owner_login_display,
-            repository_name_display = excluded.repository_name_display,
-            full_name_display = excluded.full_name_display,
-            full_name_normalized = excluded.full_name_normalized,
-            repository_visibility = excluded.repository_visibility,
-            deleted_at = NULL,
-            updated_at = excluded.updated_at
-        `,
-      ).bind(
-        repositoryId,
-        repository.ownerLogin,
-        repository.name,
-        repository.fullName,
-        fullNameNormalized,
-        repository.private ? "private" : "public",
-        checkedAt,
-        checkedAt,
-      ),
-      env.DB.prepare(
-        `
-          INSERT INTO github_app_installation_repositories (
-            installation_id,
-            repository_id,
-            created_at,
-            updated_at
-          ) VALUES (?, ?, ?, ?)
-          ON CONFLICT(installation_id, repository_id) DO UPDATE SET
-            updated_at = excluded.updated_at
-        `,
-      ).bind(installationId, repositoryId, checkedAt, checkedAt),
-    );
-  }
-
-  await env.DB.batch(statements);
 }
 
 async function listRepositoryAuditSummaries(

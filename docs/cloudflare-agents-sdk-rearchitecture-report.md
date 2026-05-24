@@ -36,7 +36,7 @@ Today `cyspbot` is already Cloudflare-native:
 - `src/worker/app.ts` is a thin HTTP Worker entrypoint for `/token`, `/github/claims`, `/github/webhooks`, and the dashboard routes.
 - `src/durable-objects/oidc-issuer-verifier-object.ts` keeps one verifier Durable Object per issuer registration and owns JWKS coordination, persistence, and refresh/backoff state.
 - `src/durable-objects/installation-object.ts` keeps one Durable Object per GitHub App installation and coalesces Installation Reconciliation signals.
-- D1 stores the Audit Log, issued Installation Token facts, Dashboard Sessions, projection rows, webhook delivery metadata, and Installation Reconciliation state.
+- D1 stores the Audit Log, issued Installation Token facts, Dashboard Sessions, webhook delivery metadata, and Installation Reconciliation state.
 - `src/github/api.ts` keeps token mint policy narrow and explicit, with repository-scoped installation tokens and GitHub App-governed permissions.
 - `docs/adr/0001-hosted-github-installation-token-broker.md`, `docs/adr/0002-per-issuer-jwks-verifier-durable-object.md`, `docs/adr/0003-dashboard-user-authorization.md`, and `docs/dashboard-d1-recut.md` document the important persistence and trust boundaries.
 
@@ -170,7 +170,7 @@ Those are manageable, but they are new complexity, not free capability.
 The current design has very clear boundaries:
 
 - issuer verification state belongs to issuer verifier DOs
-- D1 owns audit history, dashboard state, and projection data
+- D1 owns audit history and dashboard state
 - installation signal coalescing belongs to installation DOs
 - HTTP ingress stays explicit in the Worker
 

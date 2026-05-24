@@ -51,7 +51,7 @@ A bounded cyspbot-held record of webhook delivery metadata for deliveries that r
 _Avoid_: Permanent event store, raw-payload archive by default
 
 **Installation Reconciliation**:
-The cyspbot process boundary for refreshing current installation, repository, and installation-membership projection data from GitHub into D1 for one **GitHub App Installation** at a time. The current implementation records reconciliation signals and scheduler state. Full projection replacement remains future implementation.
+The cyspbot process boundary for future per-installation repair work. The current implementation records reconciliation signals and scheduler state only.
 _Avoid_: Request-time authorization source, opportunistic issuance-path cache patching
 
 **Installation Coordinator**:
@@ -102,8 +102,7 @@ _Avoid_: Permanent key store, token cache, caller-controlled key source
 - A **GitHub App Installation** is the GitHub-side authority that allows **cyspbot** to issue an **Installation Token**
 - cyspbot determines dashboard repository visibility from the intersection GitHub reports for a **Dashboard User**, a **GitHub App Installation**, and that installation's repositories
 - Dashboard repository list and detail pages authorize from the live GitHub response for the current **Dashboard User**
-- Future **Installation Reconciliation** is the only writer that performs full installation-slice replacement, deletion, suspension, or removal decisions for projection rows in D1
-- A **Dashboard Repository Access Check** may upsert positive projection bootstrap rows for repositories GitHub just returned for that **Dashboard User**, but it does not infer absence or remove projection state
+- **Dashboard Repository Access Checks** do not persist repository visibility or projection rows
 - The **Installation Coordinator** coalesces **Installation Reconciliation** signals per installation, but does not become a second durable source of truth
 - The **Webhook Receiver** accepts GitHub webhook deliveries only after signature and envelope validation
 - The **Webhook Receiver** routes each accepted **Installation Reconciliation** signal to the **Installation Coordinator** keyed by **GitHub App Installation**

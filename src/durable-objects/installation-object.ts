@@ -50,39 +50,27 @@ export class GitHubInstallationObject extends DurableObject<Env> {
       reconcileRequested: true,
     } satisfies InstallationCoordinatorState);
 
-    await this.env.DB.batch([
-      this.env.DB.prepare(
-        `
-          INSERT INTO github_app_installations (
-            installation_id,
-            repository_selection,
-            created_at,
-            updated_at
-          ) VALUES (?, 'unknown', ?, ?)
-          ON CONFLICT(installation_id) DO UPDATE SET
-            updated_at = excluded.updated_at
-        `,
-      ).bind(request.installationId, now, now),
-      this.env.DB.prepare(
-        `
-          INSERT INTO installation_reconciliation_states (
-            installation_id,
-            reconciliation_state,
-            reconciliation_requested,
-            last_requested_at,
-            updated_at
-          ) VALUES (?, 'pending', 1, ?, ?)
-          ON CONFLICT(installation_id) DO UPDATE SET
-            reconciliation_requested = 1,
-            last_requested_at = excluded.last_requested_at,
-            reconciliation_state = CASE
-              WHEN reconciliation_state = 'running' THEN reconciliation_state
-              ELSE 'pending'
-            END,
-            updated_at = excluded.updated_at
-        `,
-      ).bind(request.installationId, now, now),
-    ]);
+    await this.env.DB.prepare(
+      `
+        INSERT INTO installation_reconciliation_states (
+          installation_id,
+          reconciliation_state,
+          reconciliation_requested,
+          last_requested_at,
+          updated_at
+        ) VALUES (?, 'pending', 1, ?, ?)
+        ON CONFLICT(installation_id) DO UPDATE SET
+          reconciliation_requested = 1,
+          last_requested_at = excluded.last_requested_at,
+          reconciliation_state = CASE
+            WHEN reconciliation_state = 'running' THEN reconciliation_state
+            ELSE 'pending'
+          END,
+          updated_at = excluded.updated_at
+      `,
+    )
+      .bind(request.installationId, now, now)
+      .run();
 
     return {
       ok: true,

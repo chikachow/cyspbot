@@ -33,7 +33,7 @@ Current implementation:
 
 Future implementation:
 
-- full Installation Reconciliation execution and projection replacement
+- full Installation Reconciliation execution
 - retry dispatch for reconciliation work
 - retention cleanup jobs
 - optional operator diagnostics for reconciliation failures

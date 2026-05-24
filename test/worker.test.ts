@@ -888,21 +888,6 @@ describe("cyspbot worker", () => {
     );
   });
 
-  it("keeps a defensive login restart for setup callbacks sent to the OAuth callback", async () => {
-    const response = await fetchWorker(
-      "https://example.test/auth/github/callback?code=test-dashboard-code&installation_id=135120833&setup_action=install",
-      {
-        redirect: "manual",
-      },
-    );
-
-    expect(response.status).toBe(302);
-    expect(response.headers.get("location")).toBe("/login/github?return_to=%2Fdashboard");
-    expect(responseSetCookies(response)).toContain(
-      "__Host-cyspbot_oauth_state=; Path=/; SameSite=Lax; HttpOnly; Max-Age=0; Secure",
-    );
-  });
-
   it("authorizes the dashboard with GitHub user auth and renders recent repository token requests", async () => {
     const firstMint = await fetchWorker("https://example.test/token", {
       body: await tokenExchangeRequestBody(),

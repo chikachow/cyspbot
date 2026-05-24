@@ -16,7 +16,7 @@ The primary product specification is [docs/current-api-compatible-service-prd.md
 - Cloudflare Worker routing for token exchange, claims, webhook, dashboard, login, and setup routes.
 - One `OidcIssuerVerifierObject` Durable Object per trusted OIDC issuer for JWKS coordination, bounded stale serving, and refresh backoff.
 - One `GitHubInstallationObject` Durable Object per GitHub App Installation for reconciliation signal coalescing only.
-- D1-backed Dashboard Sessions, Audit Log, issued-token facts, GitHub installation/repository projection rows, Webhook Delivery Log metadata, and reconciliation state.
+- D1-backed Dashboard Sessions, Audit Log, issued-token facts, Webhook Delivery Log metadata, and reconciliation state.
 - GitHub App private key in Cloudflare Secrets Store for production; local PKCS#8 PEM fallback for development and tests.
 - Checked-in Token Policy code that allows Installation Token Issuance only for default-branch `schedule` and `workflow_dispatch` contexts.
 
