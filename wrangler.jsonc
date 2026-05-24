@@ -151,6 +151,7 @@
           "store_id": "d38c6b7fbcc143dba27208fa1c044e37",
         },
       ],
+      "preview_urls": false,
       "workers_dev": true,
     },
   },
