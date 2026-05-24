@@ -24,4 +24,4 @@ cyspbot has a read-only dashboard for humans. It authenticates Dashboard Users t
 - The dashboard uses user-facing repository URLs based on current `owner/name`, but resolves authorization and audit by immutable `repository_id` internally.
 - GitHub App installation setup redirects are treated as onboarding entrypoints, not as dashboard OAuth login completions. The target GitHub App configuration sends setup redirects to `/github/setup`; cyspbot clears stale OAuth state and restarts `/login/github` from there.
 
-The concrete current service contract, durable data model, dashboard behaviour, and future implementation notes are documented in [docs/service-contract.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/service-contract.md).
+The concrete current service contract, durable data model, and dashboard behaviour are documented in [docs/service-contract.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/service-contract.md).

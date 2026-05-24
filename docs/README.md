@@ -7,7 +7,6 @@ This directory separates current product facts from design history.
 - [Service contract](service-contract.md) is the primary current-state source. It defines the implemented API, dashboard, security, persistence, and compatibility contract for an indistinguishable implementation.
 - [Repository README](../README.md) is the operational entrypoint for setup, local development, deployment, and direct GitHub Actions usage.
 - [Domain glossary](../CONTEXT.md) defines the project vocabulary used in code reviews, design discussions, and future implementation work.
-- [Superseded current-product specification](current-api-compatible-service-prd.md) and [superseded dashboard D1 re-cut](dashboard-d1-recut.md) are retained as redirects to the service contract to avoid competing current-state documents.
 
 ## Decision History
 
