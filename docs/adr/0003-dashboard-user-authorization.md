@@ -21,9 +21,9 @@ cyspbot has a read-only dashboard for humans. It authenticates Dashboard Users t
   - Repository Visibility Cache
   - Installation Reconciliation state and run history
   - Webhook Delivery Log metadata
-- `GitHubInstallationObject` no longer owns the Audit Log or repository projection; it only coalesces Installation Reconciliation signals in the current implementation. Serialized Installation Reconciliation execution is future potential implementation.
+- `GitHubInstallationObject` no longer owns the Audit Log or repository projection; it only coalesces Installation Reconciliation signals in the current implementation. Serialized Installation Reconciliation execution is future implementation.
 - Installation Token Issuance continues to resolve installation and repository metadata live from GitHub and fails closed if final Audit Log persistence to D1 fails.
 - The dashboard uses user-facing repository URLs based on current `owner/name`, but resolves authorization and audit by immutable `repository_id` internally.
 - GitHub App installation setup redirects are treated as onboarding entrypoints, not as dashboard OAuth login completions. The target GitHub App configuration sends setup redirects to `/github/setup`; cyspbot clears stale OAuth state and restarts `/login/github` from there. If setup-shaped redirects still reach `/auth/github/callback`, that route keeps the same redirect as a defensive fallback and does not exchange an unstateful code.
 
-The concrete schema, Durable Object storage model, current implementation state, and future potential implementation notes are documented in [docs/dashboard-d1-recut.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/dashboard-d1-recut.md).
+The concrete schema, Durable Object storage model, current implementation state, and future implementation notes are documented in [docs/dashboard-d1-recut.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/dashboard-d1-recut.md).

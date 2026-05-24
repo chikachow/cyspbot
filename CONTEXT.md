@@ -2,6 +2,8 @@
 
 cyspbot is the maintainer's hosted automation application. It lets trusted GitHub Actions workflow runs obtain repository-scoped GitHub App installation access tokens without exposing the GitHub App private key outside Cloudflare.
 
+The primary current product specification is [docs/current-api-compatible-service-prd.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/current-api-compatible-service-prd.md). Historical ADRs and future architecture reports are supporting material; they do not override the current product specification.
+
 ## Language
 
 **Caller**:
@@ -49,7 +51,7 @@ A bounded cyspbot-held record of webhook delivery metadata for deliveries that r
 _Avoid_: Permanent event store, raw-payload archive by default
 
 **Installation Reconciliation**:
-The future cyspbot process that refreshes current installation, repository, and installation-membership projection data from GitHub into D1 for one **GitHub App Installation** at a time. The current implementation records reconciliation signals and scheduler state, but does not yet execute full projection replacement.
+The cyspbot process boundary for refreshing current installation, repository, and installation-membership projection data from GitHub into D1 for one **GitHub App Installation** at a time. The current implementation records reconciliation signals and scheduler state. Full projection replacement remains future implementation.
 _Avoid_: Request-time authorization source, opportunistic issuance-path cache patching
 
 **Installation Coordinator**:
@@ -86,6 +88,7 @@ _Avoid_: Permanent key store, token cache, caller-controlled key source
 
 ## Relationships
 
+- The current product surface is `POST /token`, `POST /github/claims`, `POST /github/installations/token`, `POST /github/webhooks`, and the GitHub App user authorization dashboard routes.
 - A **Caller** authenticates to **cyspbot** with a GitHub OIDC token
 - A **Dashboard User** authenticates to **cyspbot** by authorizing the cyspbot GitHub App and establishing a **Dashboard Session**
 - cyspbot verifies a **Caller** only against a trusted **Issuer Registration**
@@ -110,6 +113,7 @@ _Avoid_: Permanent key store, token cache, caller-controlled key source
 - The **Webhook Receiver** routes each accepted **Installation Reconciliation** signal to the **Installation Coordinator** keyed by **GitHub App Installation**
 - cyspbot keeps a bounded **Webhook Delivery Log** of delivery metadata only. Future current-state repair happens through **Installation Reconciliation**
 - The **Webhook Receiver** fails closed with a server-side error when no webhook secret is configured
+- Full **Installation Reconciliation** execution, scheduled retry dispatch, cleanup jobs, and dashboard diagnostics are future implementation work, not current product behavior.
 
 ## Example dialogue
 
@@ -133,6 +137,6 @@ _Avoid_: Permanent key store, token cache, caller-controlled key source
 
 ## Flagged ambiguities
 
-- "target repository" was used loosely; resolved: for v1 the only valid repository is the **Calling Repository** derived from OIDC, not a caller-supplied target.
-- "requested scope" was used loosely; resolved: the **Caller** does not choose permissions in v1, and cyspbot narrows repository scope and caller context while GitHub App configuration determines repository permissions.
+- "target repository" was used loosely; resolved: the only valid repository is the **Calling Repository** derived from OIDC, not a caller-supplied target.
+- "requested scope" was used loosely; resolved: the **Caller** does not choose permissions, and cyspbot narrows repository scope and caller context while GitHub App configuration determines repository permissions.
 - "approved workflow" was used loosely; resolved: cyspbot trusts specific verified OIDC claim patterns under checked-in policy code, not a separate mutable approval registry.

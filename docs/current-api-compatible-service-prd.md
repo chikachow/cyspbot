@@ -1,8 +1,10 @@
-# Current Service Contract: cyspbot GitHub Actions Security Token Service
+# Current Product Specification: cyspbot GitHub Actions Security Token Service
 
-This document is the primary contract document for the externally compatible Installation Token Issuance and webhook edge surface. It describes the current implementation unless a section is explicitly marked as future potential implementation.
+This document is the primary product specification for the implemented cyspbot service. It defines current externally visible behavior, security boundaries, persistence guarantees, and acceptance criteria. Future work is listed only where it is explicitly marked as future implementation.
 
-Dashboard Sessions, the Audit Log, the Repository Visibility Cache, webhook metadata, and projection state are D1-backed. The detailed storage design is specified in [docs/dashboard-d1-recut.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/dashboard-d1-recut.md).
+Use this document to answer "what does cyspbot do today?" before consulting historical ADRs or future architecture notes. The documentation map is [docs/README.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/README.md).
+
+Dashboard Sessions, the Audit Log, the Repository Visibility Cache, webhook metadata, and projection state are D1-backed. The detailed storage reference is [docs/dashboard-d1-recut.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/dashboard-d1-recut.md).
 
 ## 1. Purpose
 
@@ -31,6 +33,7 @@ This document is a standalone current-state specification for the service.
 - Receiving signed GitHub webhooks and routing them to the Installation Coordinator
 - Maintaining the bounded Audit Log and Webhook Delivery Log
 - Coordinating JWKS refresh and verifier state per configured OIDC issuer
+- Persisting reconciliation signal state for future Installation Reconciliation execution
 
 ### Out of scope
 
@@ -41,6 +44,20 @@ This document is a standalone current-state specification for the service.
 - General webhook event processing beyond acceptance, validation, routing, and persistence
 - Admin write APIs or mutable repository-visibility allowlists
 - Secondary cyspbot-side repository allowlists beyond GitHub App Installation presence
+- Full Installation Reconciliation execution and deletion/suspension projection replacement in the current implementation
+
+### Future implementation
+
+The following work is not implemented in the current product surface:
+
+- full Installation Reconciliation execution for one GitHub App Installation at a time
+- full installation-slice projection replacement, including deletion, suspension, and repository-removal decisions
+- scheduled retry dispatch for due or failed reconciliation work
+- cleanup jobs for expired Dashboard Sessions, Repository Visibility Cache rows, Audit Log retention, reconciliation run history, and Webhook Delivery Log metadata
+- dashboard diagnostics for reconciliation failures when operational support needs it
+- dashboard filtering, sorting, and disclosure improvements over already-authorized rendered data
+
+Any future implementation must preserve the current external trust boundary: callers still cannot choose repositories, permission profiles, issuers, or webhook replay behavior.
 
 ## 3. Users and Callers
 
@@ -198,7 +215,7 @@ Success response:
 }
 ```
 
-Required behavior:
+Current behavior:
 
 - Resolve the GitHub App installation for the repository from verified claims.
 - Use an internal repository-scoped `metadata: read` installation token only to fetch repository metadata needed by the Token Policy.
@@ -270,7 +287,7 @@ Success response:
 }
 ```
 
-Required behavior:
+Current behavior:
 
 - Shares the same OIDC verification, GitHub App Installation resolution, Token Policy enforcement, and GitHub token issuance implementation as `POST /token`
 - Preserves the legacy response shape for compatibility
@@ -339,7 +356,7 @@ Failure behavior:
 Post-acceptance behavior:
 
 - Persist webhook delivery metadata in D1 for deliveries that reach envelope validation, including rejected deliveries.
-- The first cut stores metadata only, not raw webhook bodies or signature secrets.
+- The current implementation stores metadata only, not raw webhook bodies or signature secrets.
 - Signed `ping` deliveries are accepted after signature and JSON validation without requiring `installation.id`.
 - `ping` is endpoint validation rather than installation state, so it is handled at the Worker edge rather than routed to installation-scoped persistence.
 - No further business-event processing is required for compatibility.
@@ -439,7 +456,7 @@ If the token verifies cryptographically but does not map to a valid principal sh
 
 Repository authorization is based on GitHub App installation presence on the calling repository.
 
-Required behavior:
+Current behavior:
 
 - The service does not accept a caller-supplied repository parameter.
 - The service derives the repository exclusively from verified OIDC claims.
@@ -526,7 +543,7 @@ The service calls GitHub's REST API as the configured GitHub App.
 
 ### 8.1 App authentication
 
-Required behavior:
+The service:
 
 - Construct a GitHub App JWT signed with the configured private key
 - Use `RS256`
@@ -540,12 +557,12 @@ Current behavior:
 
 ### 8.2 Private key handling
 
-Required behavior:
+The service:
 
-- Prefer the secret-store-backed private key in production-compatible environments
-- Allow a direct PEM environment variable only for local development or tests
-- Expect PKCS#8 PEM format
-- Cache imported private keys in-memory per PEM value
+- Prefers the secret-store-backed private key in production-compatible environments
+- Allows a direct PEM environment variable only for local development or tests
+- Expects PKCS#8 PEM format
+- Caches imported private keys in-memory per PEM value
 
 Rationale:
 Keeping the GitHub App private key inside the platform secret boundary is the main product reason for the service. A local env var fallback is acceptable only for development and test compatibility.
@@ -558,7 +575,7 @@ The service supports:
 - `GET /repos/{owner}/{repo}`
 - `POST /app/installations/{installation_id}/access_tokens`
 
-Required GitHub access-token request body:
+GitHub access-token request body:
 
 ```json
 {
@@ -566,7 +583,7 @@ Required GitHub access-token request body:
 }
 ```
 
-Required GitHub access-token request headers:
+GitHub access-token request headers:
 
 ```http
 Content-Type: application/json
@@ -593,7 +610,7 @@ The durable persistence model for the Dashboard Sessions, Repository Visibility 
 
 The service durably persists Audit Log facts and issued Installation Token facts in D1.
 
-Required stored Audit Log fields include:
+Stored Audit Log fields include:
 
 - requested-at timestamp
 - Caller repository ID from normalized GitHub-issued OIDC Caller context
@@ -628,8 +645,9 @@ Current installation-scoped behavior:
 - one Installation Coordinator boundary per GitHub App Installation
 - signal coalescing for repeated Installation Reconciliation requests
 - minimal reconstructable Durable Object state only
+- D1 rows are created or updated to record pending reconciliation state
 
-Future potential implementation:
+Future implementation:
 
 - serialized Installation Reconciliation execution for one installation at a time
 - scheduled retry dispatch for due reconciliation work
@@ -639,9 +657,9 @@ The Installation Coordinator is not the durable source of truth for the Audit Lo
 
 ### 9.3 Webhook Delivery Log persistence
 
-Webhook Delivery Log metadata is required durable audit data. The first cut stores metadata only rather than raw bodies.
+Webhook Delivery Log metadata is durable audit data. The current implementation stores metadata only rather than raw bodies.
 
-Required stored webhook metadata fields:
+Stored webhook metadata fields:
 
 - receive timestamp
 - installation ID when present
@@ -663,13 +681,13 @@ Retention policy is defined per durable table in the re-cut document. The curren
 - Dashboard Session rows and Repository Visibility Cache rows: aggressively purged after expiry
 - Installation Reconciliation state, Installation Reconciliation run history, and Webhook Delivery Log metadata: bounded by explicit retention windows
 
-Future potential implementation includes explicit cleanup jobs rather than relying only on opportunistic deletion during request handling.
+Future implementation includes explicit cleanup jobs rather than relying only on opportunistic deletion during request handling.
 
 ### 9.5 Verifier-state isolation
 
 OIDC verification state is isolated per configured issuer registration.
 
-Required persisted verifier state:
+Persisted verifier state:
 
 - normalized JWKS snapshot
 - freshness and stale-window timestamps
@@ -751,12 +769,13 @@ The service does not include any of the following behaviors:
 - Dynamic issuer registration
 - Generic JWT introspection endpoint
 - Partial or opportunistic webhook acceptance without signature validation
+- Agents SDK-based broker routing
 
 These are intentionally absent from the current product surface.
 
-## 14. Acceptance Criteria
+## 14. Implemented Behavior Checks
 
-The current implementation is expected to satisfy these checks:
+The current implementation satisfies these behavior checks:
 
 1. `POST /github/claims` accepts a valid GitHub Actions OIDC bearer token and returns the verified repository identity fields without requiring an Installation Token Issuance-eligible event context.
 2. `POST /token` accepts an RFC 8693 token exchange request, validates a GitHub Actions OIDC `subject_token`, and returns an OAuth-style token response for allowed workflow contexts.

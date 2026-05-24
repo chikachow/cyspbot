@@ -15,7 +15,7 @@ cyspbot runs as a Cloudflare Worker that acts as a Security Token Service for Gi
 ## Consequences
 
 - Only GitHub Actions workflows with valid OIDC tokens may call cyspbot.
-- GitHub App Installation is repository authorization; there is no second cyspbot registry in v1.
+- GitHub App Installation is repository authorization; there is no second cyspbot registry in the current product surface.
 - `/github/claims` verifies caller identity and app-installation relationship, but does not evaluate full issuance eligibility policy.
 - `/token` is the primary Installation Token Issuance endpoint and allows only default-branch `ref` contexts for `schedule`, `workflow_dispatch`, and `push`.
 - `/github/installations/token` remains as a compatibility endpoint over the same Token Policy.

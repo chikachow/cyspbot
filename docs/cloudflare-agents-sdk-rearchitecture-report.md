@@ -1,5 +1,9 @@
 # cyspbot on Cloudflare Agents SDK
 
+This is a future architecture option report, not the current product specification. The implemented service remains a Cloudflare Worker plus Durable Objects broker as described in [docs/current-api-compatible-service-prd.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/current-api-compatible-service-prd.md).
+
+Current recommendation: do not move the implemented token-broker path to Cloudflare Agents SDK unless cyspbot's product scope changes into durable installation-scoped automation.
+
 ## Executive summary
 
 Rearchitecting `cyspbot` onto Cloudflare's Agents SDK is only a good idea if the service is meant to evolve from a narrow token broker into a long-lived automation control plane per GitHub App installation. If the primary job remains:
