@@ -7,7 +7,7 @@ Rearchitecting `cyspbot` onto Cloudflare's Agents SDK is only a good idea if the
 - verify GitHub Actions OIDC tokens
 - enforce repository and event-bound token minting policy
 - mint short-lived GitHub installation tokens
-- retain bounded per-installation audit and webhook logs
+- retain bounded D1-backed audit and webhook metadata
 
 then the Agents SDK is not the right primary abstraction. The current architecture already uses the core primitive the Agents SDK is built on: Durable Objects. The SDK would add lifecycle, state-sync, scheduling, queueing, fiber recovery, and MCP integration machinery that is only partly relevant to the current workload.
 
@@ -29,17 +29,19 @@ This keeps the hard security boundary explicit while using the Agents SDK where 
 
 Today `cyspbot` is already Cloudflare-native:
 
-- `src/worker/app.ts` is a thin HTTP Worker entrypoint for `/github/claims`, `/github/installations/token`, and `/github/webhooks`.
+- `src/worker/app.ts` is a thin HTTP Worker entrypoint for `/token`, `/github/claims`, `/github/installations/token`, `/github/webhooks`, and the dashboard routes.
 - `src/durable-objects/oidc-issuer-verifier-object.ts` keeps one verifier Durable Object per issuer registration and owns JWKS coordination, persistence, and refresh/backoff state.
-- `src/durable-objects/installation-object.ts` keeps one Durable Object per GitHub App installation and stores bounded token-request and webhook logs.
+- `src/durable-objects/installation-object.ts` keeps one Durable Object per GitHub App installation and coalesces Installation Reconciliation signals.
+- D1 stores the Audit Log, issued Installation Token facts, Dashboard Sessions, Repository Visibility Cache, projection rows, webhook delivery metadata, and Installation Reconciliation state.
 - `src/github/api.ts` keeps token mint policy narrow and explicit, with repository-scoped installation tokens and GitHub App-governed permissions.
-- `docs/adr/0001-hosted-github-installation-token-broker.md` and `docs/adr/0002-per-issuer-jwks-verifier-durable-object.md` already document the important persistence and trust boundaries.
+- `docs/adr/0001-hosted-github-installation-token-broker.md`, `docs/adr/0002-per-issuer-jwks-verifier-durable-object.md`, `docs/adr/0003-dashboard-user-authorization.md`, and `docs/dashboard-d1-recut.md` document the important persistence and trust boundaries.
 
 That architecture is simple because the core domain is simple:
 
 - ingress request validation
 - issuer-scoped verification coordination
-- installation-scoped authorization and audit persistence
+- D1-backed audit persistence and dashboard visibility state
+- installation-scoped reconciliation signal handling
 - outbound GitHub API calls
 
 The service is not currently chatty, interactive, multi-step, or human-in-the-loop. Those are the areas where the Agents SDK is strongest.
@@ -164,7 +166,8 @@ Those are manageable, but they are new complexity, not free capability.
 The current design has very clear boundaries:
 
 - issuer verification state belongs to issuer verifier DOs
-- installation policy and audit history belong to installation DOs
+- D1 owns audit history, dashboard state, and projection data
+- installation signal coalescing belongs to installation DOs
 - HTTP ingress stays explicit in the Worker
 
 An over-eager Agent rewrite could blur those boundaries by turning the whole service into "agents" first and security components second. That would be the wrong design pressure.
@@ -183,7 +186,7 @@ An over-eager Agent rewrite could blur those boundaries by turning the whole ser
 
 - OIDC verification is not naturally interactive or connection-oriented.
 - GitHub installation token minting is a narrow synchronous operation, not an agent workflow.
-- The current webhook receiver mostly validates and stores deliveries; it is not yet doing meaningful long-lived work.
+- The current webhook receiver validates deliveries, stores delivery metadata in D1, and signals Installation Reconciliation. It does not yet do meaningful long-lived work.
 - The system's primary security problem is policy enforcement and secret confinement, not orchestration.
 
 ### Significant misalignment

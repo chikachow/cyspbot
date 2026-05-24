@@ -1,6 +1,6 @@
 # cyspbot
 
-cyspbot is the maintainer's hosted automation application. It currently lets trusted GitHub Actions workflow runs obtain repository-scoped GitHub App installation access tokens without exposing the GitHub App private key outside Cloudflare.
+cyspbot is the maintainer's hosted automation application. It lets trusted GitHub Actions workflow runs obtain repository-scoped GitHub App installation access tokens without exposing the GitHub App private key outside Cloudflare.
 
 ## Language
 
@@ -49,11 +49,11 @@ A bounded cyspbot-held record of webhook delivery metadata for deliveries that r
 _Avoid_: Permanent event store, raw-payload archive by default
 
 **Installation Reconciliation**:
-The cyspbot process that refreshes current installation, repository, and installation-membership projection data from GitHub into D1 for one **GitHub App Installation** at a time.
+The future cyspbot process that refreshes current installation, repository, and installation-membership projection data from GitHub into D1 for one **GitHub App Installation** at a time. The current implementation records reconciliation signals and scheduler state, but does not yet execute full projection replacement.
 _Avoid_: Request-time authorization source, opportunistic issuance-path cache patching
 
 **Installation Coordinator**:
-The per-installation Durable Object that coalesces reconcile signals and serializes **Installation Reconciliation** execution for one **GitHub App Installation**, while D1 remains the durable source of truth.
+The per-installation Durable Object that coalesces reconcile signals for one **GitHub App Installation**, while D1 remains the durable source of truth. Future reconciliation execution runs through this boundary when full Installation Reconciliation is implemented.
 _Avoid_: Audit store, repository projection store, session store
 
 **Dashboard Session**:
@@ -61,7 +61,7 @@ A short-lived cyspbot-held authenticated web session for one **Dashboard User**,
 _Avoid_: Caller identity, installation login, Durable Object session store
 
 **Repository Visibility Cache**:
-A short-lived D1-backed cache of the repositories that GitHub currently says a **Dashboard User** may access for this GitHub App, keyed by user and installation context.
+A short-lived D1-backed cache of the repositories that GitHub says a **Dashboard User** may access for this GitHub App, keyed by user and installation context.
 _Avoid_: Independent authorization database, org-membership snapshot, permanent entitlement record
 
 **Visibility Refresh**:
@@ -93,9 +93,9 @@ _Avoid_: Permanent key store, token cache, caller-controlled key source
 - **cyspbot** derives exactly one **Calling Repository** from the verified OIDC claims
 - **Installation Token Issuance** in **cyspbot** issues an **Installation Token** only for the **Calling Repository**
 - The **Token Policy** is fixed by **cyspbot** for caller context and repository scope, while repository permissions come from the GitHub App configuration
-- The **Token Policy** currently evaluates immutable and workflow-context GitHub OIDC claims such as `sub`, `repository_id`, `repository_owner_id`, `repository_visibility`, and `ref`
+- The **Token Policy** evaluates immutable and workflow-context GitHub OIDC claims such as `sub`, `repository_id`, `repository_owner_id`, `repository_visibility`, and `ref`
 - **cyspbot** records an **Audit Log** entry for each **Installation Token Issuance** attempt
-- Repeated audit values such as issued Installation Token permissions and audit outcome reasons may be stored in relational child rows rather than embedded JSON on the main audit row
+- Repeated audit values such as issued Installation Token permissions and audit outcome reasons are stored in relational child rows rather than embedded JSON on the main audit row
 - The main audit row prefers domain fields like `requested_at` and `outcome` over HTTP response details
 - The **Claims Endpoint** verifies caller identity and repository installation relationship without issuing an **Installation Token**
 - The **Token Exchange Endpoint** is the primary public interface for **Installation Token Issuance**; legacy GitHub-specific compatibility endpoints are shims over the same **Token Policy**
@@ -103,12 +103,12 @@ _Avoid_: Permanent key store, token cache, caller-controlled key source
 - A **GitHub App Installation** is the GitHub-side authority that allows **cyspbot** to issue an **Installation Token**
 - cyspbot determines dashboard repository visibility from the intersection GitHub reports for a **Dashboard User**, a **GitHub App Installation**, and that installation's repositories
 - The **Repository Visibility Cache** is an optimization only; GitHub remains the authorization authority for **Dashboard User** repository visibility
-- **Installation Reconciliation** is the only writer that performs full installation-slice replacement, deletion, suspension, or removal decisions for projection rows in D1
-- A **Visibility Refresh** may upsert positive projection bootstrap rows for repositories GitHub just returned for that **Dashboard User**, but it must not infer absence or remove projection state
-- The **Installation Coordinator** coalesces and serializes **Installation Reconciliation** work per installation, but does not become a second durable source of truth
+- Future **Installation Reconciliation** is the only writer that performs full installation-slice replacement, deletion, suspension, or removal decisions for projection rows in D1
+- A **Visibility Refresh** may upsert positive projection bootstrap rows for repositories GitHub just returned for that **Dashboard User**, but it does not infer absence or remove projection state
+- The **Installation Coordinator** coalesces **Installation Reconciliation** signals per installation, but does not become a second durable source of truth
 - The **Webhook Receiver** accepts GitHub webhook deliveries only after signature and envelope validation
 - The **Webhook Receiver** routes each accepted **Installation Reconciliation** signal to the **Installation Coordinator** keyed by **GitHub App Installation**
-- cyspbot keeps a bounded **Webhook Delivery Log** of delivery metadata only, while current-state repair happens through **Installation Reconciliation**
+- cyspbot keeps a bounded **Webhook Delivery Log** of delivery metadata only. Future current-state repair happens through **Installation Reconciliation**
 - The **Webhook Receiver** fails closed with a server-side error when no webhook secret is configured
 
 ## Example dialogue
@@ -135,4 +135,4 @@ _Avoid_: Permanent key store, token cache, caller-controlled key source
 
 - "target repository" was used loosely; resolved: for v1 the only valid repository is the **Calling Repository** derived from OIDC, not a caller-supplied target.
 - "requested scope" was used loosely; resolved: the **Caller** does not choose permissions in v1, and cyspbot narrows repository scope and caller context while GitHub App configuration determines repository permissions.
-- "approved workflow" was used loosely; resolved: cyspbot currently trusts specific verified OIDC claim patterns under checked-in policy code, not a separate mutable approval registry.
+- "approved workflow" was used loosely; resolved: cyspbot trusts specific verified OIDC claim patterns under checked-in policy code, not a separate mutable approval registry.

@@ -1,6 +1,6 @@
 # Add GitHub App user authorization with D1-backed Dashboard Sessions and visibility
 
-cyspbot has a read-only dashboard for humans. It authenticates Dashboard Users through GitHub App user authorization, stores Dashboard Sessions and the Repository Visibility Cache in D1, stores the Audit Log centrally in D1, and keeps `GitHubInstallationObject` only as the Installation Coordinator for signal coalescing and serialized Installation Reconciliation. We chose this over keeping Dashboard Session state and audit reads in separate Durable Objects because the dashboard needs repo-centric and cross-installation reads, centrally enforced retention, and one durable source of truth for the Audit Log and current-state projection, while still preserving installation isolation for Installation Reconciliation execution.
+cyspbot has a read-only dashboard for humans. It authenticates Dashboard Users through GitHub App user authorization, stores Dashboard Sessions and the Repository Visibility Cache in D1, stores the Audit Log centrally in D1, and keeps `GitHubInstallationObject` only as the Installation Coordinator for signal coalescing. We chose this over keeping Dashboard Session state and audit reads in separate Durable Objects because the dashboard needs repo-centric and cross-installation reads, centrally enforced retention, and one durable source of truth for the Audit Log and current-state projection, while still preserving installation isolation for future Installation Reconciliation execution.
 
 ## Considered Options
 
@@ -10,7 +10,7 @@ cyspbot has a read-only dashboard for humans. It authenticates Dashboard Users t
 
 ## Consequences
 
-- Dashboard authentication is a second authentication surface and must stay isolated from GitHub Actions OIDC Caller authentication.
+- Dashboard authentication is a second authentication surface and stays isolated from GitHub Actions OIDC Caller authentication.
 - GitHub remains the authority for dashboard repository visibility through the user-to-server installation repository APIs.
 - D1 is the durable system of record for:
   - Audit Log
@@ -21,9 +21,9 @@ cyspbot has a read-only dashboard for humans. It authenticates Dashboard Users t
   - Repository Visibility Cache
   - Installation Reconciliation state and run history
   - Webhook Delivery Log metadata
-- `GitHubInstallationObject` no longer owns the Audit Log or repository projection; it only coalesces signals and serializes Installation Reconciliation.
-- Installation Token Issuance continues to resolve installation and repository metadata live from GitHub and must fail closed if final Audit Log persistence to D1 fails.
+- `GitHubInstallationObject` no longer owns the Audit Log or repository projection; it only coalesces Installation Reconciliation signals in the current implementation. Serialized Installation Reconciliation execution is future potential implementation.
+- Installation Token Issuance continues to resolve installation and repository metadata live from GitHub and fails closed if final Audit Log persistence to D1 fails.
 - The dashboard uses user-facing repository URLs based on current `owner/name`, but resolves authorization and audit by immutable `repository_id` internally.
-- GitHub App installation setup redirects are treated as onboarding entrypoints, not as dashboard OAuth login completions. The target GitHub App configuration sends setup redirects to `/github/setup`; cyspbot clears stale OAuth state and restarts `/login/github` from there. If setup-shaped redirects still reach `/auth/github/callback`, that route keeps the same redirect as a defensive fallback and must not exchange an unstateful code.
+- GitHub App installation setup redirects are treated as onboarding entrypoints, not as dashboard OAuth login completions. The target GitHub App configuration sends setup redirects to `/github/setup`; cyspbot clears stale OAuth state and restarts `/login/github` from there. If setup-shaped redirects still reach `/auth/github/callback`, that route keeps the same redirect as a defensive fallback and does not exchange an unstateful code.
 
-The concrete schema, Durable Object storage model, and rollout sequence are documented in [docs/dashboard-d1-recut.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/dashboard-d1-recut.md).
+The concrete schema, Durable Object storage model, current implementation state, and future potential implementation notes are documented in [docs/dashboard-d1-recut.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/dashboard-d1-recut.md).

@@ -1,19 +1,19 @@
 # Dashboard And Persistence Re-cut
 
-This document is the source of truth for the D1-backed dashboard, Audit Log, Repository Visibility Cache, and Webhook Delivery Log implementation.
+This document is the source of truth for the D1-backed dashboard, Audit Log, Repository Visibility Cache, and Webhook Delivery Log implementation. It describes current implementation state unless a section is explicitly marked as future potential implementation.
 
 ## Status
 
 - The dashboard and Installation Token Issuance Audit Log have been cut over to D1.
 - Dashboard Sessions are D1 rows addressed by an opaque `__Host-cyspbot_dashboard_session` cookie and HMAC lookup hash.
-- `GitHubInstallationObject` remains only as the installation-scoped Installation Coordinator for signal coalescing and serialized Installation Reconciliation.
+- `GitHubInstallationObject` remains only as the installation-scoped Installation Coordinator for signal coalescing. Full Installation Reconciliation execution is future potential implementation.
 - The old Dashboard Session Durable Object, installation-local Audit Log tables, repository-id dashboard route, and Durable Object migration endpoint have been removed.
 
 ## Goals
 
 - Keep GitHub as the authority for dashboard repository visibility and GitHub App installation access token issuance.
 - Make D1 the durable system of record for Dashboard Sessions, the Repository Visibility Cache, and the Audit Log.
-- Preserve GitHub App Installation isolation by keeping one `GitHubInstallationObject` per installation for Installation Reconciliation signal coalescing and serialized execution.
+- Preserve GitHub App Installation isolation by keeping one `GitHubInstallationObject` per installation for Installation Reconciliation signal coalescing.
 - Remove split durable authority between installation-scoped Durable Objects and global query surfaces.
 - Keep Installation Token Issuance live against GitHub for installation lookup and repository metadata evaluation.
 
@@ -42,10 +42,10 @@ The service root redirects to `/dashboard` so `https://cyspbot.chikachow.org/` l
 GitHub App installation setup redirects use `GET /github/setup`. That route is distinct from dashboard OAuth login:
 
 - GitHub sends `installation_id` and `setup_action` when the user installs the app or updates repository access.
-- cyspbot must not trust `installation_id`, because the setup URL is externally reachable and the query parameter can be spoofed.
-- cyspbot must not create a Dashboard Session from a setup callback.
+- cyspbot does not trust `installation_id`, because the setup URL is externally reachable and the query parameter can be spoofed.
+- cyspbot does not create a Dashboard Session from a setup callback.
 - If a setup callback has a positive integer `installation_id` plus `setup_action=install` or `setup_action=update`, cyspbot clears any stale OAuth state cookie and redirects to `/login/github?return_to=%2Fdashboard`.
-- `GET /auth/github/callback` keeps the same redirect behavior as a defensive compatibility fallback for setup-shaped callbacks, but the target GitHub App configuration must use `/github/setup`.
+- `GET /auth/github/callback` keeps the same redirect behavior as a defensive compatibility fallback for setup-shaped callbacks, but the target GitHub App configuration uses `/github/setup`.
 - This preserves the requirement that Dashboard Sessions are created only from a user-initiated, state-bound GitHub App user authorization flow.
 
 ### Dashboard
@@ -89,7 +89,7 @@ Naming rule:
 - D1 columns stay singular and local to their table context.
 - D1 table names use cyspbot domain concepts rather than endpoint mechanics: for example `installation_token_issuance_audit_entries`, not `github_token_requests`.
 - Normalized identity, lookup, join, route, and uniqueness values use `_normalized` when the source has display casing or other non-canonical spelling.
-- Display-only GitHub spelling snapshots use `_display` and must not be used for authorization, joins, route resolution, or uniqueness.
+- Display-only GitHub spelling snapshots use `_display` and are not used for authorization, joins, route resolution, or uniqueness.
 - OIDC claim-derived Audit Log columns use the `oidc_` prefix; GitHub and GitHub Actions claim-derived columns use `github_` or `git_` prefixes.
 - Durable Object local singleton state uses key-value storage rather than local SQL tables unless a real relational need appears later.
 
@@ -102,17 +102,18 @@ Table ownership guardrail:
 | `dashboard_users` and `dashboard_sessions`                                                    | Durable Dashboard User and Dashboard Session state | Dashboard authentication                                                             | Yes, for dashboard authentication only        |
 | `github_app_installations`, `github_repositories`, and `github_app_installation_repositories` | Current GitHub-derived installation projection     | Installation Reconciliation; positive bootstrap upserts from Visibility Refresh only | No, without fresh Repository Visibility Cache |
 | `repository_visibility_cache_entries`                                                         | Derived, expiring Dashboard User visibility cache  | Visibility Refresh                                                                   | Yes, only while fresh                         |
-| `installation_reconciliation_states` and `installation_reconciliation_runs`                   | Durable scheduler state and run history            | Installation Reconciliation executor and retry dispatcher                            | No                                            |
+| `installation_reconciliation_states` and `installation_reconciliation_runs`                   | Durable scheduler state and future run history     | Installation Reconciliation signal path; future executor and retry dispatcher        | No                                            |
 | `webhook_delivery_log_entries`                                                                | Durable operational metadata                       | Webhook Receiver                                                                     | No                                            |
 
 ### `GitHubInstallationObject` is authoritative only for
 
 - installation-local Installation Reconciliation signal coalescing
-- installation-local serialized Installation Reconciliation execution
 - minimal installation-local coordination state
 
 It is not authoritative for the Audit Log, repository projection, the Repository Visibility Cache, or Dashboard Sessions.
-Its local state must be reconstructable from D1 plus a new incoming signal; no audit, projection, visibility, session, retry counter, or durable failure history may exist only inside the Durable Object.
+Its local state is reconstructable from D1 plus a new incoming signal; no audit, projection, visibility, session, retry counter, or durable failure history exists only inside the Durable Object.
+
+Future potential implementation uses this Durable Object for serialized Installation Reconciliation execution.
 
 ## D1 schema
 
@@ -120,13 +121,13 @@ All timestamps are stored as UTC ISO 8601 strings.
 
 All booleans are stored as `INTEGER NOT NULL CHECK (<column> IN (0, 1))`.
 
-All tables should be created with foreign keys enabled.
+All tables are created with foreign keys enabled.
 
 Cross-cutting schema guardrails:
 
 - Identity columns store the most immutable identifier available from GitHub. Mutable names and logins are display metadata or route locators only.
-- Current projection tables may be corrected by GitHub reconciliation, but historical fact tables must remain stable evidence even when GitHub state changes later.
-- Nullable columns must mean "not yet known", "not returned by GitHub", or "not applicable at this stage"; do not use `NULL` as a third business outcome when an explicit status or reason code is needed.
+- Current projection tables may be corrected by GitHub reconciliation, but historical fact tables remain stable evidence even when GitHub state changes later.
+- Nullable columns mean "not yet known", "not returned by GitHub", or "not applicable at this stage"; do not use `NULL` as a third business outcome when an explicit status or reason code is needed.
 - JSON is avoided for queryable facts. Use child rows for repeated values that dashboard reads, retention jobs, or audit exports need to filter or summarize.
 - Secret material is never stored raw. Hashes support lookup only; encrypted blobs support future decrypt-and-use flows only when a separate key version is present.
 - Foreign keys are used for D1-owned lifecycle coupling, but not from durable audit facts to mutable projection rows.
@@ -149,10 +150,10 @@ CREATE TABLE dashboard_users (
 Notes:
 
 - `github_user_id` is the immutable identity key.
-- `github_login_display` is mutable display metadata only and must not be used as an identity key.
+- `github_login_display` is mutable display metadata only and is not used as an identity key.
 - `last_github_auth_at` is the last successful GitHub authorization time, not proof of current repository visibility.
 - `session_revoked_after` supports user-wide session invalidation without scanning every session row during the revocation decision.
-- `created_at` and `updated_at` are operational metadata for support and cleanup visibility; they must not drive repository authorization.
+- `created_at` and `updated_at` are operational metadata for support and cleanup visibility; they do not drive repository authorization.
 - Trade-off: the table intentionally stores no email, org membership, or profile JSON. That keeps the Dashboard User model narrow and avoids treating mutable GitHub profile data as authorization evidence.
 
 ### Dashboard Sessions
@@ -183,16 +184,16 @@ Notes:
 - Browser cookie holds the raw opaque session token.
 - Dashboard Session cookie name: `__Host-cyspbot_dashboard_session`.
 - Dashboard Session cookie path: `/`.
-- Dashboard Session cookie must not set a `Domain` attribute.
+- Dashboard Session cookie does not set a `Domain` attribute.
 - D1 stores only `session_token_hash`, computed as `HMAC-SHA-256(session_lookup_secret, raw_session_token)`.
 - `encrypted_github_user_token_blob` stores GitHub User Access Token material under a separate encryption secret.
 - The v1 dashboard does not store or use GitHub user refresh tokens. `github_user_refresh_token_expires_at` remains nullable for a future refresh-token flow.
 - Expiry timestamps stay plaintext for cheap expiry and purge decisions.
-- Session cookies must be `HttpOnly`, `Secure`, and `SameSite=Lax`.
-- The cookie `Max-Age` must not exceed the server-side absolute session TTL.
+- Session cookies are `HttpOnly`, `Secure`, and `SameSite=Lax`.
+- The cookie `Max-Age` does not exceed the server-side absolute session TTL.
 - Session ids are rotated on successful login.
-- The encrypted token blob format must carry a key version so encryption-key rotation is possible without ambiguous decrypt behavior.
-- `id` is an internal surrogate used for row lifecycle and logging; it must not be exposed as a bearer credential.
+- The encrypted token blob format carries a key version so encryption-key rotation is possible without ambiguous decrypt behavior.
+- `id` is an internal surrogate used for row lifecycle and logging; it is not exposed as a bearer credential.
 - `session_token_hash` is unique so one raw session token resolves to at most one server-side session.
 - `github_user_id` is the authorization subject for dashboard authentication only; repository access still requires fresh Repository Visibility Cache evidence.
 - `github_user_access_token_expires_at` is nullable because GitHub App user tokens may not always include an expiry in the same way across flows; when present, it caps the effective session expiry.
@@ -214,9 +215,9 @@ V1 behavior:
 Future refresh-token path:
 
 - A later implementation may store GitHub user refresh token material in `encrypted_github_user_token_blob`.
-- Refresh must run only on demand during an authenticated dashboard request, not from a background job.
-- A successful refresh must rotate the Dashboard Session id, rotate the raw session token, replace the encrypted token blob, and update plaintext expiry fields in one transaction.
-- A failed refresh must delete the Dashboard Session and redirect the Dashboard User to `/login/github`.
+- Refresh runs only on demand during an authenticated dashboard request, not from a background job.
+- A successful refresh rotates the Dashboard Session id, rotates the raw session token, replaces the encrypted token blob, and updates plaintext expiry fields in one transaction.
+- A failed refresh deletes the Dashboard Session and redirects the Dashboard User to `/login/github`.
 
 ### GitHub App Installations
 
@@ -238,8 +239,8 @@ Notes:
 
 - `installation_id` is the immutable GitHub App Installation key and the aggregate key for Installation Reconciliation.
 - `github_account_id`, `github_account_login_display`, and `github_account_type` describe the account that owns the installation. They are projection metadata, not dashboard-user authorization facts.
-- `repository_selection` records GitHub's installation selection mode, but it must not be used to infer repository membership; membership comes from explicit repository edges.
-- `suspended_at` and `deleted_at` are soft-state markers from GitHub. Reads must treat either marker as making the installation inactive unless a route documents a historical view.
+- `repository_selection` records GitHub's installation selection mode, but it is not used to infer repository membership; membership comes from explicit repository edges.
+- `suspended_at` and `deleted_at` are soft-state markers from GitHub. Reads treat either marker as making the installation inactive unless a route documents a historical view.
 - Trade-off: the projection keeps installation account metadata even though token issuance remains live against GitHub. This supports dashboard context and reconciliation operations without making projection authoritative for token issuance.
 
 ### GitHub Repositories
@@ -272,7 +273,7 @@ Notes:
 - `repository_id` is the immutable repository identity.
 - `owner_login_display`, `repository_name_display`, and `full_name_display` are current GitHub display metadata and may change on rename or transfer.
 - `full_name_normalized` is lowercased `owner/name` used for routing and uniqueness.
-- Display metadata columns must not be used for authorization, joins, route resolution, or uniqueness.
+- Display metadata columns are not used for authorization, joins, route resolution, or uniqueness.
 - Soft-deleted rows are retained for a finite window.
 - `github_owner_id` is retained as GitHub-issued owner identity evidence; it is not enough to authorize dashboard access.
 - `repository_visibility` is current projection metadata for display and filtering, not the Token Policy's live visibility check.
@@ -301,7 +302,7 @@ Notes:
 - This is current-state projection only.
 - Membership edges are hard-deleted immediately when Installation Reconciliation removes them.
 - The composite primary key prevents duplicate membership evidence for the same installation and repository.
-- `created_at` and `updated_at` are edge-lifecycle metadata only; they must not be interpreted as first-installed or last-authorized timestamps without checking GitHub's contract.
+- `created_at` and `updated_at` are edge-lifecycle metadata only; they are not interpreted as first-installed or last-authorized timestamps without checking GitHub's contract.
 - Trade-off: hard-deleting removed edges keeps current-state reads simple, but loses membership history. Historical token issuance remains available through Audit Log rows, which intentionally do not depend on this edge table.
 
 ### Repository Visibility Cache
@@ -332,11 +333,11 @@ Notes:
 - Repository Visibility Cache rows store repository presence only. GitHub repository permissions from the user-to-server installation repository response are not stored in v1 and are not used for dashboard authorization.
 - A fresh row for `github_user_id + installation_id + repository_id` is the only Repository Visibility Cache authorization fact for repository detail access.
 - Visibility Refresh may upsert the `github_app_installations`, `github_repositories`, and `github_app_installation_repositories` rows needed for the GitHub-returned positive visibility rows before replacing the cache slice.
-- Those upserts are bootstrapping writes from GitHub's user-to-server installation repository API response; they must not delete repositories, delete installation membership edges, mark repositories or installations as deleted, or infer visibility for repositories GitHub did not return for the user.
-- Installation Reconciliation remains the only writer that performs full installation-slice replacement, deletion, suspension, or removal decisions.
+- Those upserts are bootstrapping writes from GitHub's user-to-server installation repository API response; they do not delete repositories, delete installation membership edges, mark repositories or installations as deleted, or infer visibility for repositories GitHub did not return for the user.
+- Future Installation Reconciliation is the only writer that performs full installation-slice replacement, deletion, suspension, or removal decisions.
 - Cache refresh replaces the full `user + installation` slice atomically.
-- Visibility Refresh must fetch the complete paginated GitHub repository list for the `user + installation` slice before writing D1 changes.
-- If any GitHub page fails, is incomplete, or cannot be validated, Visibility Refresh must leave existing projection and Repository Visibility Cache rows unchanged.
+- Visibility Refresh fetches the complete paginated GitHub repository list for the `user + installation` slice before writing D1 changes.
+- If any GitHub page fails, is incomplete, or cannot be validated, Visibility Refresh leaves existing projection and Repository Visibility Cache rows unchanged.
 - After a complete GitHub fetch, Visibility Refresh commits one D1 transaction that:
   - upserts only the positive `github_app_installations`, `github_repositories`, and `github_app_installation_repositories` bootstrap rows returned by GitHub
   - deletes the previous `repository_visibility_cache_entries` rows for that `github_user_id + installation_id`
@@ -389,25 +390,25 @@ Notes:
 
 - This is the required durable Audit Log record for Installation Token Issuance.
 - `caller_repository_id`, `caller_repository_full_name_normalized`, `caller_repository_owner_id`, and `caller_repository_visibility` are the normalized GitHub-issued OIDC Caller context, captured before live GitHub lookup.
-- `caller_repository_full_name_display` is the original GitHub repository claim spelling captured for audit display only. It must not be used for lookup, joins, authorization, or uniqueness.
+- `caller_repository_full_name_display` is the original GitHub repository claim spelling captured for audit display only. It is not used for lookup, joins, authorization, or uniqueness.
 - OIDC claim-derived columns are prefixed with `oidc_`, GitHub Actions claim-derived columns are prefixed with `github_` or `git_`, and cyspbot outcome columns are unprefixed.
 - `installation_id` is nullable because GitHub App Installation lookup can fail after Caller authentication but before the installation is known.
 - A durable `pending` audit-intent row is written after OIDC authentication produces normalized Caller context and before any GitHub App Installation or repository lookup.
 - The row is finalized to the terminal outcome in a second write after live GitHub lookup, policy evaluation, and, when applicable, after GitHub responds to the GitHub access-token request.
 - Live GitHub lookup failures after caller authentication are finalized as `upstream_error` or `denied`, with reason rows that identify the failed stage.
-- Terminal audit finalization and child-row writes must be one D1 transaction where D1 supports the required statement set.
-- Installation Token Issuance must fail closed if the finalization write cannot be persisted.
+- Terminal audit finalization and child-row writes use one D1 batch.
+- Installation Token Issuance fails closed if the finalization write cannot be persisted.
 - If GitHub issued a token but terminal finalization fails, cyspbot still returns a server error.
 - A durable `finalization_failed` row is only guaranteed when cyspbot can persist the failure marker after a partial terminal-write failure.
-- If D1 is unavailable and the failure marker cannot be persisted, the original `pending` intent row is the durable gap record and the runtime must emit an operational error suitable for alerting.
+- If D1 is unavailable and the failure marker cannot be persisted, the original `pending` intent row is the durable gap record and the runtime emits an operational error suitable for alerting.
 - Pre-authentication failures that never produce normalized Caller context stay in operational logs, not this table.
-- Audit Log rows intentionally do not foreign-key to current projection tables because audit durability must not depend on Installation Reconciliation timing or projection retention.
+- Audit Log rows intentionally do not foreign-key to current projection tables because audit durability does not depend on Installation Reconciliation timing or projection retention.
 - `audit_state` separates write lifecycle from the domain `outcome`. A row can be `pending` before GitHub lookup or token creation has produced a terminal outcome.
 - `requested_at` is the stable event time for retention and ordering; `finalized_at` is the terminal write time and may lag.
 - `installation_id` is nullable to preserve authenticated attempts that fail before GitHub returns an installation.
 - Caller repository columns duplicate OIDC-derived identity rather than referencing projection so the evidence survives renames, transfers, and projection cleanup.
 - `oidc_resolved_key_id` is nullable because not every verification failure has a resolved key; when present it supports key-rotation forensics without storing raw JWTs.
-- `outcome` is nullable while `audit_state = 'pending'`; finalized rows must set it to exactly one terminal domain outcome.
+- `outcome` is nullable while `audit_state = 'pending'`; finalized rows set it to exactly one terminal domain outcome.
 - Trade-off: the table is intentionally wide for first-order audit facts. This avoids fragile JSON parsing in dashboard and export paths while keeping repeated reason and permission data in child tables.
 
 ### Audit outcome reasons
@@ -477,7 +478,7 @@ Notes:
 - `issued_installation_tokens` is a strict 0-or-1 child of `installation_token_issuance_audit_entries`.
 - Request-level audit facts are enough; no extra issued Installation Token fingerprint is stored in the first cut.
 - `audit_log_entry_id` as the primary key enforces that at most one GitHub token issuance fact is attached to a request attempt.
-- `expires_at` stores GitHub's returned token expiry for dashboard display and cleanup correlation; it must not imply cyspbot can revoke or reuse the token.
+- `expires_at` stores GitHub's returned token expiry for dashboard display and cleanup correlation; it does not imply cyspbot can revoke or reuse the token.
 - Trade-off: no token hash or fingerprint is stored. That reduces secret-derived persistence and avoids implying a revocation capability cyspbot does not have.
 
 ### Issued token permissions
@@ -501,6 +502,9 @@ Notes:
 - Trade-off: exact GitHub strings are less type-safe than a local enum, but they avoid schema churn when GitHub adds permissions.
 
 ### Installation Reconciliation Runs
+
+Current implementation note:
+The D1 schema contains these tables and `GitHubInstallationObject` writes pending reconciliation state, but the full reconciliation executor, lease renewal, retry dispatcher, and run-history writer are future potential implementation.
 
 ```sql
 CREATE TABLE installation_reconciliation_runs (
@@ -530,18 +534,21 @@ CREATE INDEX installation_reconciliation_runs_by_status_lease
 
 Notes:
 
-- This table is the durable run history for Installation Reconciliation attempts.
+- This table is the future durable run history for Installation Reconciliation attempts.
 - `run_token` is a random lease-owner token generated for one run.
-- Running updates, heartbeat renewal, and terminal completion must match `run_token`.
+- Future running updates, heartbeat renewal, and terminal completion match `run_token`.
 - `lease_expires_at` is initially `5 minutes` after `started_at`.
 - A running reconciliation renews its lease every `2 minutes` by updating `lease_expires_at` and `last_heartbeat_at`.
-- If a scheduled retry finds `run_status = 'running'` with an expired `lease_expires_at`, it marks that run `lost`, records an `installation_reconciliation_lease_recovered` operational security event, and schedules a retry.
+- Future scheduled retry handling marks expired `running` leases as `lost`, records an `installation_reconciliation_lease_recovered` operational security event, and schedules a retry.
 - `run_token` is a lease-owner token, not an authentication token. It prevents a stale executor from heartbeating or completing a newer run.
-- `trigger_source` records how work entered the reconciliation loop; it must not change retry behavior except where explicitly documented.
-- `error_code` is the durable stable failure classifier; `error_message` is operator-facing context and must be redacted.
+- `trigger_source` records how work enters the reconciliation loop; it does not change retry behavior except where explicitly documented.
+- `error_code` is the durable stable failure classifier; `error_message` is operator-facing context and is redacted.
 - Trade-off: keeping run history in D1 instead of only Worker logs gives retry and support flows durable evidence, but retention is short and raw GitHub payloads stay out of the table.
 
 ### Installation Reconciliation State
+
+Current implementation note:
+`GitHubInstallationObject.signalInstallationReconciliation(...)` creates or updates these rows with `reconciliation_state = 'pending'` and `reconciliation_requested = 1`. Execution-state transitions beyond signal capture are future potential implementation.
 
 ```sql
 CREATE TABLE installation_reconciliation_states (
@@ -572,9 +579,9 @@ Notes:
 - `last_successful_run_id` and `last_failed_run_id` point at terminal run-history rows for cheap operational summaries.
 - `consecutive_failure_count` drives retry backoff. Total attempts are counted from `installation_reconciliation_runs`.
 - `reconciliation_requested` is separate from `reconciliation_state` so a signal arriving during a run can request exactly one follow-up pass.
-- `current_run_id` is nullable outside `running` and must be cleared on terminal completion or lost-run recovery.
-- `next_retry_at` is meaningful only in `backoff`; retry scans must include the state check, not just the timestamp.
-- Trade-off: this compact state row is easier to reason about than deriving scheduler state from run history, but it must be updated transactionally with run-row transitions to avoid stuck installations.
+- `current_run_id` is nullable outside `running` and is cleared on terminal completion or lost-run recovery in the future executor.
+- `next_retry_at` is meaningful only in `backoff`; future retry scans include the state check, not just the timestamp.
+- Trade-off: this compact state row is easier to reason about than deriving scheduler state from run history, but future executor code updates it transactionally with run-row transitions to avoid stuck installations.
 
 ### Webhook Delivery Log
 
@@ -603,11 +610,11 @@ Notes:
 - Store metadata only in the first cut, not raw webhook bodies.
 - Persist one metadata row for each webhook delivery that reaches envelope validation, whether it is accepted or rejected.
 - Do not keep a DO-only webhook log; D1 is the durable Webhook Delivery Log surface.
-- `delivery_id` is GitHub's idempotency key for a delivery; retries with the same delivery id must not create multiple durable delivery rows.
+- `delivery_id` is GitHub's idempotency key for a delivery; retries with the same delivery id do not create multiple durable delivery rows.
 - `installation_id` is nullable because malformed, unsupported, or non-installation deliveries can still be useful operational evidence.
 - `delivery_accepted` records whether the delivery was accepted for downstream reconciliation, while `response_status_code` records the public HTTP response.
 - `webhook_signature_valid` is stored so rejected signed-envelope failures are distinguishable from accepted deliveries without retaining the raw body or signature.
-- `delivery_metadata_json` may include redacted envelope fields only; it must not include raw payload bodies, secrets, signatures, or OAuth material.
+- `delivery_metadata_json` may include redacted envelope fields only; it does not include raw payload bodies, secrets, signatures, or OAuth material.
 - Trade-off: metadata-only logging makes replay from cyspbot impossible, but GitHub remains the webhook delivery source and this avoids creating a long-lived payload archive.
 
 ## Durable Object storage shapes
@@ -618,7 +625,7 @@ This Durable Object remains in the system, but only as the installation-scoped I
 
 It persists only minimal reconstructable coordination state in Durable Object key-value storage.
 
-Suggested local state shape:
+Current local state shape:
 
 ```ts
 interface InstallationReconcileState {
@@ -634,8 +641,8 @@ Semantics:
 
 - exactly one logical local state object
 - `reconcileRequested = true` means at least one reconcile signal has been latched
-- `reconcileRunning = true` means a pass is currently executing
-- `currentRunId` and `currentRunToken` mirror the D1 run row for the currently running pass when present
+- `reconcileRunning = true` means a future pass is executing
+- `currentRunId` and `currentRunToken` mirror the D1 run row for the future running pass when present
 - `lastSignalAt` is optional local observability only
 
 Not stored here:
@@ -648,7 +655,7 @@ Not stored here:
 
 ### `OidcIssuerVerifierObject`
 
-No change is planned to the issuer verifier architecture in this re-cut.
+The issuer verifier architecture is unchanged by this re-cut.
 
 Current logical storage uses one persisted verifier-state blob in Durable Object key-value storage:
 
@@ -680,12 +687,11 @@ Rules:
   - repositories without history sort by `full_name_display ASC`
 - use current projection `full_name_display` for display
 
-Suggested summary projection strategy:
+Current summary projection strategy:
 
-- either compute on read from `installation_token_issuance_audit_entries`
-- or maintain a cheap SQL-side summary column/materialized projection later
+- compute on read from `installation_token_issuance_audit_entries`
 
-The first cut does not require a separate summary table.
+Future potential implementation may add a SQL-side summary column or materialized projection if query cost requires it.
 
 ### Dashboard details
 
@@ -697,15 +703,15 @@ Route semantics:
 
 - The repository detail route uses the current normalized `owner/name` as a user-facing locator only.
 - If a repository has been renamed or transferred, old `owner/name` URLs return `404` in the first cut.
-- `/dashboard` is the canonical entrypoint and must generate links from current projection rows.
+- `/dashboard` is the canonical entrypoint and generates links from current projection rows.
 - Do not add alias-history routing in the first cut; historical names remain audit display evidence only.
 
 Resolution:
 
 1. resolve current repository projection by current `owner/name`
 2. if none exists, return `404`
-3. check the fresh Repository Visibility Cache by `github_user_id + repository_id`
-4. on missing or expired cache, refresh the relevant installation slice once
+3. refresh the Dashboard User's GitHub-visible installation repository slices
+4. check the fresh Repository Visibility Cache by `github_user_id + repository_id`
 5. if the refresh fails, return `503`
 6. if still unauthorized, return `404`
 7. query last 5 `installation_token_issuance_audit_entries` rows by `caller_repository_id`
@@ -724,13 +730,13 @@ UI behavior:
 The dashboard is an operational audit surface, not a workflow control plane.
 
 Decision:
-Use progressively enhanced server-rendered HTML for the first cut. Client-side JavaScript may improve filtering, sorting, disclosure, and refresh ergonomics, but it must not become the authorization boundary or a second data model.
+The dashboard uses server-rendered HTML. Future client-side JavaScript may improve filtering, sorting, disclosure, and refresh ergonomics, but it does not become the authorization boundary or a second data model.
 
 Why:
 
 - The dashboard has two stable read surfaces and a small amount of state.
 - Server-rendered pages keep repository visibility checks and audit queries on the trusted side of the Worker boundary.
-- A full client-side application would add routing, hydration, API, and cache-invalidation surface before there is enough interaction complexity to justify it.
+- A full client-side application adds routing, hydration, API, and cache-invalidation surface before there is enough interaction complexity to justify it.
 
 Rejected for the first cut:
 
@@ -759,70 +765,70 @@ Client data contract:
 
 - HTML is the durable browser contract for v1.
 - If JavaScript needs structured data, embed only minimal redacted view models in inert JSON script tags with `type="application/json"`.
-- Embedded view models must use display-ready strings and stable ids already authorized for the current page.
+- Embedded view models use display-ready strings and stable ids already authorized for the current page.
 - Do not embed access tokens, session-token hashes, encrypted token blobs, raw GitHub API responses, raw audit payloads, or raw webhook payloads.
-- The server must HTML-escape text content and JSON-escape any embedded structured data.
+- The server HTML-escapes text content and JSON-escapes any embedded structured data.
 
 Dashboard list page:
 
 - Primary content is a dense repository table or list generated from current projection rows joined to fresh Repository Visibility Cache rows.
 - Show active repositories before archived repositories.
 - Clearly separate archived repositories from active repositories.
-- Show a visible degraded state when GitHub visibility refresh failed and stale repository names are rendered only as navigation context.
-- In degraded state, do not render enabled detail links, audit summaries, or controls that imply fresh authorization.
-- Empty state must distinguish "GitHub returned no visible repositories" from "visibility refresh failed".
-- Client-side filtering may narrow the rendered list by owner/name, visibility, archived state, and recent issuance outcome if those fields are already present.
+- The current implementation refreshes visibility before rendering and then lists only fresh Repository Visibility Cache rows.
+- Future potential degraded-state rendering may show stale repository names as navigation context when GitHub visibility refresh fails, but it does not render enabled detail links, audit summaries, or controls that imply fresh authorization.
+- The current empty state reports that no repositories are currently visible.
+- Future client-side filtering may narrow the rendered list by owner/name, visibility, archived state, and recent issuance outcome if those fields are already present.
 
 Repository detail page:
 
-- The server must authorize by fresh Repository Visibility Cache before rendering any audit rows.
+- The server authorizes by fresh Repository Visibility Cache before rendering any audit rows.
 - Header uses current projection `full_name_display`.
 - Route params are a locator only; after resolution, all audit queries and UI row identity use immutable `repository_id`.
 - Show the last 5 Installation Token Issuance rows in reverse request time.
-- Use outcome-specific visual treatment, but text labels must remain present without color dependence.
-- Show policy or failure reason codes as stable machine-readable codes first; optional display copy may be added beside them.
+- Outcome-specific visual treatment keeps text labels present without color dependence.
+- Policy or failure reason codes are shown as stable machine-readable codes first; optional display copy may be added beside them in future UI work.
 - For issued rows, show token expiry and returned permissions, but never show token values, token hashes, or secret-derived fingerprints.
-- If `caller_repository_full_name_display` differs from current projection display name, show "recorded as ..." on that audit row.
-- If a row has `audit_state = 'pending'` or `finalization_failed`, show the audit state explicitly rather than inferring success or denial from missing child rows.
+- If `caller_repository_full_name_display` differs from current projection display name, the row shows "recorded as ...".
+- If a row has `audit_state = 'pending'` or `finalization_failed`, the audit state is shown explicitly rather than inferring success or denial from missing child rows.
 
 Navigation and routing:
 
 - `/dashboard` is the canonical entrypoint and produces links using current projection `owner/name`.
-- Detail links must use URL-encoded current display owner/name, not `repository_id`.
-- Client-side routing must not be introduced in v1; browser navigation should make normal GET requests so authorization runs server-side for every page.
+- Detail links use URL-encoded current display owner/name, not `repository_id`.
+- Client-side routing is not used in v1; browser navigation makes normal GET requests so authorization runs server-side for every page.
 - Old repository names after rename or transfer return `404`; do not implement client-side alias redirects.
 
 Refresh behavior:
 
 - Automatic background refresh is not part of v1.
-- A manual refresh control that performs Visibility Refresh must submit a non-GET request to a server route and redirect back after completion.
-- Refresh controls must show whether the page is using fresh visibility, stale degraded context, or a failed refresh state.
+- Future manual refresh controls that perform Visibility Refresh submit a non-GET request to a server route and redirect back after completion.
+- Future refresh controls show whether the page is using fresh visibility, stale degraded context, or a failed refresh state.
 - Do not poll GitHub or D1 from the browser.
 
 Error and loading states:
 
 - Missing or expired Dashboard Session redirects to `/login/github`.
-- Repository not found or no longer visible returns `404`; the UI must not distinguish those cases for unauthorized users.
+- Repository not found or no longer visible returns `404`; the UI does not distinguish those cases for unauthorized users.
 - GitHub visibility refresh failure on a repository detail request returns `503`.
 - Dashboard list refresh failure may render degraded stale navigation context only under the stale visibility rules.
 - Public UI errors stay minimal; operator detail belongs in structured Worker logs.
 
 Security headers and browser controls:
 
-- Dashboard HTML responses should set `Cache-Control: no-store`.
-- Dashboard HTML responses should set a restrictive Content Security Policy. For the first cut, prefer no third-party scripts and no inline script; if inline CSS remains, allow it explicitly only for styles.
+- Dashboard HTML responses set `Cache-Control: no-store`.
+- Dashboard HTML responses set a restrictive Content Security Policy. The current implementation uses no third-party scripts and allows inline CSS only for styles.
 - Set `X-Frame-Options: DENY` or the CSP `frame-ancestors 'none'` equivalent.
 - Avoid third-party fonts, analytics, images, or client SDKs in v1.
-- Forms that mutate server-side session or refresh state must use non-GET methods, existing session authentication, and an explicit CSRF control.
+- Future forms that mutate server-side session or refresh state use non-GET methods, existing session authentication, and an explicit CSRF control.
 
 Accessibility and usability guardrails:
 
 - The dashboard is a work-focused operational surface. Prioritize scannable tables, clear status labels, predictable navigation, and compact controls over marketing-style layout.
-- Every status conveyed by color must also have text.
-- Tables must remain readable on narrow screens without losing column labels.
-- Times should render as UTC by default, with client-local formatting only as progressive enhancement and never as the only displayed value.
-- Long refs, workflow refs, repository names, and reason codes must wrap or truncate without overlapping adjacent content.
-- Controls must be usable by keyboard and have visible focus states.
+- Every status conveyed by color also has text.
+- Tables remain readable on narrow screens without losing column labels.
+- Times render as UTC by default, with client-local formatting only as progressive enhancement and never as the only displayed value.
+- Long refs, workflow refs, repository names, and reason codes wrap or truncate without overlapping adjacent content.
+- Controls are usable by keyboard and have visible focus states.
 
 Implementation guardrails:
 
@@ -838,14 +844,14 @@ Rules:
 
 - cache freshness TTL: `5 minutes`
 - expired Repository Visibility Cache rows do not authorize repository detail access.
-- repository detail requests must refresh expired or missing visibility against GitHub before showing audit data.
+- repository detail requests refresh visibility against GitHub before showing audit data.
 - if GitHub refresh fails for a repository detail request, return `503 Service Unavailable`.
 - if GitHub refresh succeeds and the repository is not returned for the user, return `404`.
 - stale negative is never authoritative
-- `/dashboard` may render stale repository names only as degraded navigation context when GitHub refresh fails.
-- stale `/dashboard` rendering must not include audit summaries or enabled repository-detail links.
+- `/dashboard` currently lists only fresh Repository Visibility Cache rows after attempting a GitHub refresh.
+- Future degraded `/dashboard` rendering may show stale repository names only as navigation context when GitHub refresh fails and does not include audit summaries or enabled repository-detail links.
 - repository audit data is shown only after fresh GitHub-backed authorization.
-- when a visibility refresh fails, record an operational event with `github_user_id`, `installation_id` when known, `repository_id` when relevant, error class, and whether stale list context was rendered.
+- when a visibility refresh fails, record an operational event with `github_user_id`, error class, and request path.
 
 ## Installation Token Issuance
 
@@ -866,16 +872,14 @@ Installation Token Issuance does not update installation or repository projectio
 
 V1 records operational security events as structured Worker logs only. These events are not stored in D1 in the first cut.
 
-Required fields:
+Current fields:
 
 - `event_name`
 - `occurred_at`
-- `request_id` when available
 - `github_user_id` when the event is associated with a Dashboard User
-- `installation_id` when known
-- `repository_id` when relevant
 - `error_class`
-- `degraded_output_rendered` for dashboard visibility failures
+
+Future operational events may add request IDs, installation IDs, repository IDs, and degraded-output indicators when those values are available.
 
 Required event names:
 
@@ -889,7 +893,7 @@ Required event names:
 
 Rules:
 
-- Structured operational security logs must not include raw tokens, encrypted token blobs, webhook payload bodies, OAuth codes, OAuth state values, session tokens, session-token hashes, or raw OIDC tokens.
+- Structured operational security logs do not include raw tokens, encrypted token blobs, webhook payload bodies, OAuth codes, OAuth state values, session tokens, session-token hashes, or raw OIDC tokens.
 - Public responses remain minimal even when operational security logs carry richer diagnostic context.
 - A future D1 `operational_security_events` table may be added if dashboard-visible operator diagnostics become a product requirement.
 
@@ -897,9 +901,9 @@ Auth and redirect controls:
 
 - `/login/github` creates an OAuth `state` value and stores it in a signed short-lived cookie named `__Host-cyspbot_oauth_state` before redirecting to GitHub.
 - The OAuth state cookie uses `Path=/`, does not set a `Domain` attribute, and is `HttpOnly`, `Secure`, and `SameSite=Lax`.
-- `/auth/github/callback` must validate the returned `state` before exchanging a dashboard OAuth code.
-- `/github/setup` must not create a Dashboard Session, must not trust `installation_id`, and must redirect recognized install/update setup callbacks to `/login/github?return_to=%2Fdashboard` after clearing stale OAuth state.
-- `/auth/github/callback` may defensively redirect setup-shaped callbacks to `/login/github?return_to=%2Fdashboard`, but it must not exchange a setup callback code without valid OAuth state.
+- `/auth/github/callback` validates the returned `state` before exchanging a dashboard OAuth code.
+- `/github/setup` does not create a Dashboard Session, does not trust `installation_id`, and redirects recognized install/update setup callbacks to `/login/github?return_to=%2Fdashboard` after clearing stale OAuth state.
+- `/auth/github/callback` defensively redirects setup-shaped callbacks to `/login/github?return_to=%2Fdashboard`, but it does not exchange a setup callback code without valid OAuth state.
 - Return targets are validated against an explicit allowlist of dashboard route shapes:
   - `/dashboard`
   - `/dashboard/repositories/:owner/:name`
@@ -907,18 +911,22 @@ Auth and redirect controls:
 
 ## Operational design checks
 
-These checks are ordered by request flow and should be used during implementation review.
+These checks are ordered by request flow and describe the current implementation unless marked future.
 
 1. Dashboard login creates a Dashboard User and Dashboard Session only after GitHub App user authorization succeeds. The failure case being guarded is a local session for a user whose GitHub authorization did not complete.
-2. Dashboard session lookup authorizes only the web session. It must not imply repository access, org access, or GitHub App Installation membership.
-3. Dashboard visibility refresh fetches every GitHub page for one `github_user_id + installation_id` slice before touching D1. The failure case being guarded is a partial page fetch deleting or narrowing valid visibility rows.
+2. Dashboard session lookup authorizes only the web session. It does not imply repository access, org access, or GitHub App Installation membership.
+3. Dashboard visibility refresh fetches every GitHub page for a `github_user_id + installation_id` slice before replacing that slice in D1. The failure case being guarded is a partial page fetch deleting or narrowing valid visibility rows for that slice.
 4. Repository detail access resolves the current repository projection first, refreshes stale or missing user visibility once, and shows audit data only after a fresh positive cache row exists. The failure case being guarded is historical audit evidence leaking to a user who no longer has GitHub visibility.
 5. Installation Token Issuance writes the audit intent before live GitHub lookup or token creation. The failure case being guarded is an issued token with no durable authenticated request record.
 6. Installation Token Issuance finalizes the audit row and child rows after GitHub response. The failure case being guarded is a dashboard-visible success without the returned expiry and permissions GitHub actually issued.
 7. Webhook receipt validates signature and envelope before signaling reconciliation, then records delivery metadata without storing the raw body. The failure case being guarded is unsigned input mutating projection state or creating a long-lived webhook payload archive.
-8. Installation Reconciliation is serialized by `GitHubInstallationObject` and committed atomically per installation slice. The failure case being guarded is concurrent or partial projection replacement that mixes old and new GitHub state.
-9. Retry recovery treats expired reconciliation leases as lost work and schedules another pass. The failure case being guarded is a permanently stuck installation after Worker termination.
-10. Cleanup runs from a scheduled Worker and respects retention indexes and state references. The failure case being guarded is relying on read traffic for retention or deleting run rows still referenced by scheduler state.
+8. Webhook receipt signals `GitHubInstallationObject`, which records pending reconciliation state in D1. The failure case being guarded is unsigned input mutating projection state or creating a long-lived webhook payload archive.
+
+Future potential implementation:
+
+9. Installation Reconciliation is serialized by `GitHubInstallationObject` and committed atomically per installation slice. The failure case being guarded is concurrent or partial projection replacement that mixes old and new GitHub state.
+10. Retry recovery treats expired reconciliation leases as lost work and schedules another pass. The failure case being guarded is a permanently stuck installation after Worker termination.
+11. Cleanup runs from a scheduled Worker and respects retention indexes and state references. The failure case being guarded is relying on read traffic for retention or deleting run rows still referenced by scheduler state.
 
 ## Reconciliation flow
 
@@ -930,49 +938,59 @@ These checks are ordered by request flow and should be used during implementatio
   - `dashboard_sessions`
   - positive projection bootstrap rows for GitHub-returned visible repositories only
   - `repository_visibility_cache_entries`
-- Installation Reconciliation writes:
-  - `github_app_installations`
-  - `github_repositories`
-  - `github_app_installation_repositories`
-  - `installation_reconciliation_states`
-  - `installation_reconciliation_runs`
+- Webhook Receiver writes:
   - `webhook_delivery_log_entries`
+- Installation Reconciliation signal handling writes:
+  - placeholder `github_app_installations` rows when a signal arrives for an installation not yet present
+  - `installation_reconciliation_states`
 
-### Execution model
+Future Installation Reconciliation execution writes:
+
+- `github_app_installations`
+- `github_repositories`
+- `github_app_installation_repositories`
+- `installation_reconciliation_states`
+- `installation_reconciliation_runs`
+
+### Current execution model
 
 1. webhook or manual request signals Installation Reconciliation for one GitHub App Installation
 2. signal goes through `GitHubInstallationObject`
 3. DO latches `reconciliation_requested = 1` in `installation_reconciliation_states`
-4. DO executes one Installation Reconciliation pass if not already running
-5. DO creates an `installation_reconciliation_runs` row with `run_status = 'running'`, a random `run_token`, and a `5 minute` lease
-6. DO updates `installation_reconciliation_states` with `reconciliation_state = 'running'`, `current_run_id`, and clears `reconciliation_requested`
-7. the running pass renews the run lease every `2 minutes` by updating the run row with a matching `run_token`
-8. Installation Reconciliation fetches the authoritative installation snapshot from GitHub
-9. if the snapshot is complete, replace/update installation projection atomically in D1
-10. on success, mark the run `succeeded`, set `last_successful_run_id`, reset `consecutive_failure_count` to `0`, set `reconciliation_state = 'idle'` if no signal arrived while running or `pending` if one did, and clear `current_run_id`
-11. on failure, mark the run `failed`, set `last_failed_run_id`, increment `consecutive_failure_count`, set `reconciliation_state = 'backoff'`, set `next_retry_at`, clear `current_run_id`, and leave `reconciliation_requested = 1`
+4. DO keeps minimal reconstructable local state in key-value storage
 
-Crash recovery rule:
+### Future potential execution model
+
+1. DO executes one Installation Reconciliation pass if not already running
+2. DO creates an `installation_reconciliation_runs` row with `run_status = 'running'`, a random `run_token`, and a `5 minute` lease
+3. DO updates `installation_reconciliation_states` with `reconciliation_state = 'running'`, `current_run_id`, and clears `reconciliation_requested`
+4. the running pass renews the run lease every `2 minutes` by updating the run row with a matching `run_token`
+5. Installation Reconciliation fetches the authoritative installation snapshot from GitHub
+6. if the snapshot is complete, replace/update installation projection atomically in D1
+7. on success, mark the run `succeeded`, set `last_successful_run_id`, reset `consecutive_failure_count` to `0`, set `reconciliation_state = 'idle'` if no signal arrived while running or `pending` if one did, and clear `current_run_id`
+8. on failure, mark the run `failed`, set `last_failed_run_id`, increment `consecutive_failure_count`, set `reconciliation_state = 'backoff'`, set `next_retry_at`, clear `current_run_id`, and leave `reconciliation_requested = 1`
+
+Future crash recovery rule:
 
 - if the scheduler finds a state row with `reconciliation_state = 'running'` whose current run has expired `lease_expires_at`, it marks the run `lost`, marks the installation back to `pending`, preserves `reconciliation_requested = 1`, records a timeout-style failure code, emits `installation_reconciliation_lease_recovered`, and re-pokes the installation DO
 
 ### Coalescing behavior
 
 - repeated signals while idle collapse into one pending run
-- if a signal arrives while running, perform exactly one more pass afterward
+- future executor performs exactly one more pass afterward if a signal arrives while running
 
-### Retry model
+### Future retry model
 
 - scheduled Worker scans D1 for installations whose Installation Reconciliation retry is due
 - it pokes the corresponding `GitHubInstallationObject`
 - the DO is the sole per-installation executor
 
-### Atomicity rule
+### Future projection atomicity rule
 
 - installation projection replacement is atomic per installation
 - do not partially replace `github_app_installation_repositories`
 - if GitHub fetch is incomplete or inconsistent, leave previous projection intact
-- installation-scoped route normalization and projection uniqueness must use the normalized full-name key, not raw display casing
+- installation-scoped route normalization and projection uniqueness use the normalized full-name key, not raw display casing
 
 ## Retention and cleanup
 
@@ -987,109 +1005,31 @@ Crash recovery rule:
 - `installation_reconciliation_runs`: keep terminal run rows for `30 days`; do not purge a row referenced by `installation_reconciliation_states.current_run_id`, `last_successful_run_id`, or `last_failed_run_id`
 - `webhook_delivery_log_entries`: `7 days`
 
-Cleanup should run from a scheduled Worker job, not only opportunistically on reads.
+Future cleanup runs from a scheduled Worker job, not only opportunistically on reads.
 
-## Rollout sequence
+## Implementation State
 
-### Phase 0: docs and naming freeze
+Completed:
 
-- land this document
-- align README, ADRs, CONTEXT, and PRD references
-- freeze route names, table names, and retention policy before schema work begins
+- D1 binding and dashboard/audit/webhook schema exist.
+- Installation Token Issuance writes mandatory D1 Audit Log intent and finalization rows.
+- Dashboard authentication routes use D1-backed Dashboard Sessions.
+- Dashboard repository list and detail routes use GitHub App user authorization plus fresh Repository Visibility Cache rows.
+- Visibility Refresh performs positive projection bootstrap upserts for repositories returned by GitHub's user-to-server installation repository APIs.
+- `GitHubInstallationObject` records pending Installation Reconciliation signals and state in D1.
+- Webhook delivery metadata is written to D1 and accepted installation events signal `GitHubInstallationObject`.
+- The old Dashboard Session Durable Object, installation-local Audit Log ownership, repository-id dashboard route, and Durable Object migration endpoint are removed.
 
-### Phase 1: D1 bootstrap
+Future potential implementation:
 
-- add D1 binding and migrations
-- create D1 schema for:
-  - `dashboard_users`
-  - `dashboard_sessions`
-  - `installation_token_issuance_audit_entries`
-  - `issued_installation_tokens`
-  - `issued_installation_token_permissions`
-  - `installation_token_issuance_audit_outcome_reasons`
-
-This phase makes the central Audit Log and SQL-backed Dashboard Sessions possible before the dashboard rewrite.
-
-### Phase 2: Installation Token Issuance audit cutover
-
-- write Audit Log records to D1
-- make audit persistence mandatory for issuance success
-- stop treating installation DO audit storage as authoritative
-
-At the end of this phase:
-
-- D1 is the system of record for the Audit Log
-- installation DO audit code is either removed or left as compatibility scaffolding pending deletion
-
-### Phase 3: Dashboard authentication cutover
-
-- move auth routes to:
-  - `/github/setup`
-  - `/login/github`
-  - `/auth/github/callback`
-  - `/logout`
-- store Dashboard Sessions in D1
-- hash public session tokens with HMAC
-- encrypt GitHub user token blobs in D1
-- remove `DashboardSessionObject`
-
-### Phase 4: projection and visibility schema
-
-- add:
-  - `github_app_installations`
-  - `github_repositories`
-  - `github_app_installation_repositories`
-  - `repository_visibility_cache_entries`
-  - `installation_reconciliation_states`
-  - `installation_reconciliation_runs`
-  - `webhook_delivery_log_entries`
-- do not route dashboard authorization through these tables yet
-- keep Installation Token Issuance live against GitHub
-
-### Phase 5: Visibility Refresh implementation
-
-- implement login-driven and on-demand Visibility Refresh
-- replace only the `user + installation` Repository Visibility Cache slice returned by GitHub
-- allow positive projection bootstrap upserts from Visibility Refresh only for repositories GitHub returned
-- do not delete projection rows, mark repositories deleted, or infer absence from Visibility Refresh
-- keep Installation Token Issuance live against GitHub
-
-### Phase 6: Installation Reconciliation writer
-
-- narrow `GitHubInstallationObject` to Installation Reconciliation coalescing and serialized execution only
-- route manual Installation Reconciliation signals through the DO
-- write Installation Reconciliation outcomes to D1
-- add scheduled retry dispatcher
-- make Installation Reconciliation the only writer for full installation-slice replacement, deletion, suspension, or removal decisions
-- keep Installation Token Issuance live against GitHub
-
-### Phase 7: webhook delivery metadata
-
-- route webhook Installation Reconciliation signals through the DO
-- write webhook delivery metadata to D1
-- keep Installation Token Issuance live against GitHub
-
-### Phase 8: dashboard rewrite
-
-- rebuild `/dashboard`
-- rebuild `/dashboard/repositories/:owner/:name`
-- authorize by projection + fresh Repository Visibility Cache
-- add fail-closed repository detail authorization and degraded stale list context for GitHub-unavailable cases
-- remove any repository-id route shape from the prototype
-
-### Phase 9: cleanup and deletion of obsolete prototype paths
-
-- remove installation-local Audit Log persistence
-- remove prototype dashboard and Dashboard Session code paths
+- implement full Installation Reconciliation execution and full installation-slice replacement
+- add a scheduled retry dispatcher
 - add cleanup jobs for Dashboard Sessions, Repository Visibility Cache, Audit Log retention, Installation Reconciliation state, and Webhook Delivery Log rows
-
-### Phase 10: optional follow-ups
-
 - add repository list summary projection if query cost requires it
 - add operator diagnostics UI or reports for Installation Reconciliation failures
 - add future permission-intersection Audit Log fields only when that feature actually exists
 
-Each phase must leave exactly one authoritative read path for any given concern. Compatibility scaffolding may exist temporarily, but it must not create competing durable sources of truth.
+Any future implementation keeps exactly one authoritative read path for any given concern. Compatibility scaffolding may exist temporarily, but it does not create competing durable sources of truth.
 
 ## Resolved design checks
 
@@ -1100,8 +1040,8 @@ D1 table scope is split between durable facts, current GitHub-derived projection
 
 Guardrails:
 
-- Audit Log rows and issued Installation Token child rows are durable facts and must not authorize dashboard repository detail access.
-- Repository projection rows are current-state GitHub-derived data and must not authorize dashboard repository detail access without a fresh Repository Visibility Cache row.
+- Audit Log rows and issued Installation Token child rows are durable facts and do not authorize dashboard repository detail access.
+- Repository projection rows are current-state GitHub-derived data and do not authorize dashboard repository detail access without a fresh Repository Visibility Cache row.
 - Repository Visibility Cache rows are the only D1 rows that may authorize dashboard repository detail access, and only while fresh.
 - Audit Log rows intentionally do not foreign-key to projection rows.
 
@@ -1112,9 +1052,10 @@ Decision:
 
 Guardrails:
 
-- It coalesces signals and serializes Installation Reconciliation execution.
-- Its local state must be reconstructable from D1 plus a new signal.
-- It must not become the durable owner of audit records, projection rows, visibility rows, sessions, retry counters, or failure history.
+- It coalesces Installation Reconciliation signals.
+- Future Installation Reconciliation execution is serialized through this boundary.
+- Its local state is reconstructable from D1 plus a new signal.
+- It does not become the durable owner of audit records, projection rows, visibility rows, sessions, retry counters, or failure history.
 
 ### Repository route semantics
 

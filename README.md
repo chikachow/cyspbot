@@ -108,7 +108,7 @@ The GitHub-specific endpoints use minimal `application/problem+json` responses.
   - `job_workflow_ref`
   - `environment`
 - One Durable Object per trusted OIDC issuer for verifier/JWKS coordination.
-- One Durable Object per GitHub App Installation is retained only for Installation Reconciliation signal coalescing and serialized execution.
+- One Durable Object per GitHub App Installation is retained only for Installation Reconciliation signal coalescing. Serialized execution is future potential implementation.
 - D1 is the durable system of record for the Audit Log, Dashboard Sessions, installation/repository projection, Repository Visibility Cache, Webhook Delivery Log metadata, and Installation Reconciliation state and run history.
 - Cloudflare Secrets Store holds the GitHub App private key.
 - GitHub App installation is repository authorization.
@@ -133,9 +133,9 @@ For the dashboard, GitHub App user authorization is the visibility control plane
 
 GitHub App installation setup redirects are part of the dashboard entry path but are not an OAuth login by themselves:
 
-- The GitHub App must use `https://cyspbot.chikachow.org/github/setup` as the post-install Setup URL.
-- The GitHub App OAuth callback URL must remain `https://cyspbot.chikachow.org/auth/github/callback`.
-- `Request user authorization (OAuth) during installation` should be disabled so GitHub can use the distinct Setup URL.
+- The GitHub App uses `https://cyspbot.chikachow.org/github/setup` as the post-install Setup URL.
+- The GitHub App OAuth callback URL remains `https://cyspbot.chikachow.org/auth/github/callback`.
+- `Request user authorization (OAuth) during installation` is disabled so GitHub can use the distinct Setup URL.
 - GitHub can call the Setup URL after install or repository-selection updates with `installation_id` and `setup_action`. cyspbot does not trust `installation_id` because setup URLs are externally reachable.
 - cyspbot clears any stale OAuth state cookie and redirects to `/login/github?return_to=%2Fdashboard`, which starts a normal stateful GitHub App user authorization flow.
 - `GET /auth/github/callback` still has a defensive fallback for setup-shaped callbacks, but that is compatibility behavior rather than the target GitHub App configuration.
@@ -172,7 +172,7 @@ Production is configured to attach the Worker to the custom domain `cyspbot.chik
 
 ## GitHub Actions for this repo
 
-This repository now has two workflows:
+This repository has two workflows:
 
 - `ci`: runs on pull requests and pushes to `main`, and executes the canonical `node --run check` script.
 - `deploy`: runs automatically after a successful `ci` workflow on a `main` push and deploys directly to production.
@@ -182,7 +182,7 @@ Deployment expects these GitHub secrets:
 - `CLOUDFLARE_ACCOUNT_ID`
 - `CLOUDFLARE_API_TOKEN`
 
-The Cloudflare API token should be scoped narrowly to the account and Worker deployment access needed for this project. Cloudflare's Workers GitHub Actions docs call out those two secrets as the required non-interactive authentication inputs for Wrangler: [GitHub Actions](https://developers.cloudflare.com/workers/ci-cd/external-cicd/github-actions/).
+The Cloudflare API token is scoped narrowly to the account and Worker deployment access needed for this project. Cloudflare's Workers GitHub Actions docs call out those two secrets as the required non-interactive authentication inputs for Wrangler: [GitHub Actions](https://developers.cloudflare.com/workers/ci-cd/external-cicd/github-actions/).
 
 ## Local development
 
@@ -201,7 +201,7 @@ The Cloudflare API token should be scoped narrowly to the account and Worker dep
    pnpm run dev
    ```
 
-Local development falls back to `GITHUB_APP_PRIVATE_KEY_PEM` from `.dev.vars`; production should use Secrets Store. cyspbot expects PKCS#8 PEM for both paths.
+Local development falls back to `GITHUB_APP_PRIVATE_KEY_PEM` from `.dev.vars`; production uses Secrets Store. cyspbot expects PKCS#8 PEM for both paths.
 
 Worker tests inject auth and GitHub API test doubles at the app boundary. Production code does not branch on test-only environment variables.
 
@@ -213,7 +213,7 @@ The current checked-in policy is intentionally narrow, but the claim mapping kee
 
 The reusable GitHub Action client for cyspbot lives in the separate `cyspbot-action` repository. This repository documents and deploys the hosted cyspbot service.
 
-cyspbot will deny `pull_request`, `pull_request_target`, and any non-default-branch `ref` context under the default policy.
+cyspbot denies `pull_request`, `pull_request_target`, and any non-default-branch `ref` context under the default policy.
 
 ## GitHub Webhooks
 

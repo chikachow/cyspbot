@@ -1,6 +1,6 @@
 # Use a per-issuer verifier Durable Object for OIDC JWKS coordination
 
-cyspbot will verify OIDC bearer tokens through one Durable Object per **Issuer Registration** instead of relying on isolate-local remote-JWKS caching alone. We chose this shape so each trusted issuer gets one coordinated refresh and backoff policy, one shared normalized JWKS snapshot, and one bounded stale-while-error policy across Worker isolates, while keeping issuer trust as static deployment configuration rather than token-driven discovery.
+cyspbot verifies OIDC bearer tokens through one Durable Object per **Issuer Registration** instead of relying on isolate-local remote-JWKS caching alone. We chose this shape so each trusted issuer gets one coordinated refresh and backoff policy, one shared normalized JWKS snapshot, and one bounded stale-while-error policy across Worker isolates, while keeping issuer trust as static deployment configuration rather than token-driven discovery.
 
 ## Considered Options
 
