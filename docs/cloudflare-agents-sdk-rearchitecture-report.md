@@ -33,7 +33,7 @@ This keeps the hard security boundary explicit while using the Agents SDK where 
 
 Today `cyspbot` is already Cloudflare-native:
 
-- `src/worker/app.ts` is a thin HTTP Worker entrypoint for `/token`, `/github/claims`, `/github/installations/token`, `/github/webhooks`, and the dashboard routes.
+- `src/worker/app.ts` is a thin HTTP Worker entrypoint for `/token`, `/github/claims`, `/github/webhooks`, and the dashboard routes.
 - `src/durable-objects/oidc-issuer-verifier-object.ts` keeps one verifier Durable Object per issuer registration and owns JWKS coordination, persistence, and refresh/backoff state.
 - `src/durable-objects/installation-object.ts` keeps one Durable Object per GitHub App installation and coalesces Installation Reconciliation signals.
 - D1 stores the Audit Log, issued Installation Token facts, Dashboard Sessions, Repository Visibility Cache, projection rows, webhook delivery metadata, and Installation Reconciliation state.
@@ -132,7 +132,7 @@ Agents bring:
 - optional client SDK concepts
 - MCP concepts
 
-Most of that is irrelevant to `POST /github/claims` and `POST /github/installations/token`. Adding it anyway would be architecture inflation.
+Most of that is irrelevant to `POST /github/claims` and `POST /token`. Adding it anyway would be architecture inflation.
 
 3. Higher testing and reasoning burden
 
@@ -288,8 +288,8 @@ Responsibilities:
 
 Endpoints:
 
+- `POST /token`
 - `POST /github/claims`
-- `POST /github/installations/token`
 - `POST /github/webhooks`
 - optional operator routes such as `GET /installations/:id/status`
 
@@ -405,7 +405,7 @@ These are configuration/trust inputs, not runtime identities.
 
 This keeps the security path explicit while still using agents for issuer and installation identities.
 
-#### `POST /github/installations/token`
+#### `POST /token`
 
 1. Edge Worker authenticates through `IssuerVerifierAgent`.
 2. Worker resolves the installation ID for the verified repository.

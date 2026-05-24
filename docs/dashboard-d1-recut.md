@@ -25,7 +25,6 @@ Current implementation state is described first. Future work is explicitly marke
 
 - `POST /token`
 - `POST /github/claims`
-- `POST /github/installations/token`
 
 These continue to authenticate GitHub Actions OIDC Callers and use live GitHub API reads during Installation Token Issuance.
 

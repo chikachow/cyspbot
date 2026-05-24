@@ -26,7 +26,6 @@ The ADRs capture decisions that led to the current state. They are historical re
 Current implementation:
 
 - OAuth token exchange at `POST /token`
-- legacy token issuance compatibility at `POST /github/installations/token`
 - claims verification at `POST /github/claims`
 - signed webhook acceptance at `POST /github/webhooks`
 - GitHub App user authorization dashboard at `GET /dashboard`

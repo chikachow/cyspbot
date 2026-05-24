@@ -6,7 +6,6 @@ The current product is intentionally narrow:
 
 - `POST /token` is the primary token exchange endpoint.
 - `POST /github/claims` verifies caller identity and GitHub App installation presence without minting a token.
-- `POST /github/installations/token` remains as a legacy compatibility endpoint over the same Token Policy.
 - `POST /github/webhooks` accepts signed GitHub App webhooks, records metadata, and signals installation reconciliation.
 - `GET /dashboard` is a read-only operational dashboard for repository visibility and recent Installation Token Issuance audit history.
 
@@ -56,17 +55,6 @@ Verifies a GitHub Actions OIDC bearer token and confirms the configured GitHub A
   "repository": "owner/example",
   "event_name": "workflow_dispatch",
   "ref": "refs/heads/main"
-}
-```
-
-### `POST /github/installations/token`
-
-Legacy compatibility endpoint. It authenticates with `Authorization: Bearer <github-actions-oidc-token>`, applies the same Token Policy as `POST /token`, and returns:
-
-```json
-{
-  "token": "ghs_...",
-  "expires_at": "2026-05-24T12:34:56Z"
 }
 ```
 

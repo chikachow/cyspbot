@@ -103,14 +103,6 @@ export function createApp(
         return handleClaimsRequest(request, env, dependencies);
       }
 
-      if (url.pathname === "/github/installations/token") {
-        if (request.method !== "POST") {
-          return problemResponse(405, { allow: "POST" });
-        }
-
-        return handleInstallationTokenRequest(request, env, dependencies);
-      }
-
       if (url.pathname === "/github/webhooks") {
         if (request.method !== "POST") {
           return problemResponse(405, { allow: "POST" });
@@ -205,36 +197,6 @@ async function handleClaimsRequest(
     repository: authentication.context.principal.repository,
     repository_id: authentication.context.principal.repositoryId,
   });
-}
-
-async function handleInstallationTokenRequest(
-  request: Request,
-  env: Env,
-  dependencies: AppDependencies,
-): Promise<Response> {
-  const authentication = await dependencies.authenticateRequest(request, env);
-
-  if (!authentication.ok) {
-    return problemResponse(authentication.httpStatus, authentication.responseHeaders);
-  }
-
-  if (!githubActionsPrincipal(authentication.context.principal)) {
-    return problemResponse(403);
-  }
-
-  const result = await mintInstallationTokenForContext(env, authentication.context, dependencies);
-
-  if (!result.ok) {
-    return problemResponse(result.status);
-  }
-
-  return jsonResponse(
-    {
-      expires_at: result.expiresAt,
-      token: result.token,
-    },
-    { status: 200 },
-  );
 }
 
 async function handleTokenExchangeRequest(

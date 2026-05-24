@@ -262,45 +262,7 @@ Failure behavior:
 
 Error payloads follow OAuth token endpoint conventions rather than `application/problem+json`.
 
-### 5.5 `POST /github/installations/token`
-
-Purpose:
-Legacy compatibility endpoint for callers that still use the original GitHub-specific Installation Token Issuance path.
-
-Request:
-
-- Method: `POST`
-- Body: none required
-- Auth: required bearer OIDC token
-
-Success response:
-
-- Status: `200 OK`
-- Content-Type: `application/json; charset=utf-8`
-- Body:
-
-```json
-{
-  "token": "ghs_...",
-  "expires_at": "2030-01-01T00:00:00Z"
-}
-```
-
-Current behavior:
-
-- Shares the same OIDC verification, GitHub App Installation resolution, Token Policy enforcement, and GitHub token issuance implementation as `POST /token`
-- Preserves the legacy response shape for compatibility
-- Remains secondary to `POST /token` in all primary documentation
-
-Failure behavior:
-
-- `401` for authentication failure
-- `403` for authorization failure, disallowed event context, missing installation, or GitHub authorization-style failures
-- `502` for upstream GitHub server failure
-- `500` for local configuration errors, invalid repository ID claim shape, or unexpected internal failure
-- `405` for any method other than `POST`
-
-### 5.6 `POST /github/webhooks`
+### 5.5 `POST /github/webhooks`
 
 Purpose:
 Accept authenticated GitHub webhook deliveries, validate the envelope, and route accepted deliveries to the Installation Coordinator.
@@ -360,7 +322,7 @@ Post-acceptance behavior:
 - `ping` is endpoint validation rather than installation state, so it is handled at the Worker edge rather than routed to installation-scoped persistence.
 - No further business-event processing is required for compatibility.
 
-### 5.7 `GET /`
+### 5.6 `GET /`
 
 Purpose:
 Provide a useful default entrypoint for the hosted service origin.
@@ -374,7 +336,7 @@ Behavior:
 Rationale:
 cyspbot is an authenticated operational dashboard rather than a marketing site. The root URL lands operators at the dashboard entrypoint and lets the dashboard route enforce authentication.
 
-### 5.8 `GET /github/setup` for GitHub App installation setup
+### 5.7 `GET /github/setup` for GitHub App installation setup
 
 Purpose:
 Handle GitHub's post-install and repository-selection update redirect without weakening the dashboard OAuth state requirement.
@@ -401,7 +363,7 @@ Behavior:
 Rationale:
 GitHub distinguishes the Setup URL from the OAuth callback URL. The Setup URL is for install/update onboarding and carries untrusted installation metadata; the OAuth callback is for completing a user authorization flow. Keeping them separate preserves the installed-app onboarding experience while keeping Dashboard Session creation tied to a user-initiated OAuth flow with cyspbot's signed state cookie.
 
-### 5.9 Unknown routes
+### 5.8 Unknown routes
 
 - Return `404 Not Found` with minimal problem details.
 
@@ -782,14 +744,13 @@ The current implementation satisfies these behavior checks:
 
 1. `POST /github/claims` accepts a valid GitHub Actions OIDC bearer token and returns the verified repository identity fields without requiring an Installation Token Issuance-eligible event context.
 2. `POST /token` accepts an RFC 8693 token exchange request, validates a GitHub Actions OIDC `subject_token`, and returns an OAuth-style token response for allowed workflow contexts.
-3. `POST /github/installations/token` remains available as a compatibility endpoint and shares the same Token Policy and upstream GitHub token issuance path as `POST /token`.
-4. The caller-visible GitHub access-token request sent upstream is restricted to the Calling Repository ID, sends the checked-in `contents: write` and `pull_requests: write` permissions selected by the Token Policy, and opts in to GitHub's temporary stateless token format header.
-5. Authentication trusts only configured issuers and verifies against coordinated per-issuer JWKS state with bounded freshness, stale serving, and backoff.
-6. `POST /github/webhooks` rejects malformed, oversized, unsigned, or incorrectly signed deliveries; accepts valid signed JSON deliveries with positive integer `installation.id`; and also accepts signed `ping` validation deliveries without `installation.id`.
-7. GitHub App installation setup callbacks are handled at `GET /github/setup`, never create a Dashboard Session, never trust `installation_id` for authorization, clear stale OAuth state, and redirect to `/login/github?return_to=%2Fdashboard`. Setup-shaped callbacks that arrive at `GET /auth/github/callback` are treated only as compatibility fallback and never exchange an unstateful `code`.
-8. Authenticated Installation Token Issuance attempts are durably persisted in the central Audit Log before live GitHub lookup, every Audit Log row records the domain outcome, successful issuances record the actual permission set GitHub returned in relational child rows, denials and stable failure reasons are recorded in relational child rows, and the final Installation Token Issuance response fails closed if the required audit write cannot be persisted.
-9. Errors are returned as minimal `application/problem+json` responses for legacy GitHub-specific endpoints and OAuth-style JSON token responses for `POST /token`.
-10. The GitHub App private key remains inside the service secret boundary and is never returned or persisted in logs or API responses.
+3. The caller-visible GitHub access-token request sent upstream is restricted to the Calling Repository ID, sends the checked-in `contents: write` and `pull_requests: write` permissions selected by the Token Policy, and opts in to GitHub's temporary stateless token format header.
+4. Authentication trusts only configured issuers and verifies against coordinated per-issuer JWKS state with bounded freshness, stale serving, and backoff.
+5. `POST /github/webhooks` rejects malformed, oversized, unsigned, or incorrectly signed deliveries; accepts valid signed JSON deliveries with positive integer `installation.id`; and also accepts signed `ping` validation deliveries without `installation.id`.
+6. GitHub App installation setup callbacks are handled at `GET /github/setup`, never create a Dashboard Session, never trust `installation_id` for authorization, clear stale OAuth state, and redirect to `/login/github?return_to=%2Fdashboard`. Setup-shaped callbacks that arrive at `GET /auth/github/callback` are treated only as compatibility fallback and never exchange an unstateful `code`.
+7. Authenticated Installation Token Issuance attempts are durably persisted in the central Audit Log before live GitHub lookup, every Audit Log row records the domain outcome, successful issuances record the actual permission set GitHub returned in relational child rows, denials and stable failure reasons are recorded in relational child rows, and the final Installation Token Issuance response fails closed if the required audit write cannot be persisted.
+8. Errors are returned as OAuth-style JSON token responses for `POST /token` and as minimal `application/problem+json` responses for non-token routes.
+9. The GitHub App private key remains inside the service secret boundary and is never returned or persisted in logs or API responses.
 
 ## 15. Implementation Constraints
 

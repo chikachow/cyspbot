@@ -516,16 +516,17 @@ describe("cyspbot worker", () => {
     });
   });
 
-  it("mints a repository-scoped installation token for allowed events", async () => {
+  it("does not expose the legacy installation token endpoint", async () => {
     const response = await fetchWorker("https://example.test/github/installations/token", {
       headers: await authorizationHeaders(),
       method: "POST",
     });
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(404);
     await expect(response.json()).resolves.toEqual({
-      expires_at: "2030-01-01T00:00:00Z",
-      token: "ghs_test_token",
+      status: 404,
+      title: "Not Found",
+      type: "about:blank",
     });
   });
 
@@ -591,19 +592,22 @@ describe("cyspbot worker", () => {
   });
 
   it("rejects disallowed events", async () => {
-    const response = await fetchWorker("https://example.test/github/installations/token", {
-      headers: await authorizationHeaders({
+    const response = await fetchWorker("https://example.test/token", {
+      body: await tokenExchangeRequestBody({
         event_name: "pull_request",
         ref: "refs/pull/15/merge",
+        ref_type: "branch",
+        sub: "repo:cysp/terraform-provider-contentful:pull_request",
       }),
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
       method: "POST",
     });
 
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
-      status: 403,
-      title: "Forbidden",
-      type: "about:blank",
+      error: "invalid_target",
     });
   });
 
@@ -667,36 +671,39 @@ describe("cyspbot worker", () => {
   });
 
   it("rejects push events away from the current default branch", async () => {
-    const response = await fetchWorker("https://example.test/github/installations/token", {
-      headers: await authorizationHeaders({
+    const response = await fetchWorker("https://example.test/token", {
+      body: await tokenExchangeRequestBody({
         event_name: "push",
         ref: "refs/heads/feature-branch",
+        sub: "repo:cysp/terraform-provider-contentful:ref:refs/heads/feature-branch",
       }),
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
       method: "POST",
     });
 
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
-      status: 403,
-      title: "Forbidden",
-      type: "about:blank",
+      error: "invalid_target",
     });
   });
 
   it("rejects pushes on the current default branch", async () => {
-    const response = await fetchWorker("https://example.test/github/installations/token", {
-      headers: await authorizationHeaders({
+    const response = await fetchWorker("https://example.test/token", {
+      body: await tokenExchangeRequestBody({
         event_name: "push",
         ref: "refs/heads/main",
       }),
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
       method: "POST",
     });
 
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
-      status: 403,
-      title: "Forbidden",
-      type: "about:blank",
+      error: "invalid_target",
     });
   });
 
@@ -897,16 +904,22 @@ describe("cyspbot worker", () => {
   });
 
   it("authorizes the dashboard with GitHub user auth and renders recent repository token requests", async () => {
-    const firstMint = await fetchWorker("https://example.test/github/installations/token", {
-      headers: await authorizationHeaders(),
+    const firstMint = await fetchWorker("https://example.test/token", {
+      body: await tokenExchangeRequestBody(),
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
       method: "POST",
     });
     expect(firstMint.status).toBe(200);
 
-    const secondMint = await fetchWorker("https://example.test/github/installations/token", {
-      headers: await authorizationHeaders({
+    const secondMint = await fetchWorker("https://example.test/token", {
+      body: await tokenExchangeRequestBody({
         actor: "octocat",
       }),
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
       method: "POST",
     });
     expect(secondMint.status).toBe(200);

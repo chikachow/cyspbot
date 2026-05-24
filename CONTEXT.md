@@ -88,7 +88,7 @@ _Avoid_: Permanent key store, token cache, caller-controlled key source
 
 ## Relationships
 
-- The current product surface is `POST /token`, `POST /github/claims`, `POST /github/installations/token`, `POST /github/webhooks`, and the GitHub App user authorization dashboard routes.
+- The current product surface is `POST /token`, `POST /github/claims`, `POST /github/webhooks`, and the GitHub App user authorization dashboard routes.
 - A **Caller** authenticates to **cyspbot** with a GitHub OIDC token
 - A **Dashboard User** authenticates to **cyspbot** by authorizing the cyspbot GitHub App and establishing a **Dashboard Session**
 - cyspbot verifies a **Caller** only against a trusted **Issuer Registration**
@@ -101,7 +101,7 @@ _Avoid_: Permanent key store, token cache, caller-controlled key source
 - Repeated audit values such as issued Installation Token permissions and audit outcome reasons are stored in relational child rows rather than embedded JSON on the main audit row
 - The main audit row prefers domain fields like `requested_at` and `outcome` over HTTP response details
 - The **Claims Endpoint** verifies caller identity and repository installation relationship without issuing an **Installation Token**
-- The **Token Exchange Endpoint** is the primary public interface for **Installation Token Issuance**; legacy GitHub-specific compatibility endpoints are shims over the same **Token Policy**
+- The **Token Exchange Endpoint** is the only public interface for **Installation Token Issuance**
 - The **JWKS Cache** supplies verification keys for an **Issuer Registration**, but never stores issued **Installation Tokens**
 - A **GitHub App Installation** is the GitHub-side authority that allows **cyspbot** to issue an **Installation Token**
 - cyspbot determines dashboard repository visibility from the intersection GitHub reports for a **Dashboard User**, a **GitHub App Installation**, and that installation's repositories
