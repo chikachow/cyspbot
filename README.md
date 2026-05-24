@@ -1,6 +1,6 @@
 # cyspbot
 
-cyspbot is the hosted automation application for cysp. It exchanges trusted GitHub Actions OIDC tokens for short-lived GitHub App installation access tokens without exposing the GitHub App private key outside Cloudflare.
+cyspbot is the maintainer's hosted automation application. It exchanges trusted GitHub Actions OIDC tokens for short-lived GitHub App installation access tokens without exposing the GitHub App private key outside Cloudflare.
 
 The dashboard, Audit Log, Repository Visibility Cache, and session state are D1-backed. The detailed persistence design is [docs/dashboard-d1-recut.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/dashboard-d1-recut.md).
 

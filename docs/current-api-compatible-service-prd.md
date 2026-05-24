@@ -137,7 +137,7 @@ Success response:
 ```json
 {
   "repository_id": "123456789",
-  "repository": "cysp/example-repo",
+  "repository": "owner/example-repo",
   "event_name": "workflow_dispatch",
   "ref": "refs/heads/main"
 }

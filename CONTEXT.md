@@ -1,6 +1,6 @@
 # cyspbot
 
-cyspbot is the hosted automation application for cysp. It currently lets trusted GitHub Actions workflow runs obtain repository-scoped GitHub App installation access tokens without exposing the GitHub App private key outside Cloudflare.
+cyspbot is the maintainer's hosted automation application. It currently lets trusted GitHub Actions workflow runs obtain repository-scoped GitHub App installation access tokens without exposing the GitHub App private key outside Cloudflare.
 
 ## Language
 
