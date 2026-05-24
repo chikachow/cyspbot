@@ -19,7 +19,7 @@ The primary product specification is [docs/current-api-compatible-service-prd.md
 - One `GitHubInstallationObject` Durable Object per GitHub App Installation for reconciliation signal coalescing only.
 - D1-backed Dashboard Sessions, Audit Log, issued-token facts, Repository Visibility Cache, GitHub installation/repository projection rows, Webhook Delivery Log metadata, and reconciliation state.
 - GitHub App private key in Cloudflare Secrets Store for production; local PKCS#8 PEM fallback for development and tests.
-- Checked-in Token Policy code that allows Installation Token Issuance only for default-branch `schedule`, `workflow_dispatch`, and `push` contexts.
+- Checked-in Token Policy code that allows Installation Token Issuance only for default-branch `schedule` and `workflow_dispatch` contexts.
 
 ## Current Public Surface
 
@@ -95,16 +95,16 @@ Repository detail URLs use current `owner/name` as a locator. The service resolv
 Installation Token Issuance is allowed only when all implemented checks pass:
 
 - the caller is a verified GitHub Actions principal from the configured issuer
-- `event_name` is `schedule`, `workflow_dispatch`, or `push`
+- `event_name` is `schedule` or `workflow_dispatch`
 - the OIDC subject context is `ref`
 - the OIDC subject repository matches the resolved repository
 - `sub` and `ref` both identify the repository's current default branch ref
 - `ref_type` is `branch`
 - `repository`, `repository_id`, `repository_owner_id`, and `repository_visibility` match live GitHub repository metadata
 
-The caller cannot choose a target repository or permission profile. The issued token is scoped to the calling repository and inherits repository permissions from the current GitHub App configuration.
+The caller cannot choose a target repository or permission profile. The issued token is scoped to the calling repository, and cyspbot requests checked-in permissions sufficient to commit changes and raise pull requests: `contents: write` and `pull_requests: write`. The current GitHub App installation permissions remain the upper bound.
 
-cyspbot denies `pull_request`, `pull_request_target`, forked pull request contexts, non-default-branch refs, tag refs, and unsupported event names.
+cyspbot denies `push`, `pull_request`, `pull_request_target`, forked pull request contexts, non-default-branch refs, tag refs, and unsupported event names.
 
 ## Future Implementation Plan
 
@@ -126,7 +126,7 @@ Excluded from the current product surface:
 
 ## GitHub App Configuration
 
-The GitHub App registration is the primary authorization control plane for repository permissions. cyspbot narrows issued tokens to the calling repository and allowed workflow contexts, but it does not down-scope the app's repository permissions further at issuance time.
+The GitHub App registration is the upper-bound authorization control plane for repository permissions. cyspbot narrows issued tokens to the calling repository, allowed workflow contexts, and the checked-in permission request used for token issuance.
 
 Dashboard setup uses separate GitHub App URLs:
 

@@ -347,11 +347,17 @@ async function mintInstallationTokenForContext(
     );
     installationId = installation.id;
 
-    await authorizeTokenMintRequest(env, installation.id, principal, dependencies);
+    const authorization = await authorizeTokenMintRequest(
+      env,
+      installation.id,
+      principal,
+      dependencies,
+    );
     const token = await createRepositoryScopedInstallationToken(
       env,
       installation.id,
       principal.repositoryId,
+      authorization.policyDecision.permissions,
       dependencies,
     );
 

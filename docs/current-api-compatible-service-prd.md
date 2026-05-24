@@ -222,7 +222,7 @@ Current behavior:
 - Enforce the Token Policy before token issuance.
 - Issues a new GitHub App installation access token with:
   - repository scope restricted to the calling repository only
-  - repository permissions inherited from the current GitHub App configuration for that installation
+  - checked-in repository permissions selected by the Token Policy, currently `contents: write` and `pull_requests: write`
 - When calling GitHub's `POST /app/installations/{installation_id}/access_tokens`, send `X-GitHub-Stateless-S2S-Token: enabled` to opt in to the temporary stateless token format override.
 - Return the GitHub-provided expiry timestamp.
 
@@ -244,15 +244,14 @@ Current default Token Policy:
   - the OIDC subject context value equals the repository's current default branch ref
   - the verified `ref` equals the repository's current default branch ref
   - the verified `ref_type` is `branch`
-  - `event_name` is one of `schedule`, `workflow_dispatch`, or `push`
+  - `event_name` is one of `schedule` or `workflow_dispatch`
 - The mapped principal preserves additional verified claims such as `workflow_ref`, `job_workflow_ref`, `environment`, `head_ref`, and `base_ref` so future checked-in policies can use them without changing the endpoint contract.
 
 Forbidden event contexts:
 
 - All other GitHub Actions event names
 - All pull-request event contexts, including pull requests raised from forked repositories
-- `push` where `ref` is absent
-- `push` where `ref` does not match `refs/heads/<default_branch>`
+- `push`
 
 Failure behavior:
 
@@ -473,12 +472,12 @@ The service enforces a checked-in policy implementation for caller eligibility a
 - No caller-selected repository
 - No Installation Token Issuance for PR-triggered events
 - No Installation Token Issuance for pull requests raised from forked repositories under any circumstance
-- `push`, `schedule`, and `workflow_dispatch` only when the verified OIDC `sub` and `ref` both identify the current default branch ref
-- Repository permissions are inherited from the GitHub App configuration in effect at issuance time
+- `schedule` and `workflow_dispatch` only when the verified OIDC `sub` and `ref` both identify the current default branch ref
+- Repository permissions are selected by checked-in Token Policy code, currently `contents: write` and `pull_requests: write`, with GitHub App installation permissions as the upper bound
 - Additional verified claims such as `workflow_ref`, `job_workflow_ref`, `environment`, `head_ref`, and `base_ref` remain available to the policy layer for future stricter checked-in policies
 
 Rationale:
-The implemented service is intentionally narrow. The Caller proves identity; cyspbot decides caller eligibility and repository scope through checked-in policy code; GitHub App configuration decides repository permissions. This prevents workflows from widening scope to arbitrary repositories or using cyspbot as a generic GitHub token issuance endpoint, while intentionally treating the GitHub App configuration as the primary authorization control plane.
+The implemented service is intentionally narrow. The Caller proves identity; cyspbot decides caller eligibility, repository scope, and requested GitHub permissions through checked-in policy code; GitHub App configuration remains the upper bound. This prevents workflows from widening scope to arbitrary repositories, selecting their own permissions, or using cyspbot as a generic GitHub token issuance endpoint.
 
 ## 7. OIDC Verification Requirements
 
@@ -579,7 +578,11 @@ GitHub access-token request body:
 
 ```json
 {
-  "repository_ids": [123456789]
+  "repository_ids": [123456789],
+  "permissions": {
+    "contents": "write",
+    "pull_requests": "write"
+  }
 }
 ```
 
@@ -780,7 +783,7 @@ The current implementation satisfies these behavior checks:
 1. `POST /github/claims` accepts a valid GitHub Actions OIDC bearer token and returns the verified repository identity fields without requiring an Installation Token Issuance-eligible event context.
 2. `POST /token` accepts an RFC 8693 token exchange request, validates a GitHub Actions OIDC `subject_token`, and returns an OAuth-style token response for allowed workflow contexts.
 3. `POST /github/installations/token` remains available as a compatibility endpoint and shares the same Token Policy and upstream GitHub token issuance path as `POST /token`.
-4. The caller-visible GitHub access-token request sent upstream is restricted to the Calling Repository ID, does not send a server-defined `permissions` override, and opts in to GitHub's temporary stateless token format header.
+4. The caller-visible GitHub access-token request sent upstream is restricted to the Calling Repository ID, sends the checked-in `contents: write` and `pull_requests: write` permissions selected by the Token Policy, and opts in to GitHub's temporary stateless token format header.
 5. Authentication trusts only configured issuers and verifies against coordinated per-issuer JWKS state with bounded freshness, stale serving, and backoff.
 6. `POST /github/webhooks` rejects malformed, oversized, unsigned, or incorrectly signed deliveries; accepts valid signed JSON deliveries with positive integer `installation.id`; and also accepts signed `ping` validation deliveries without `installation.id`.
 7. GitHub App installation setup callbacks are handled at `GET /github/setup`, never create a Dashboard Session, never trust `installation_id` for authorization, clear stale OAuth state, and redirect to `/login/github?return_to=%2Fdashboard`. Setup-shaped callbacks that arrive at `GET /auth/github/callback` are treated only as compatibility fallback and never exchange an unstateful `code`.

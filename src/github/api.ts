@@ -4,6 +4,7 @@ import type { Env } from "../env.ts";
 import type { GitHubActionsPrincipal } from "../oidc/principals.ts";
 import {
   evaluateTokenMintPolicy,
+  type TokenMintAllowPolicyDecision,
   type TokenMintAuthorizationRepository,
   type TokenMintPolicyDecision,
 } from "../policy/token-mint-authorization.ts";
@@ -167,7 +168,7 @@ export async function authorizeTokenMintRequest(
   installationId: number,
   caller: GitHubActionsPrincipal,
   dependencies: GitHubApiDependencies = defaultGitHubApiDependencies,
-): Promise<{ policyDecision: TokenMintPolicyDecision; repository: GitHubRepository }> {
+): Promise<{ policyDecision: TokenMintAllowPolicyDecision; repository: GitHubRepository }> {
   const metadataToken = await createRepositoryMetadataToken(
     env,
     installationId,
@@ -192,9 +193,10 @@ export async function createRepositoryScopedInstallationToken(
   env: Env,
   installationId: number,
   repositoryId: string,
+  permissions: Record<string, string>,
   dependencies: GitHubApiDependencies = defaultGitHubApiDependencies,
 ): Promise<InstallationToken> {
-  return createInstallationToken(env, installationId, repositoryId, undefined, dependencies);
+  return createInstallationToken(env, installationId, repositoryId, permissions, dependencies);
 }
 
 async function createRepositoryMetadataToken(

@@ -35,8 +35,8 @@ The GitHub App user-to-server token that represents a signed-in **Dashboard User
 _Avoid_: Installation token, PAT, app JWT
 
 **Token Policy**:
-The cyspbot-enforced policy code, OIDC trust conditions, and repository narrowing used when issuing an **Installation Token**, with repository permissions inherited from the GitHub App configuration.
-_Avoid_: Requested scope, ad hoc caller-defined permissions, assumption that cyspbot fixes the permission set, event-name-only policy, separate policy engine
+The cyspbot-enforced policy code, OIDC trust conditions, repository narrowing, and GitHub permission request used when issuing an **Installation Token**.
+_Avoid_: Caller-requested scope, ad hoc caller-defined permissions, event-name-only policy, separate policy engine
 
 **Audit Log**:
 A bounded record of **Installation Token Issuance** attempts and outcomes kept by **cyspbot** for operational review, with durable request and issued Installation Token facts stored centrally in D1.
@@ -95,7 +95,7 @@ _Avoid_: Permanent key store, token cache, caller-controlled key source
 - Each **Issuer Registration** owns its own verification policy, including JWKS freshness, staleness, and refresh-backoff rules
 - **cyspbot** derives exactly one **Calling Repository** from the verified OIDC claims
 - **Installation Token Issuance** in **cyspbot** issues an **Installation Token** only for the **Calling Repository**
-- The **Token Policy** is fixed by **cyspbot** for caller context and repository scope, while repository permissions come from the GitHub App configuration
+- The **Token Policy** is fixed by **cyspbot** for caller context, repository scope, and the GitHub permission request, while the GitHub App configuration remains the upper bound
 - The **Token Policy** evaluates immutable and workflow-context GitHub OIDC claims such as `sub`, `repository_id`, `repository_owner_id`, `repository_visibility`, and `ref`
 - **cyspbot** records an **Audit Log** entry for each **Installation Token Issuance** attempt
 - Repeated audit values such as issued Installation Token permissions and audit outcome reasons are stored in relational child rows rather than embedded JSON on the main audit row
@@ -121,7 +121,7 @@ _Avoid_: Permanent key store, token cache, caller-controlled key source
 > **Domain expert:** "No. **cyspbot** only issues an **Installation Token** for the **Calling Repository** named by the verified OIDC claims."
 
 > **Dev:** "Can the workflow ask for broader permissions when it needs them?"
-> **Domain expert:** "No. The **Caller** does not choose permissions. The issued token inherits whatever repository permissions the GitHub App currently has."
+> **Domain expert:** "No. The **Caller** does not choose permissions. **cyspbot** requests the checked-in permissions selected by the **Token Policy**, and GitHub caps them to the permissions granted to the GitHub App installation."
 
 > **Dev:** "Do we keep the issued tokens for reuse?"
 > **Domain expert:** "No. **cyspbot** records an **Audit Log**, but it does not cache issued **Installation Tokens**."
@@ -130,7 +130,7 @@ _Avoid_: Permanent key store, token cache, caller-controlled key source
 > **Domain expert:** "Use the **Claims Endpoint** to verify the **Caller** identity and confirm the repository is installed for this app."
 
 > **Dev:** "What decides whether a workflow run is trusted enough for Installation Token Issuance?"
-> **Domain expert:** "The checked-in **Token Policy** evaluates the verified GitHub OIDC claims in plain code. The current default policy only permits default-branch `ref` contexts for `schedule`, `workflow_dispatch`, and `push`."
+> **Domain expert:** "The checked-in **Token Policy** evaluates the verified GitHub OIDC claims in plain code. The current default policy only permits default-branch `ref` contexts for `schedule` and `workflow_dispatch`."
 
 > **Dev:** "Can every org member see every repository in the dashboard once the app is installed on the org?"
 > **Domain expert:** "No. A **Dashboard User** may only see repositories that GitHub returns for that user through the app's user-to-server installation repository APIs."
@@ -138,5 +138,5 @@ _Avoid_: Permanent key store, token cache, caller-controlled key source
 ## Flagged ambiguities
 
 - "target repository" was used loosely; resolved: the only valid repository is the **Calling Repository** derived from OIDC, not a caller-supplied target.
-- "requested scope" was used loosely; resolved: the **Caller** does not choose permissions, and cyspbot narrows repository scope and caller context while GitHub App configuration determines repository permissions.
+- "requested scope" was used loosely; resolved: the **Caller** does not choose permissions, and cyspbot narrows repository scope, caller context, and requested GitHub permissions while GitHub App configuration remains the upper bound.
 - "approved workflow" was used loosely; resolved: cyspbot trusts specific verified OIDC claim patterns under checked-in policy code, not a separate mutable approval registry.

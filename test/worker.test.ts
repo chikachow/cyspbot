@@ -212,22 +212,21 @@ async function fetchGitHubTestDouble(
     return oauthTokenResponse(new TextDecoder().decode(await request.arrayBuffer()));
   }
 
-  if (url.hostname !== "example.test") {
+  if (url.hostname !== "example.test" && url.hostname !== "api.github.com") {
     return new Response(null, { status: 404 });
   }
+
+  const apiPath = url.pathname.replace(/^\/__test\/github/u, "");
 
   if (request.headers.get("authorization") === null) {
     return new Response(null, { status: 401 });
   }
 
-  if (
-    request.method === "GET" &&
-    url.pathname === `/__test/github/repos/${testRepository}/installation`
-  ) {
+  if (request.method === "GET" && apiPath === `/repos/${testRepository}/installation`) {
     return Response.json({ id: testInstallationId });
   }
 
-  if (request.method === "GET" && url.pathname === `/__test/github/repos/${testRepository}`) {
+  if (request.method === "GET" && apiPath === `/repos/${testRepository}`) {
     return Response.json({
       default_branch: "main",
       id: Number.parseInt(testRepositoryId, 10),
@@ -240,15 +239,45 @@ async function fetchGitHubTestDouble(
 
   if (
     request.method === "POST" &&
-    url.pathname === `/__test/github/app/installations/${testInstallationId}/access_tokens`
+    apiPath === `/app/installations/${testInstallationId}/access_tokens`
   ) {
     const body = (await request.json()) as Record<string, unknown>;
+    const permissions = body["permissions"];
 
     if (
       request.headers.get("content-type") !== "application/json" ||
       request.headers.get("x-github-stateless-s2s-token") !== "enabled" ||
       !Array.isArray(body["repository_ids"]) ||
-      body["repository_ids"][0] !== Number.parseInt(testRepositoryId, 10)
+      body["repository_ids"][0] !== Number.parseInt(testRepositoryId, 10) ||
+      permissions === null ||
+      typeof permissions !== "object" ||
+      Array.isArray(permissions)
+    ) {
+      return new Response(null, { status: 500 });
+    }
+
+    const requestedPermissions = permissions as Record<string, unknown>;
+
+    if (
+      Object.keys(requestedPermissions).length === 1 &&
+      requestedPermissions["metadata"] === "read"
+    ) {
+      return Response.json(
+        {
+          expires_at: "2030-01-01T00:00:00Z",
+          permissions: {
+            metadata: "read",
+          },
+          token: "ghs_test_metadata_token",
+        },
+        { status: 201 },
+      );
+    }
+
+    if (
+      Object.keys(requestedPermissions).length !== 2 ||
+      requestedPermissions["contents"] !== "write" ||
+      requestedPermissions["pull_requests"] !== "write"
     ) {
       return new Response(null, { status: 500 });
     }
@@ -266,14 +295,14 @@ async function fetchGitHubTestDouble(
     );
   }
 
-  if (request.method === "GET" && url.pathname === "/__test/github/user") {
+  if (request.method === "GET" && apiPath === "/user") {
     return Response.json({
       id: 42,
       login: "sally",
     });
   }
 
-  if (request.method === "GET" && url.pathname === "/__test/github/user/installations") {
+  if (request.method === "GET" && apiPath === "/user/installations") {
     return Response.json({
       installations: [{ id: testInstallationId }],
     });
@@ -281,7 +310,7 @@ async function fetchGitHubTestDouble(
 
   if (
     request.method === "GET" &&
-    url.pathname === `/__test/github/user/installations/${testInstallationId}/repositories`
+    apiPath === `/user/installations/${testInstallationId}/repositories`
   ) {
     return Response.json({
       repositories: [
@@ -637,7 +666,7 @@ describe("cyspbot worker", () => {
     });
   });
 
-  it("rejects pushes that are not on the current default branch", async () => {
+  it("rejects push events away from the current default branch", async () => {
     const response = await fetchWorker("https://example.test/github/installations/token", {
       headers: await authorizationHeaders({
         event_name: "push",
@@ -654,7 +683,7 @@ describe("cyspbot worker", () => {
     });
   });
 
-  it("allows pushes on the current default branch", async () => {
+  it("rejects pushes on the current default branch", async () => {
     const response = await fetchWorker("https://example.test/github/installations/token", {
       headers: await authorizationHeaders({
         event_name: "push",
@@ -663,10 +692,11 @@ describe("cyspbot worker", () => {
       method: "POST",
     });
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
-      expires_at: "2030-01-01T00:00:00Z",
-      token: "ghs_test_token",
+      status: 403,
+      title: "Forbidden",
+      type: "about:blank",
     });
   });
 

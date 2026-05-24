@@ -8,10 +8,20 @@ export interface TokenMintAuthorizationRepository {
   repositoryVisibility: string;
 }
 
-export interface TokenMintPolicyDecision {
-  decision: "allow" | "deny";
+export interface TokenMintAllowPolicyDecision {
+  decision: "allow";
+  eventType: string;
+  permissions: Record<string, string>;
   reasons: string[];
 }
+
+export interface TokenMintDenyPolicyDecision {
+  decision: "deny";
+  eventType: string;
+  reasons: string[];
+}
+
+export type TokenMintPolicyDecision = TokenMintAllowPolicyDecision | TokenMintDenyPolicyDecision;
 
 export function evaluateTokenMintPolicy(
   principal: GitHubActionsPrincipal,
@@ -27,11 +37,7 @@ export function evaluateTokenMintPolicy(
     reasons.push("subject_context_not_allowed");
   }
 
-  if (
-    principal.eventName !== "push" &&
-    principal.eventName !== "schedule" &&
-    principal.eventName !== "workflow_dispatch"
-  ) {
+  if (principal.eventName !== "schedule" && principal.eventName !== "workflow_dispatch") {
     reasons.push("event_not_allowed");
   }
 
@@ -71,8 +77,23 @@ export function evaluateTokenMintPolicy(
     reasons.push("ref_type_mismatch");
   }
 
+  const uniqueReasons = [...new Set(reasons)];
+
+  if (uniqueReasons.length > 0) {
+    return {
+      decision: "deny",
+      eventType: principal.eventName,
+      reasons: uniqueReasons,
+    };
+  }
+
   return {
-    decision: reasons.length === 0 ? "allow" : "deny",
-    reasons: [...new Set(reasons)],
+    decision: "allow",
+    eventType: principal.eventName,
+    permissions: {
+      contents: "write",
+      pull_requests: "write",
+    },
+    reasons: [],
   };
 }
