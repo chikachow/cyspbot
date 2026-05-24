@@ -1,4 +1,4 @@
-# Cyspbot on Cloudflare Agents SDK
+# cyspbot on Cloudflare Agents SDK
 
 ## Executive summary
 

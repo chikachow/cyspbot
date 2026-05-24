@@ -245,6 +245,7 @@ async function fetchGitHubTestDouble(
     const body = (await request.json()) as Record<string, unknown>;
 
     if (
+      request.headers.get("content-type") !== "application/json" ||
       request.headers.get("x-github-stateless-s2s-token") !== "enabled" ||
       !Array.isArray(body["repository_ids"]) ||
       body["repository_ids"][0] !== Number.parseInt(testRepositoryId, 10)

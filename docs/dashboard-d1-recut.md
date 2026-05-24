@@ -35,16 +35,16 @@ These continue to authenticate GitHub Actions OIDC Callers and use live GitHub A
 - `GET /auth/github/callback`
 - `GET /logout`
 
-These routes manage GitHub App user authorization and the local Cyspbot Dashboard Session lifecycle.
+These routes manage GitHub App user authorization and the local cyspbot Dashboard Session lifecycle.
 
 The service root redirects to `/dashboard` so `https://cyspbot.chikachow.org/` lands on the authenticated dashboard entrypoint instead of returning a generic not-found response.
 
 GitHub App installation setup redirects use `GET /github/setup`. That route is distinct from dashboard OAuth login:
 
 - GitHub sends `installation_id` and `setup_action` when the user installs the app or updates repository access.
-- Cyspbot must not trust `installation_id`, because the setup URL is externally reachable and the query parameter can be spoofed.
-- Cyspbot must not create a Dashboard Session from a setup callback.
-- If a setup callback has a positive integer `installation_id` plus `setup_action=install` or `setup_action=update`, Cyspbot clears any stale OAuth state cookie and redirects to `/login/github?return_to=%2Fdashboard`.
+- cyspbot must not trust `installation_id`, because the setup URL is externally reachable and the query parameter can be spoofed.
+- cyspbot must not create a Dashboard Session from a setup callback.
+- If a setup callback has a positive integer `installation_id` plus `setup_action=install` or `setup_action=update`, cyspbot clears any stale OAuth state cookie and redirects to `/login/github?return_to=%2Fdashboard`.
 - `GET /auth/github/callback` keeps the same redirect behavior as a defensive compatibility fallback for setup-shaped callbacks, but the target GitHub App configuration must use `/github/setup`.
 - This preserves the requirement that Dashboard Sessions are created only from a user-initiated, state-bound GitHub App user authorization flow.
 
@@ -87,7 +87,7 @@ Naming rule:
 
 - D1 tables use plural names because they are relational collections.
 - D1 columns stay singular and local to their table context.
-- D1 table names use Cyspbot domain concepts rather than endpoint mechanics: for example `installation_token_issuance_audit_entries`, not `github_token_requests`.
+- D1 table names use cyspbot domain concepts rather than endpoint mechanics: for example `installation_token_issuance_audit_entries`, not `github_token_requests`.
 - Normalized identity, lookup, join, route, and uniqueness values use `_normalized` when the source has display casing or other non-canonical spelling.
 - Display-only GitHub spelling snapshots use `_display` and must not be used for authorization, joins, route resolution, or uniqueness.
 - OIDC claim-derived Audit Log columns use the `oidc_` prefix; GitHub and GitHub Actions claim-derived columns use `github_` or `git_` prefixes.
@@ -206,7 +206,7 @@ V1 behavior:
 - Dashboard Sessions use a `2 hour` idle TTL and an `8 hour` absolute TTL.
 - The effective session expiry is the earliest of `idle_expires_at`, `absolute_expires_at`, and `github_user_access_token_expires_at` when GitHub returns an access-token expiry.
 - GitHub user refresh tokens are not persisted or used in v1.
-- If a Dashboard Session expires, the GitHub User Access Token expires, or GitHub returns an authentication failure for a dashboard visibility request, Cyspbot deletes the Dashboard Session and redirects the Dashboard User to `/login/github`.
+- If a Dashboard Session expires, the GitHub User Access Token expires, or GitHub returns an authentication failure for a dashboard visibility request, cyspbot deletes the Dashboard Session and redirects the Dashboard User to `/login/github`.
 - Logout deletes the Dashboard Session row and clears the browser cookie.
 - A successful login always creates a new Dashboard Session id and session token.
 - There is no background refresh of Dashboard User token material in v1.
@@ -390,15 +390,15 @@ Notes:
 - This is the required durable Audit Log record for Installation Token Issuance.
 - `caller_repository_id`, `caller_repository_full_name_normalized`, `caller_repository_owner_id`, and `caller_repository_visibility` are the normalized GitHub-issued OIDC Caller context, captured before live GitHub lookup.
 - `caller_repository_full_name_display` is the original GitHub repository claim spelling captured for audit display only. It must not be used for lookup, joins, authorization, or uniqueness.
-- OIDC claim-derived columns are prefixed with `oidc_`, GitHub Actions claim-derived columns are prefixed with `github_` or `git_`, and Cyspbot outcome columns are unprefixed.
+- OIDC claim-derived columns are prefixed with `oidc_`, GitHub Actions claim-derived columns are prefixed with `github_` or `git_`, and cyspbot outcome columns are unprefixed.
 - `installation_id` is nullable because GitHub App Installation lookup can fail after Caller authentication but before the installation is known.
 - A durable `pending` audit-intent row is written after OIDC authentication produces normalized Caller context and before any GitHub App Installation or repository lookup.
 - The row is finalized to the terminal outcome in a second write after live GitHub lookup, policy evaluation, and, when applicable, after GitHub responds to the GitHub access-token request.
 - Live GitHub lookup failures after caller authentication are finalized as `upstream_error` or `denied`, with reason rows that identify the failed stage.
 - Terminal audit finalization and child-row writes must be one D1 transaction where D1 supports the required statement set.
 - Installation Token Issuance must fail closed if the finalization write cannot be persisted.
-- If GitHub issued a token but terminal finalization fails, Cyspbot still returns a server error.
-- A durable `finalization_failed` row is only guaranteed when Cyspbot can persist the failure marker after a partial terminal-write failure.
+- If GitHub issued a token but terminal finalization fails, cyspbot still returns a server error.
+- A durable `finalization_failed` row is only guaranteed when cyspbot can persist the failure marker after a partial terminal-write failure.
 - If D1 is unavailable and the failure marker cannot be persisted, the original `pending` intent row is the durable gap record and the runtime must emit an operational error suitable for alerting.
 - Pre-authentication failures that never produce normalized Caller context stay in operational logs, not this table.
 - Audit Log rows intentionally do not foreign-key to current projection tables because audit durability must not depend on Installation Reconciliation timing or projection retention.
@@ -477,8 +477,8 @@ Notes:
 - `issued_installation_tokens` is a strict 0-or-1 child of `installation_token_issuance_audit_entries`.
 - Request-level audit facts are enough; no extra issued Installation Token fingerprint is stored in the first cut.
 - `audit_log_entry_id` as the primary key enforces that at most one GitHub token issuance fact is attached to a request attempt.
-- `expires_at` stores GitHub's returned token expiry for dashboard display and cleanup correlation; it must not imply Cyspbot can revoke or reuse the token.
-- Trade-off: no token hash or fingerprint is stored. That reduces secret-derived persistence and avoids implying a revocation capability Cyspbot does not have.
+- `expires_at` stores GitHub's returned token expiry for dashboard display and cleanup correlation; it must not imply cyspbot can revoke or reuse the token.
+- Trade-off: no token hash or fingerprint is stored. That reduces secret-derived persistence and avoids implying a revocation capability cyspbot does not have.
 
 ### Issued token permissions
 
@@ -495,9 +495,9 @@ CREATE TABLE issued_installation_token_permissions (
 Notes:
 
 - Store the permissions exactly as GitHub returned them.
-- `permission_name` and `permission_access` mirror GitHub's permission map entries without implying Cyspbot chose the permission set.
+- `permission_name` and `permission_access` mirror GitHub's permission map entries without implying cyspbot chose the permission set.
 - The composite primary key makes the returned permission map queryable without storing the whole map as JSON.
-- Do not normalize permission names into a Cyspbot enum in v1; GitHub owns the permission vocabulary.
+- Do not normalize permission names into a cyspbot enum in v1; GitHub owns the permission vocabulary.
 - Trade-off: exact GitHub strings are less type-safe than a local enum, but they avoid schema churn when GitHub adds permissions.
 
 ### Installation Reconciliation Runs
@@ -608,7 +608,7 @@ Notes:
 - `delivery_accepted` records whether the delivery was accepted for downstream reconciliation, while `response_status_code` records the public HTTP response.
 - `webhook_signature_valid` is stored so rejected signed-envelope failures are distinguishable from accepted deliveries without retaining the raw body or signature.
 - `delivery_metadata_json` may include redacted envelope fields only; it must not include raw payload bodies, secrets, signatures, or OAuth material.
-- Trade-off: metadata-only logging makes replay from Cyspbot impossible, but GitHub remains the webhook delivery source and this avoids creating a long-lived payload archive.
+- Trade-off: metadata-only logging makes replay from cyspbot impossible, but GitHub remains the webhook delivery source and this avoids creating a long-lived payload archive.
 
 ## Durable Object storage shapes
 
@@ -1138,7 +1138,7 @@ Guardrails:
 - No GitHub App Installation lookup or GitHub access-token request happens unless the post-OIDC audit intent row has been written.
 - Installation and repository metadata used for Token Policy evaluation come from live GitHub reads.
 - The final audit write and issued Installation Token child rows are mandatory for success.
-- If GitHub issued a token but finalization fails, Cyspbot returns a server error and emits an operational alert tied to the pending audit row when possible.
+- If GitHub issued a token but finalization fails, cyspbot returns a server error and emits an operational alert tied to the pending audit row when possible.
 
 ### Rollout size
 

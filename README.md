@@ -1,6 +1,6 @@
 # cyspbot
 
-Cyspbot is the hosted automation application for cysp. It exchanges trusted GitHub Actions OIDC tokens for short-lived GitHub App installation access tokens without exposing the GitHub App private key outside Cloudflare.
+cyspbot is the hosted automation application for cysp. It exchanges trusted GitHub Actions OIDC tokens for short-lived GitHub App installation access tokens without exposing the GitHub App private key outside Cloudflare.
 
 The dashboard, Audit Log, Repository Visibility Cache, and session state are D1-backed. The detailed persistence design is [docs/dashboard-d1-recut.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/dashboard-d1-recut.md).
 
@@ -33,7 +33,7 @@ The dashboard, Audit Log, Repository Visibility Cache, and session state are D1-
       "expires_in": 3600
     }
     ```
-  - When issuing the upstream GitHub App installation access token, Cyspbot currently opts in to GitHub's temporary stateless token override with `X-GitHub-Stateless-S2S-Token: enabled`.
+  - When issuing GitHub App installation access tokens, cyspbot opts in to GitHub's temporary stateless token override with `X-GitHub-Stateless-S2S-Token: enabled`.
 - `POST /github/claims`
   - Authenticates the caller with a GitHub Actions OIDC token.
   - Confirms the configured GitHub App is installed on the calling repository.
@@ -75,7 +75,7 @@ The dashboard uses GitHub App user authorization and D1-backed sessions:
 
 Repository detail URLs use the current `owner/name` display path. The route resolves that locator to the immutable GitHub repository id internally and authorizes every detail page from fresh Repository Visibility Cache rows.
 
-GitHub App installation setup callbacks belong at `GET /github/setup`, not the OAuth callback route. Cyspbot treats setup callbacks as untrusted onboarding entrypoints: it does not trust `installation_id`, does not exchange a `code` from that request, clears any stale OAuth state cookie, and redirects to `/login/github?return_to=%2Fdashboard` to start the normal stateful dashboard login.
+GitHub App installation setup callbacks belong at `GET /github/setup`, not the OAuth callback route. cyspbot treats setup callbacks as untrusted onboarding entrypoints: it does not trust `installation_id`, does not exchange a `code` from that request, clears any stale OAuth state cookie, and redirects to `/login/github?return_to=%2Fdashboard` to start the normal stateful dashboard login.
 
 `POST /token` expects:
 
@@ -115,13 +115,13 @@ The GitHub-specific endpoints use minimal `application/problem+json` responses.
 
 ## GitHub App requirements
 
-The existing GitHub App registration is the primary authorization control plane for what repository actions Cyspbot-issued tokens can perform:
+The existing GitHub App registration is the primary authorization control plane for what repository actions cyspbot-issued tokens can perform:
 
 - Repository permissions:
-  - Any permissions granted here can flow through to repository-scoped tokens issued by Cyspbot.
-  - Cyspbot still narrows tokens to the calling repository and allowed workflow contexts, but it does not down-scope the app's repository permissions further at issuance time.
+  - Any permissions granted here can flow through to repository-scoped tokens issued by cyspbot.
+  - cyspbot still narrows tokens to the calling repository and allowed workflow contexts, but it does not down-scope the app's repository permissions further at issuance time.
 
-Cyspbot records each authenticated issuance attempt in a central D1 audit row before live GitHub lookup. A successful token response requires the terminal audit row and issued-token child rows to persist.
+cyspbot records each authenticated issuance attempt in a central D1 audit row before live GitHub lookup. A successful token response requires the terminal audit row and issued-token child rows to persist.
 
 For the dashboard, GitHub App user authorization is the visibility control plane:
 
@@ -136,8 +136,8 @@ GitHub App installation setup redirects are part of the dashboard entry path but
 - The GitHub App must use `https://cyspbot.chikachow.org/github/setup` as the post-install Setup URL.
 - The GitHub App OAuth callback URL must remain `https://cyspbot.chikachow.org/auth/github/callback`.
 - `Request user authorization (OAuth) during installation` should be disabled so GitHub can use the distinct Setup URL.
-- GitHub can call the Setup URL after install or repository-selection updates with `installation_id` and `setup_action`. Cyspbot does not trust `installation_id` because setup URLs are externally reachable.
-- Cyspbot clears any stale OAuth state cookie and redirects to `/login/github?return_to=%2Fdashboard`, which starts a normal stateful GitHub App user authorization flow.
+- GitHub can call the Setup URL after install or repository-selection updates with `installation_id` and `setup_action`. cyspbot does not trust `installation_id` because setup URLs are externally reachable.
+- cyspbot clears any stale OAuth state cookie and redirects to `/login/github?return_to=%2Fdashboard`, which starts a normal stateful GitHub App user authorization flow.
 - `GET /auth/github/callback` still has a defensive fallback for setup-shaped callbacks, but that is compatibility behavior rather than the target GitHub App configuration.
 
 ## Cloudflare setup
@@ -201,19 +201,19 @@ The Cloudflare API token should be scoped narrowly to the account and Worker dep
    pnpm run dev
    ```
 
-Local development falls back to `GITHUB_APP_PRIVATE_KEY_PEM` from `.dev.vars`; production should use Secrets Store. Cyspbot expects PKCS#8 PEM for both paths.
+Local development falls back to `GITHUB_APP_PRIVATE_KEY_PEM` from `.dev.vars`; production should use Secrets Store. cyspbot expects PKCS#8 PEM for both paths.
 
 Worker tests inject auth and GitHub API test doubles at the app boundary. Production code does not branch on test-only environment variables.
 
 ## GitHub Actions usage
 
-Workflows that call Cyspbot directly need `id-token: write`.
+Workflows that call cyspbot directly need `id-token: write`.
 Under the current Token Policy, Installation Token Issuance is limited to default-branch `ref` contexts for `schedule`, `workflow_dispatch`, and `push`.
 The current checked-in policy is intentionally narrow, but the claim mapping keeps `workflow_ref`, `job_workflow_ref`, and `environment` available for stricter future checks without changing the endpoint contract.
 
-The reusable GitHub Action client for Cyspbot lives in the separate `cyspbot-action` repository. This repository documents and deploys the hosted Cyspbot service.
+The reusable GitHub Action client for cyspbot lives in the separate `cyspbot-action` repository. This repository documents and deploys the hosted cyspbot service.
 
-Cyspbot will deny `pull_request`, `pull_request_target`, and any non-default-branch `ref` context under the default policy.
+cyspbot will deny `pull_request`, `pull_request_target`, and any non-default-branch `ref` context under the default policy.
 
 ## GitHub Webhooks
 

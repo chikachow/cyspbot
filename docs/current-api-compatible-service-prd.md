@@ -1,4 +1,4 @@
-# Product Requirements Document: Cyspbot GitHub Actions Security Token Service
+# Product Requirements Document: cyspbot GitHub Actions Security Token Service
 
 This document remains the primary contract document for the externally compatible Installation Token Issuance and webhook edge surface.
 
@@ -40,7 +40,7 @@ This document is a standalone requirements specification for building the servic
 - Token caching or reuse
 - General webhook event processing beyond acceptance, validation, routing, and persistence
 - Admin write APIs or mutable repository-visibility allowlists
-- Secondary Cyspbot-side repository allowlists beyond GitHub App Installation presence
+- Secondary cyspbot-side repository allowlists beyond GitHub App Installation presence
 
 ## 3. Users and Callers
 
@@ -50,7 +50,7 @@ GitHub Actions workflows that can request GitHub-issued OIDC tokens and present 
 
 ### Dashboard User
 
-A human GitHub user who authorizes the Cyspbot GitHub App and may inspect only the repositories that GitHub returns for that user and installation context.
+A human GitHub user who authorizes the cyspbot GitHub App and may inspect only the repositories that GitHub returns for that user and installation context.
 
 ### Upstream authorities
 
@@ -95,9 +95,9 @@ WWW-Authenticate: Bearer
 
 Dashboard routes use a separate authentication surface:
 
-- The user authorizes the Cyspbot GitHub App through GitHub App user authorization.
-- Cyspbot exchanges the callback code for a GitHub App user access token.
-- Cyspbot stores encrypted token material in a short-lived server-side Dashboard Session and sends a signed HTTP-only session cookie.
+- The user authorizes the cyspbot GitHub App through GitHub App user authorization.
+- cyspbot exchanges the callback code for a GitHub App user access token.
+- cyspbot stores encrypted token material in a short-lived server-side Dashboard Session and sends a signed HTTP-only session cookie.
 - Repository visibility for the dashboard comes from GitHub's user-to-server installation repository APIs, not from local installation records alone.
 - Visibility Refresh may upsert positive projection bootstrap rows for repositories GitHub returned for the current Dashboard User, but only Installation Reconciliation may perform full installation-slice replacement, deletion, suspension, or removal decisions.
 
@@ -180,7 +180,7 @@ Standards profile:
 
 - OAuth 2.0 token endpoint shape from RFC 6749 Section 5
 - OAuth 2.0 Token Exchange grant from RFC 8693
-- Cyspbot defines `urn:chikachow:github-app-installation-access-token` as its issued token type because GitHub does not publish a standard URI identifier for GitHub App installation access tokens
+- cyspbot defines `urn:chikachow:github-app-installation-access-token` as its issued token type because GitHub does not publish a standard URI identifier for GitHub App installation access tokens
 
 Success response:
 
@@ -201,11 +201,12 @@ Success response:
 Required behavior:
 
 - Resolve the GitHub App installation for the repository from verified claims.
+- Use an internal repository-scoped `metadata: read` installation token only to fetch repository metadata needed by the Token Policy.
 - Enforce the Token Policy before token issuance.
 - Issue a new GitHub App installation access token with:
   - repository scope restricted to the calling repository only
   - repository permissions inherited from the current GitHub App configuration for that installation
-- When calling GitHub's `POST /app/installations/{installation_id}/access_tokens`, send `X-GitHub-Stateless-S2S-Token: enabled` to opt in to the temporary stateless token format override
+- When calling GitHub's `POST /app/installations/{installation_id}/access_tokens`, send `X-GitHub-Stateless-S2S-Token: enabled` to opt in to the temporary stateless token format override.
 - Return the GitHub-provided expiry timestamp.
 
 Current default Token Policy:
@@ -355,7 +356,7 @@ Behavior:
 - Include `Cache-Control: no-store`
 
 Rationale:
-Cyspbot is an authenticated operational dashboard rather than a marketing site. The root URL should land operators at the dashboard entrypoint and let the dashboard route enforce authentication.
+cyspbot is an authenticated operational dashboard rather than a marketing site. The root URL should land operators at the dashboard entrypoint and let the dashboard route enforce authentication.
 
 ### 5.8 `GET /github/setup` for GitHub App installation setup
 
@@ -378,11 +379,11 @@ Requirement:
 - A request with `installation_id` as a positive integer and `setup_action` of `install` or `update` is an installation setup callback.
 - Installation setup callbacks are not sufficient to create a Dashboard Session.
 - The service must not trust `installation_id` for authorization, because setup URLs are externally reachable and the query parameter can be spoofed.
-- The service must clear any stale Cyspbot OAuth state cookie and redirect to `/login/github?return_to=%2Fdashboard`.
+- The service must clear any stale cyspbot OAuth state cookie and redirect to `/login/github?return_to=%2Fdashboard`.
 - `GET /auth/github/callback` may keep a defensive compatibility fallback for setup-shaped callbacks, but that fallback must not exchange an unstateful `code` and must redirect into `/login/github`.
 
 Rationale:
-GitHub distinguishes the Setup URL from the OAuth callback URL. The Setup URL is for install/update onboarding and carries untrusted installation metadata; the OAuth callback is for completing a user authorization flow. Keeping them separate preserves the installed-app onboarding experience while keeping Dashboard Session creation tied to a user-initiated OAuth flow with Cyspbot's signed state cookie.
+GitHub distinguishes the Setup URL from the OAuth callback URL. The Setup URL is for install/update onboarding and carries untrusted installation metadata; the OAuth callback is for completing a user authorization flow. Keeping them separate preserves the installed-app onboarding experience while keeping Dashboard Session creation tied to a user-initiated OAuth flow with cyspbot's signed state cookie.
 
 ### 5.9 Unknown routes
 
@@ -460,7 +461,7 @@ The service must enforce a checked-in policy implementation for caller eligibili
 - Additional verified claims such as `workflow_ref`, `job_workflow_ref`, `environment`, `head_ref`, and `base_ref` must remain available to the policy layer for future stricter checked-in policies
 
 Rationale:
-The implemented service is intentionally narrow. The Caller proves identity; Cyspbot decides caller eligibility and repository scope through checked-in policy code; GitHub App configuration decides repository permissions. This prevents workflows from widening scope to arbitrary repositories or using Cyspbot as a generic GitHub token issuance endpoint, while intentionally treating the GitHub App configuration as the primary authorization control plane.
+The implemented service is intentionally narrow. The Caller proves identity; cyspbot decides caller eligibility and repository scope through checked-in policy code; GitHub App configuration decides repository permissions. This prevents workflows from widening scope to arbitrary repositories or using cyspbot as a generic GitHub token issuance endpoint, while intentionally treating the GitHub App configuration as the primary authorization control plane.
 
 ## 7. OIDC Verification Requirements
 
@@ -568,6 +569,7 @@ Required GitHub access-token request body:
 Required GitHub access-token request headers:
 
 ```http
+Content-Type: application/json
 X-GitHub-Stateless-S2S-Token: enabled
 ```
 
@@ -754,7 +756,7 @@ The implementation is acceptable only if all of the following are true:
 1. `POST /github/claims` accepts a valid GitHub Actions OIDC bearer token and returns the verified repository identity fields without requiring an Installation Token Issuance-eligible event context.
 2. `POST /token` accepts an RFC 8693 token exchange request, validates a GitHub Actions OIDC `subject_token`, and returns an OAuth-style token response for allowed workflow contexts.
 3. `POST /github/installations/token` remains available as a compatibility endpoint and shares the same Token Policy and upstream GitHub token issuance path as `POST /token`.
-4. The GitHub access-token request sent upstream is restricted to the Calling Repository ID, does not send a server-defined `permissions` override, and opts in to GitHub's temporary stateless token format header.
+4. The caller-visible GitHub access-token request sent upstream is restricted to the Calling Repository ID, does not send a server-defined `permissions` override, and opts in to GitHub's temporary stateless token format header.
 5. Authentication trusts only configured issuers and verifies against coordinated per-issuer JWKS state with bounded freshness, stale serving, and backoff.
 6. `POST /github/webhooks` rejects malformed, oversized, unsigned, or incorrectly signed deliveries; accepts valid signed JSON deliveries with positive integer `installation.id`; and also accepts signed `ping` validation deliveries without `installation.id`.
 7. GitHub App installation setup callbacks are handled at `GET /github/setup`, never create a Dashboard Session, never trust `installation_id` for authorization, clear stale OAuth state, and redirect to `/login/github?return_to=%2Fdashboard`. Setup-shaped callbacks that arrive at `GET /auth/github/callback` are treated only as compatibility fallback and never exchange an unstateful `code`.

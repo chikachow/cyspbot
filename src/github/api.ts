@@ -164,10 +164,17 @@ export async function resolveInstallationForRepository(
 
 export async function authorizeTokenMintRequest(
   env: Env,
+  installationId: number,
   caller: GitHubActionsPrincipal,
   dependencies: GitHubApiDependencies = defaultGitHubApiDependencies,
 ): Promise<{ policyDecision: TokenMintPolicyDecision; repository: GitHubRepository }> {
-  const repository = await getRepository(env, caller.repository, dependencies);
+  const metadataToken = await createRepositoryMetadataToken(
+    env,
+    installationId,
+    caller.repositoryId,
+    dependencies,
+  );
+  const repository = await getRepository(env, caller.repository, metadataToken.token, dependencies);
   const policyDecision = evaluateTokenMintPolicy(caller, repository);
 
   if (policyDecision.decision !== "allow") {
@@ -187,10 +194,43 @@ export async function createRepositoryScopedInstallationToken(
   repositoryId: string,
   dependencies: GitHubApiDependencies = defaultGitHubApiDependencies,
 ): Promise<InstallationToken> {
+  return createInstallationToken(env, installationId, repositoryId, undefined, dependencies);
+}
+
+async function createRepositoryMetadataToken(
+  env: Env,
+  installationId: number,
+  repositoryId: string,
+  dependencies: GitHubApiDependencies,
+): Promise<InstallationToken> {
+  return createInstallationToken(
+    env,
+    installationId,
+    repositoryId,
+    { metadata: "read" },
+    dependencies,
+  );
+}
+
+async function createInstallationToken(
+  env: Env,
+  installationId: number,
+  repositoryId: string,
+  permissions: Record<string, string> | undefined,
+  dependencies: GitHubApiDependencies,
+): Promise<InstallationToken> {
   const parsedRepositoryId = Number.parseInt(repositoryId, 10);
 
   if (!Number.isSafeInteger(parsedRepositoryId)) {
     throw new GitHubApiError(400, "invalid repository id");
+  }
+
+  const requestBody: { permissions?: Record<string, string>; repository_ids: number[] } = {
+    repository_ids: [parsedRepositoryId],
+  };
+
+  if (permissions !== undefined) {
+    requestBody.permissions = permissions;
   }
 
   const response = await fetchGitHubApi(
@@ -199,30 +239,29 @@ export async function createRepositoryScopedInstallationToken(
     await appAuthenticationHeaders(env),
     dependencies,
     {
-      body: JSON.stringify({
-        repository_ids: [parsedRepositoryId],
-      }),
+      body: JSON.stringify(requestBody),
       headers: {
+        "content-type": "application/json",
         [githubStatelessS2STokenHeader]: "enabled",
       },
       method: "POST",
     },
   );
 
-  const body = (await response.json()) as GitHubInstallationTokenResponse;
+  const responseBody = (await response.json()) as GitHubInstallationTokenResponse;
 
   if (
-    typeof body.token !== "string" ||
-    typeof body.expires_at !== "string" ||
-    !isStringRecord(body.permissions)
+    typeof responseBody.token !== "string" ||
+    typeof responseBody.expires_at !== "string" ||
+    !isStringRecord(responseBody.permissions)
   ) {
     throw new GitHubApiError(502, "invalid installation token response");
   }
 
   return {
-    expiresAt: body.expires_at,
-    permissions: body.permissions,
-    token: body.token,
+    expiresAt: responseBody.expires_at,
+    permissions: responseBody.permissions,
+    token: responseBody.token,
   };
 }
 
@@ -373,12 +412,13 @@ export async function refreshGitHubUserAccessToken(
 async function getRepository(
   env: Env,
   repository: string,
+  installationToken: string,
   dependencies: GitHubApiDependencies,
 ): Promise<GitHubRepository> {
   const response = await fetchGitHubApi(
     env,
     `/repos/${repository}`,
-    await appAuthenticationHeaders(env),
+    installationAuthenticationHeaders(installationToken),
     dependencies,
   );
 
@@ -415,6 +455,15 @@ async function appAuthenticationHeaders(env: Env): Promise<HeadersInit> {
   return {
     accept: githubAcceptHeader,
     authorization: `Bearer ${jwt}`,
+    "user-agent": "cyspbot",
+    "x-github-api-version": githubApiVersion,
+  };
+}
+
+function installationAuthenticationHeaders(token: string): HeadersInit {
+  return {
+    accept: githubAcceptHeader,
+    authorization: `Bearer ${token}`,
     "user-agent": "cyspbot",
     "x-github-api-version": githubApiVersion,
   };
@@ -526,7 +575,10 @@ async function fetchGitHubApi(
     return response;
   }
 
-  throw new GitHubApiError(response.status, `GitHub API request failed: ${path}`);
+  const responseText = await response.text().catch(() => "");
+  const responseDetail = responseText.length > 0 ? `: ${responseText.slice(0, 1000)}` : "";
+
+  throw new GitHubApiError(response.status, `GitHub API request failed: ${path}${responseDetail}`);
 }
 
 function ensureTrailingSlash(url: string): string {

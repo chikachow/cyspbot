@@ -347,7 +347,7 @@ async function mintInstallationTokenForContext(
     );
     installationId = installation.id;
 
-    await authorizeTokenMintRequest(env, principal, dependencies);
+    await authorizeTokenMintRequest(env, installation.id, principal, dependencies);
     const token = await createRepositoryScopedInstallationToken(
       env,
       installation.id,
@@ -377,6 +377,7 @@ async function mintInstallationTokenForContext(
     console.error("GitHub installation token request failed", {
       errorMessage: error instanceof Error ? error.message : String(error),
       errorName: error instanceof Error ? error.name : typeof error,
+      errorStatus: error instanceof GitHubApiError ? error.status : undefined,
       eventName: principal.eventName,
       installationId,
       outcome,
