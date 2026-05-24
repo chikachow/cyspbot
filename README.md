@@ -9,7 +9,7 @@ The current product is intentionally narrow:
 - `POST /github/webhooks` accepts signed GitHub App webhooks, records metadata, and signals installation reconciliation.
 - `GET /dashboard` is a read-only operational dashboard for repository visibility and recent Installation Token Issuance audit history.
 
-The primary product specification is [docs/current-api-compatible-service-prd.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/current-api-compatible-service-prd.md). The documentation map is [docs/README.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/README.md).
+The primary service contract is [docs/service-contract.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/service-contract.md). The documentation map is [docs/README.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/README.md).
 
 ## Implemented Architecture
 
