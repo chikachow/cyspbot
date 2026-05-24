@@ -73,6 +73,8 @@ The dashboard uses GitHub App user authorization and D1-backed sessions:
 
 Repository detail URLs use the current `owner/name` display path. The route resolves that locator to the immutable GitHub repository id internally and authorizes every detail page from fresh Repository Visibility Cache rows.
 
+GitHub App installation setup callbacks may also arrive at `GET /auth/github/callback` with `installation_id` and `setup_action` but without Cyspbot's OAuth `state` cookie. Cyspbot does not exchange those unstateful codes; it clears any stale state cookie and redirects to `/login/github?return_to=/dashboard` to start the normal stateful dashboard login.
+
 `POST /token` expects:
 
 ```http

@@ -885,6 +885,7 @@ Auth and redirect controls:
 - `/login/github` creates an OAuth `state` value and stores it in a signed short-lived cookie named `__Host-cyspbot_oauth_state` before redirecting to GitHub.
 - The OAuth state cookie uses `Path=/`, does not set a `Domain` attribute, and is `HttpOnly`, `Secure`, and `SameSite=Lax`.
 - `/auth/github/callback` must validate the returned `state` before exchanging the code.
+- GitHub App installation setup callbacks without Cyspbot OAuth state are not exchanged. If `installation_id` is a positive integer and `setup_action` is `install` or `update`, Cyspbot clears any stale state cookie and redirects to `/login/github?return_to=/dashboard`.
 - Return targets are validated against an explicit allowlist of dashboard route shapes:
   - `/dashboard`
   - `/dashboard/repositories/:owner/:name`

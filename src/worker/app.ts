@@ -590,6 +590,10 @@ async function handleDashboardCallbackRequest(
   const state = url.searchParams.get("state");
   const storedState = await readDashboardOauthState(request, env);
 
+  if ((state === null || storedState === null) && isGitHubAppInstallationSetupCallback(url)) {
+    return dashboardLoginRedirectResponse(undefined, clearDashboardStateCookie(), "/dashboard");
+  }
+
   if (
     code === null ||
     state === null ||
@@ -934,11 +938,17 @@ function dashboardCallbackUrl(request: Request): string {
   return `${url.origin}/auth/github/callback`;
 }
 
-function dashboardLoginRedirectResponse(request?: Request, setCookie?: string): Response {
+function dashboardLoginRedirectResponse(
+  request?: Request,
+  setCookie?: string,
+  returnTo?: string,
+): Response {
   const location =
-    request === undefined
-      ? "/login/github"
-      : `/login/github?return_to=${encodeURIComponent(new URL(request.url).pathname)}`;
+    returnTo !== undefined
+      ? `/login/github?return_to=${encodeURIComponent(returnTo)}`
+      : request === undefined
+        ? "/login/github"
+        : `/login/github?return_to=${encodeURIComponent(new URL(request.url).pathname)}`;
   const headers = new Headers({ location });
 
   if (setCookie !== undefined) {
@@ -955,6 +965,17 @@ function dashboardOauthStateFresh(issuedAt: string, now: Date): boolean {
   const issuedAtMs = Date.parse(issuedAt);
 
   return !Number.isNaN(issuedAtMs) && now.getTime() - issuedAtMs <= 10 * 60 * 1000;
+}
+
+function isGitHubAppInstallationSetupCallback(url: URL): boolean {
+  const installationId = Number.parseInt(url.searchParams.get("installation_id") ?? "", 10);
+  const setupAction = url.searchParams.get("setup_action");
+
+  return (
+    Number.isSafeInteger(installationId) &&
+    installationId > 0 &&
+    (setupAction === "install" || setupAction === "update")
+  );
 }
 
 function dashboardProblemResponse(status: number, headers?: HeadersInit): Response {
