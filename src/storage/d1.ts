@@ -17,7 +17,6 @@ import {
 
 const dashboardIdleTtlMs = 2 * 60 * 60 * 1000;
 const dashboardAbsoluteTtlMs = 8 * 60 * 60 * 1000;
-const visibilityCacheTtlMs = 5 * 60 * 1000;
 
 export interface AuditIntent {
   id: number;
@@ -48,7 +47,6 @@ export interface DashboardRepository {
   archivedAt: string | null;
   fullNameDisplay: string;
   fullNameNormalized: string;
-  installationIds: number[];
   repositoryId: number;
   repositoryVisibility: string;
 }
@@ -81,10 +79,6 @@ type SessionRow = Record<"encrypted_github_user_token_blob" | "github_user_id", 
   > &
   Record<"id", number>;
 
-type RepositoryListRow = Record<"full_name_display" | "repository_visibility", string> &
-  Record<"archived_at" | "last_installation_token_issuance_at" | "last_outcome", string | null> &
-  Record<"installation_id" | "repository_id", number>;
-
 type RepositoryRow = Record<
   "full_name_display" | "full_name_normalized" | "repository_visibility",
   string
@@ -105,6 +99,12 @@ type AuditRow = Record<
   > &
   Record<"id", number> &
   Record<"installation_id", number | null>;
+
+type RepositoryAuditSummaryRow = Record<
+  "last_installation_token_issuance_at" | "last_outcome",
+  string | null
+> &
+  Record<"repository_id", number>;
 
 export async function createAuditIntent(
   env: Env,
@@ -393,13 +393,14 @@ export async function deleteDashboardSession(env: Env, rawSessionToken: string):
     .run();
 }
 
-export async function refreshDashboardVisibility(
+export async function listAccessibleDashboardRepositories(
   env: Env,
   session: DashboardSession,
   dependencies: GitHubApiDependencies,
   now: string,
-): Promise<void> {
+): Promise<DashboardRepositoryListItem[]> {
   const installations = await listGitHubUserInstallations(env, session.accessToken, dependencies);
+  const repositoryAccesses: GitHubUserRepositoryAccess[] = [];
 
   for (const installation of installations) {
     const repositories = await listGitHubUserInstallationRepositories(
@@ -408,70 +409,64 @@ export async function refreshDashboardVisibility(
       installation.id,
       dependencies,
     );
-    await replaceVisibilitySlice(env, session.githubUserId, installation.id, repositories, now);
+    await upsertDashboardRepositoryAccess(env, installation.id, repositories, now);
+    repositoryAccesses.push(...repositories);
   }
+
+  const auditSummaries = await listRepositoryAuditSummaries(
+    env,
+    repositoryAccesses.map((repository) => parseRepositoryId(repository.githubRepoId)),
+  );
+
+  return repositoryAccesses
+    .map((repository) => {
+      const repositoryId = parseRepositoryId(repository.githubRepoId);
+      const auditSummary = auditSummaries.get(repositoryId);
+
+      return {
+        archivedAt: repository.archived ? now : null,
+        fullNameDisplay: repository.fullName,
+        installationId: repository.installationId,
+        lastInstallationTokenIssuanceAt: auditSummary?.lastInstallationTokenIssuanceAt ?? null,
+        lastOutcome: auditSummary?.lastOutcome ?? null,
+        repositoryId,
+        repositoryVisibility: repository.private ? "private" : "public",
+      };
+    })
+    .sort(compareDashboardRepositoryListItems);
 }
 
-export async function listVisibleDashboardRepositories(
+export async function getAccessibleDashboardRepositoryByFullName(
   env: Env,
-  githubUserId: string,
-  now: string,
-): Promise<DashboardRepositoryListItem[]> {
-  const rows = await env.DB.prepare(
-    `
-      SELECT
-        github_repositories.repository_id,
-        github_repositories.full_name_display,
-        github_repositories.repository_visibility,
-        github_repositories.archived_at,
-        repository_visibility_cache_entries.installation_id,
-        MAX(installation_token_issuance_audit_entries.requested_at)
-          AS last_installation_token_issuance_at,
-        (
-          SELECT latest.outcome
-          FROM installation_token_issuance_audit_entries latest
-          WHERE latest.caller_repository_id = github_repositories.repository_id
-          ORDER BY latest.requested_at DESC, latest.id DESC
-          LIMIT 1
-        ) AS last_outcome
-      FROM repository_visibility_cache_entries
-      INNER JOIN github_repositories
-        ON github_repositories.repository_id = repository_visibility_cache_entries.repository_id
-      LEFT JOIN installation_token_issuance_audit_entries
-        ON installation_token_issuance_audit_entries.caller_repository_id =
-          github_repositories.repository_id
-      WHERE repository_visibility_cache_entries.github_user_id = ?
-        AND repository_visibility_cache_entries.expires_at > ?
-        AND github_repositories.deleted_at IS NULL
-      GROUP BY
-        github_repositories.repository_id,
-        repository_visibility_cache_entries.installation_id
-      ORDER BY
-        github_repositories.archived_at IS NOT NULL ASC,
-        last_installation_token_issuance_at DESC,
-        github_repositories.full_name_display ASC
-    `,
-  )
-    .bind(githubUserId, now)
-    .all<RepositoryListRow>();
-
-  return rows.results.map((row) => ({
-    archivedAt: row.archived_at,
-    fullNameDisplay: row.full_name_display,
-    installationId: row.installation_id,
-    lastInstallationTokenIssuanceAt: row.last_installation_token_issuance_at,
-    lastOutcome: row.last_outcome,
-    repositoryId: row.repository_id,
-    repositoryVisibility: row.repository_visibility,
-  }));
-}
-
-export async function getDashboardRepositoryByFullName(
-  env: Env,
+  session: DashboardSession,
   owner: string,
   name: string,
+  dependencies: GitHubApiDependencies,
+  now: string,
 ): Promise<DashboardRepository | null> {
   const fullNameNormalized = normalizeRepositoryFullName(`${owner}/${name}`);
+  const installations = await listGitHubUserInstallations(env, session.accessToken, dependencies);
+  let visibleRepository: GitHubUserRepositoryAccess | null = null;
+
+  for (const installation of installations) {
+    const repositories = await listGitHubUserInstallationRepositories(
+      env,
+      session.accessToken,
+      installation.id,
+      dependencies,
+    );
+    await upsertDashboardRepositoryAccess(env, installation.id, repositories, now);
+
+    visibleRepository ??=
+      repositories.find(
+        (repository) => normalizeRepositoryFullName(repository.fullName) === fullNameNormalized,
+      ) ?? null;
+  }
+
+  if (visibleRepository === null) {
+    return null;
+  }
+
   const repository = await env.DB.prepare(
     `
       SELECT
@@ -493,47 +488,13 @@ export async function getDashboardRepositoryByFullName(
     return null;
   }
 
-  const installations = await env.DB.prepare(
-    `
-      SELECT installation_id
-      FROM github_app_installation_repositories
-      WHERE repository_id = ?
-      ORDER BY installation_id ASC
-    `,
-  )
-    .bind(repository.repository_id)
-    .all<Record<"installation_id", number>>();
-
   return {
     archivedAt: repository.archived_at,
     fullNameDisplay: repository.full_name_display,
     fullNameNormalized: repository.full_name_normalized,
-    installationIds: installations.results.map((row) => row.installation_id),
     repositoryId: repository.repository_id,
     repositoryVisibility: repository.repository_visibility,
   };
-}
-
-export async function userCanSeeRepository(
-  env: Env,
-  githubUserId: string,
-  repositoryId: number,
-  now: string,
-): Promise<boolean> {
-  const row = await env.DB.prepare(
-    `
-      SELECT 1
-      FROM repository_visibility_cache_entries
-      WHERE github_user_id = ?
-        AND repository_id = ?
-        AND expires_at > ?
-      LIMIT 1
-    `,
-  )
-    .bind(githubUserId, repositoryId, now)
-    .first();
-
-  return row !== null;
 }
 
 export async function listRepositoryAuditEntries(
@@ -628,14 +589,12 @@ export async function recordWebhookDelivery(
     .run();
 }
 
-async function replaceVisibilitySlice(
+async function upsertDashboardRepositoryAccess(
   env: Env,
-  githubUserId: string,
   installationId: number,
   repositories: GitHubUserRepositoryAccess[],
   checkedAt: string,
 ): Promise<void> {
-  const expiresAt = new Date(Date.parse(checkedAt) + visibilityCacheTtlMs).toISOString();
   const statements: D1PreparedStatement[] = [
     env.DB.prepare(
       `
@@ -649,13 +608,6 @@ async function replaceVisibilitySlice(
           updated_at = excluded.updated_at
       `,
     ).bind(installationId, checkedAt, checkedAt),
-    env.DB.prepare(
-      `
-        DELETE FROM repository_visibility_cache_entries
-        WHERE github_user_id = ?
-          AND installation_id = ?
-      `,
-    ).bind(githubUserId, installationId),
   ];
 
   for (const repository of repositories) {
@@ -706,21 +658,81 @@ async function replaceVisibilitySlice(
             updated_at = excluded.updated_at
         `,
       ).bind(installationId, repositoryId, checkedAt, checkedAt),
-      env.DB.prepare(
-        `
-          INSERT INTO repository_visibility_cache_entries (
-            github_user_id,
-            installation_id,
-            repository_id,
-            checked_at,
-            expires_at
-          ) VALUES (?, ?, ?, ?, ?)
-        `,
-      ).bind(githubUserId, installationId, repositoryId, checkedAt, expiresAt),
     );
   }
 
   await env.DB.batch(statements);
+}
+
+async function listRepositoryAuditSummaries(
+  env: Env,
+  repositoryIds: number[],
+): Promise<
+  Map<number, { lastInstallationTokenIssuanceAt: string | null; lastOutcome: string | null }>
+> {
+  const uniqueRepositoryIds = Array.from(new Set(repositoryIds));
+  const visibleRepositoryIds = new Set(uniqueRepositoryIds);
+
+  if (uniqueRepositoryIds.length === 0) {
+    return new Map();
+  }
+
+  const rows = await env.DB.prepare(
+    `
+      SELECT
+        entries.caller_repository_id AS repository_id,
+        MAX(entries.requested_at) AS last_installation_token_issuance_at,
+        (
+          SELECT latest.outcome
+          FROM installation_token_issuance_audit_entries latest
+          WHERE latest.caller_repository_id =
+            entries.caller_repository_id
+          ORDER BY latest.requested_at DESC, latest.id DESC
+          LIMIT 1
+        ) AS last_outcome
+      FROM installation_token_issuance_audit_entries entries
+      GROUP BY entries.caller_repository_id
+    `,
+  ).all<RepositoryAuditSummaryRow>();
+
+  return new Map(
+    rows.results
+      .filter((row) => visibleRepositoryIds.has(row.repository_id))
+      .map((row) => [
+        row.repository_id,
+        {
+          lastInstallationTokenIssuanceAt: row.last_installation_token_issuance_at,
+          lastOutcome: row.last_outcome,
+        },
+      ]),
+  );
+}
+
+function compareDashboardRepositoryListItems(
+  left: DashboardRepositoryListItem,
+  right: DashboardRepositoryListItem,
+): number {
+  const leftArchived = left.archivedAt === null ? 0 : 1;
+  const rightArchived = right.archivedAt === null ? 0 : 1;
+
+  if (leftArchived !== rightArchived) {
+    return leftArchived - rightArchived;
+  }
+
+  const leftLastIssuance = left.lastInstallationTokenIssuanceAt ?? "";
+  const rightLastIssuance = right.lastInstallationTokenIssuanceAt ?? "";
+
+  if (leftLastIssuance !== rightLastIssuance) {
+    return rightLastIssuance.localeCompare(leftLastIssuance);
+  }
+
+  const fullNameComparison = left.fullNameDisplay.localeCompare(right.fullNameDisplay);
+
+  if (fullNameComparison !== 0) {
+    return fullNameComparison;
+  }
+
+  return left.installationId - right.installationId;
 }
 
 function effectiveSessionExpiresAt(row: SessionRow): string {

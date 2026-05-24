@@ -29,14 +29,12 @@ import {
   createDashboardSession,
   deleteDashboardSession,
   finalizeAuditEntry,
-  getDashboardRepositoryByFullName,
+  getAccessibleDashboardRepositoryByFullName,
   getDashboardSession,
+  listAccessibleDashboardRepositories,
   listRepositoryAuditEntries,
-  listVisibleDashboardRepositories,
   markAuditFinalizationFailed,
   recordWebhookDelivery,
-  refreshDashboardVisibility,
-  userCanSeeRepository,
 } from "../storage/d1.ts";
 import {
   authenticateOidcToken as defaultAuthenticateOidcToken,
@@ -619,14 +617,6 @@ async function handleDashboardCallbackRequest(
       user,
     });
 
-    const session = await getDashboardSession(env, rawSessionToken, now);
-
-    if (session === null) {
-      throw new Error("created dashboard session could not be read");
-    }
-
-    await refreshDashboardVisibility(env, session, dependencies, now);
-
     const headers = new Headers({
       location: storedState.returnTo,
     });
@@ -680,9 +670,15 @@ async function handleDashboardRepositoryListRequest(
   }
 
   const now = dependencies.now().toISOString();
+  let repositories: Awaited<ReturnType<typeof listAccessibleDashboardRepositories>>;
 
   try {
-    await refreshDashboardVisibility(env, dashboardSession.session, dependencies, now);
+    repositories = await listAccessibleDashboardRepositories(
+      env,
+      dashboardSession.session,
+      dependencies,
+      now,
+    );
   } catch (error) {
     const response = await responseForDashboardVisibilityRefreshError(
       env,
@@ -695,13 +691,9 @@ async function handleDashboardRepositoryListRequest(
     if (response !== null) {
       return response;
     }
-  }
 
-  const repositories = await listVisibleDashboardRepositories(
-    env,
-    dashboardSession.session.githubUserId,
-    now,
-  );
+    return dashboardProblemResponse(503);
+  }
 
   return htmlResponse(
     renderDashboardRepositoryListPage({
@@ -730,9 +722,17 @@ async function handleDashboardRepositoryDetailsRequest(
   }
 
   const now = dependencies.now().toISOString();
+  let repository: Awaited<ReturnType<typeof getAccessibleDashboardRepositoryByFullName>>;
 
   try {
-    await refreshDashboardVisibility(env, dashboardSession.session, dependencies, now);
+    repository = await getAccessibleDashboardRepositoryByFullName(
+      env,
+      dashboardSession.session,
+      route.owner,
+      route.name,
+      dependencies,
+      now,
+    );
   } catch (error) {
     const response = await responseForDashboardVisibilityRefreshError(
       env,
@@ -749,20 +749,7 @@ async function handleDashboardRepositoryDetailsRequest(
     return dashboardProblemResponse(503);
   }
 
-  const repository = await getDashboardRepositoryByFullName(env, route.owner, route.name);
-
   if (repository === null) {
-    return dashboardProblemResponse(404);
-  }
-
-  const authorized = await userCanSeeRepository(
-    env,
-    dashboardSession.session.githubUserId,
-    repository.repositoryId,
-    now,
-  );
-
-  if (!authorized) {
     return dashboardProblemResponse(404);
   }
 

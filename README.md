@@ -16,7 +16,7 @@ The primary product specification is [docs/current-api-compatible-service-prd.md
 - Cloudflare Worker routing for token exchange, claims, webhook, dashboard, login, and setup routes.
 - One `OidcIssuerVerifierObject` Durable Object per trusted OIDC issuer for JWKS coordination, bounded stale serving, and refresh backoff.
 - One `GitHubInstallationObject` Durable Object per GitHub App Installation for reconciliation signal coalescing only.
-- D1-backed Dashboard Sessions, Audit Log, issued-token facts, Repository Visibility Cache, GitHub installation/repository projection rows, Webhook Delivery Log metadata, and reconciliation state.
+- D1-backed Dashboard Sessions, Audit Log, issued-token facts, GitHub installation/repository projection rows, Webhook Delivery Log metadata, and reconciliation state.
 - GitHub App private key in Cloudflare Secrets Store for production; local PKCS#8 PEM fallback for development and tests.
 - Checked-in Token Policy code that allows Installation Token Issuance only for default-branch `schedule` and `workflow_dispatch` contexts.
 
@@ -76,7 +76,7 @@ Implemented dashboard routes:
 - `GET /dashboard`
 - `GET /dashboard/repositories/:owner/:name`
 
-Repository detail URLs use current `owner/name` as a locator. The service resolves that to immutable GitHub repository ID internally and authorizes the page from fresh Repository Visibility Cache rows.
+Repository detail URLs use current `owner/name` as a locator. The service resolves that to immutable GitHub repository ID internally after confirming the signed-in user can see the repository through GitHub's user-to-server APIs.
 
 ## Current Token Policy
 
@@ -100,7 +100,7 @@ Planned future work is additive and must preserve the current trust boundary:
 
 - full Installation Reconciliation execution with installation-slice replacement in D1
 - scheduled retry dispatch for pending or failed reconciliation work
-- cleanup jobs for expired Dashboard Sessions, Repository Visibility Cache rows, Audit Log retention, reconciliation history, and Webhook Delivery Log metadata
+- cleanup jobs for expired Dashboard Sessions, Audit Log retention, reconciliation history, and Webhook Delivery Log metadata
 - optional dashboard diagnostics for reconciliation failures
 - optional dashboard filtering or sorting over already-authorized rendered data
 

@@ -4,7 +4,7 @@ This document is the primary product specification for the implemented cyspbot s
 
 Use this document to answer "what does cyspbot do today?" before consulting historical ADRs or future architecture notes. The documentation map is [docs/README.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/README.md).
 
-Dashboard Sessions, the Audit Log, the Repository Visibility Cache, webhook metadata, and projection state are D1-backed. The detailed storage reference is [docs/dashboard-d1-recut.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/dashboard-d1-recut.md).
+Dashboard Sessions, the Audit Log, webhook metadata, and projection state are D1-backed. The detailed storage reference is [docs/dashboard-d1-recut.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/dashboard-d1-recut.md).
 
 ## 1. Purpose
 
@@ -53,7 +53,7 @@ The following work is not implemented in the current product surface:
 - full Installation Reconciliation execution for one GitHub App Installation at a time
 - full installation-slice projection replacement, including deletion, suspension, and repository-removal decisions
 - scheduled retry dispatch for due or failed reconciliation work
-- cleanup jobs for expired Dashboard Sessions, Repository Visibility Cache rows, Audit Log retention, reconciliation run history, and Webhook Delivery Log metadata
+- cleanup jobs for expired Dashboard Sessions, Audit Log retention, reconciliation run history, and Webhook Delivery Log metadata
 - dashboard diagnostics for reconciliation failures when operational support needs it
 - dashboard filtering, sorting, and disclosure improvements over already-authorized rendered data
 
@@ -116,7 +116,7 @@ Dashboard routes use a separate authentication surface:
 - cyspbot exchanges the callback code for a GitHub App user access token.
 - cyspbot stores encrypted token material in a short-lived server-side Dashboard Session and sends a signed HTTP-only session cookie.
 - Repository visibility for the dashboard comes from GitHub's user-to-server installation repository APIs, not from local installation records alone.
-- Visibility Refresh may upsert positive projection bootstrap rows for repositories GitHub returned for the current Dashboard User. Future Installation Reconciliation is the only path that performs full installation-slice replacement, deletion, suspension, or removal decisions.
+- Dashboard repository access checks may upsert positive projection bootstrap rows for repositories GitHub returned for the current Dashboard User. Future Installation Reconciliation is the only path that performs full installation-slice replacement, deletion, suspension, or removal decisions.
 
 Installation Token Issuance routes still do not accept GitHub PATs, GitHub App JWTs from Callers, or Dashboard Session cookies as substitutes for GitHub Actions OIDC authentication.
 
@@ -569,7 +569,7 @@ The service intentionally hides internal GitHub authorization details and presen
 
 ## 9. Persistence and Isolation Boundaries
 
-The durable persistence model for the Dashboard Sessions, Repository Visibility Cache, Audit Log, and Webhook Delivery Log is defined in [docs/dashboard-d1-recut.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/dashboard-d1-recut.md).
+The durable persistence model for the Dashboard Sessions, Audit Log, and Webhook Delivery Log is defined in [docs/dashboard-d1-recut.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/dashboard-d1-recut.md).
 
 ### 9.1 Audit Log persistence
 
@@ -618,7 +618,7 @@ Future implementation:
 - scheduled retry dispatch for due reconciliation work
 - full installation-slice replacement, deletion, suspension, and removal decisions
 
-The Installation Coordinator is not the durable source of truth for the Audit Log, Dashboard Sessions, repository projection, or Repository Visibility Cache.
+The Installation Coordinator is not the durable source of truth for the Audit Log, Dashboard Sessions, or repository projection.
 
 ### 9.3 Webhook Delivery Log persistence
 
@@ -643,7 +643,7 @@ The D1-backed implementation preserves GitHub App Installation isolation for exe
 Retention policy is defined per durable table in the re-cut document. The current schema includes retention-driving timestamps and indexes for:
 
 - Audit Log and issued Installation Token child rows: bounded and purged explicitly
-- Dashboard Session rows and Repository Visibility Cache rows: aggressively purged after expiry
+- Dashboard Session rows: aggressively purged after expiry
 - Installation Reconciliation state, Installation Reconciliation run history, and Webhook Delivery Log metadata: bounded by explicit retention windows
 
 Future implementation includes explicit cleanup jobs rather than relying only on opportunistic deletion during request handling.

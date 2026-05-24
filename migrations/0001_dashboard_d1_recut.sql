@@ -75,23 +75,6 @@ CREATE TABLE IF NOT EXISTS github_app_installation_repositories (
 CREATE INDEX IF NOT EXISTS github_app_installation_repositories_by_repository_id
   ON github_app_installation_repositories(repository_id);
 
-CREATE TABLE IF NOT EXISTS repository_visibility_cache_entries (
-  github_user_id TEXT NOT NULL,
-  installation_id INTEGER NOT NULL,
-  repository_id INTEGER NOT NULL,
-  checked_at TEXT NOT NULL,
-  expires_at TEXT NOT NULL,
-  PRIMARY KEY (github_user_id, installation_id, repository_id),
-  FOREIGN KEY (github_user_id) REFERENCES dashboard_users(github_user_id) ON DELETE CASCADE,
-  FOREIGN KEY (installation_id) REFERENCES github_app_installations(installation_id) ON DELETE CASCADE,
-  FOREIGN KEY (repository_id) REFERENCES github_repositories(repository_id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS repository_visibility_cache_entries_by_expiry
-  ON repository_visibility_cache_entries(expires_at);
-CREATE INDEX IF NOT EXISTS repository_visibility_cache_entries_by_user_repo
-  ON repository_visibility_cache_entries(github_user_id, repository_id);
-
 CREATE TABLE IF NOT EXISTS installation_token_issuance_audit_entries (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   requested_at TEXT NOT NULL,

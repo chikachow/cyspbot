@@ -62,13 +62,9 @@ _Avoid_: Audit store, repository projection store, session store
 A short-lived cyspbot-held authenticated web session for one **Dashboard User**, stored in D1 and holding encrypted GitHub user token material plus expiry metadata.
 _Avoid_: Caller identity, installation login, Durable Object session store
 
-**Repository Visibility Cache**:
-A short-lived D1-backed cache of the repositories that GitHub says a **Dashboard User** may access for this GitHub App, keyed by user and installation context.
+**Dashboard Repository Access Check**:
+The request-time GitHub user-to-server API calls that list the repositories GitHub says a **Dashboard User** may access for this GitHub App.
 _Avoid_: Independent authorization database, org-membership snapshot, permanent entitlement record
-
-**Visibility Refresh**:
-The process that uses a **GitHub User Access Token** to call GitHub's user-to-server installation repository APIs and replace a **Dashboard User**'s positive **Repository Visibility Cache** rows.
-_Avoid_: Authorization sync, entitlement import, reconcile
 
 **Claims Endpoint**:
 A cyspbot endpoint that verifies a **Caller** OIDC token and returns cyspbot's derived identity without issuing an **Installation Token**.
@@ -105,9 +101,9 @@ _Avoid_: Permanent key store, token cache, caller-controlled key source
 - The **JWKS Cache** supplies verification keys for an **Issuer Registration**, but never stores issued **Installation Tokens**
 - A **GitHub App Installation** is the GitHub-side authority that allows **cyspbot** to issue an **Installation Token**
 - cyspbot determines dashboard repository visibility from the intersection GitHub reports for a **Dashboard User**, a **GitHub App Installation**, and that installation's repositories
-- The **Repository Visibility Cache** is an optimization only; GitHub remains the authorization authority for **Dashboard User** repository visibility
+- Dashboard repository list and detail pages authorize from the live GitHub response for the current **Dashboard User**
 - Future **Installation Reconciliation** is the only writer that performs full installation-slice replacement, deletion, suspension, or removal decisions for projection rows in D1
-- A **Visibility Refresh** may upsert positive projection bootstrap rows for repositories GitHub just returned for that **Dashboard User**, but it does not infer absence or remove projection state
+- A **Dashboard Repository Access Check** may upsert positive projection bootstrap rows for repositories GitHub just returned for that **Dashboard User**, but it does not infer absence or remove projection state
 - The **Installation Coordinator** coalesces **Installation Reconciliation** signals per installation, but does not become a second durable source of truth
 - The **Webhook Receiver** accepts GitHub webhook deliveries only after signature and envelope validation
 - The **Webhook Receiver** routes each accepted **Installation Reconciliation** signal to the **Installation Coordinator** keyed by **GitHub App Installation**

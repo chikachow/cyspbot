@@ -5,7 +5,7 @@ This directory separates current product facts from design history and future op
 ## Current Product Sources
 
 - [Product specification](current-api-compatible-service-prd.md) is the primary current-state source. It defines the implemented API, dashboard, security, persistence, and acceptance contracts.
-- [Dashboard and persistence reference](dashboard-d1-recut.md) is the detailed D1, dashboard, Audit Log, Repository Visibility Cache, Webhook Delivery Log, and Installation Reconciliation state reference.
+- [Dashboard and persistence reference](dashboard-d1-recut.md) is the detailed D1, dashboard, Audit Log, Webhook Delivery Log, and Installation Reconciliation state reference.
 - [Repository README](../README.md) is the operational entrypoint for setup, local development, deployment, and direct GitHub Actions usage.
 - [Domain glossary](../CONTEXT.md) defines the project vocabulary used in code reviews, design discussions, and future implementation work.
 
@@ -29,7 +29,7 @@ Current implementation:
 - claims verification at `POST /github/claims`
 - signed webhook acceptance at `POST /github/webhooks`
 - GitHub App user authorization dashboard at `GET /dashboard`
-- D1-backed Audit Log, Dashboard Sessions, Repository Visibility Cache, Webhook Delivery Log metadata, and reconciliation signal state
+- D1-backed Audit Log, Dashboard Sessions, Webhook Delivery Log metadata, and reconciliation signal state
 
 Future implementation:
 

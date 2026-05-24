@@ -79,6 +79,7 @@ export interface GitHubUserInstallation {
 }
 
 export interface GitHubUserRepositoryAccess {
+  archived: boolean;
   fullName: string;
   githubRepoId: string;
   installationId: number;
@@ -128,6 +129,7 @@ interface GitHubUserInstallationsResponse {
 }
 
 interface GitHubUserRepositoryAccessApiResponse {
+  archived?: unknown;
   full_name?: unknown;
   id?: number;
   name?: unknown;
@@ -375,6 +377,7 @@ export async function listGitHubUserInstallationRepositories(
         isBooleanRecord(repository.permissions)
       ) {
         repositories.push({
+          archived: repository.archived === true,
           fullName: repository.full_name,
           githubRepoId: String(repository.id),
           installationId,

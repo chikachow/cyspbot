@@ -1,6 +1,6 @@
 # Add GitHub App user authorization with D1-backed Dashboard Sessions and visibility
 
-cyspbot has a read-only dashboard for humans. It authenticates Dashboard Users through GitHub App user authorization, stores Dashboard Sessions and the Repository Visibility Cache in D1, stores the Audit Log centrally in D1, and keeps `GitHubInstallationObject` only as the Installation Coordinator for signal coalescing. We chose this over keeping Dashboard Session state and audit reads in separate Durable Objects because the dashboard needs repo-centric and cross-installation reads, centrally enforced retention, and one durable source of truth for the Audit Log and current-state projection, while still preserving installation isolation for future Installation Reconciliation execution.
+cyspbot has a read-only dashboard for humans. It authenticates Dashboard Users through GitHub App user authorization, stores Dashboard Sessions in D1, stores the Audit Log centrally in D1, and keeps `GitHubInstallationObject` only as the Installation Coordinator for signal coalescing. We chose this over keeping Dashboard Session state and audit reads in separate Durable Objects because the dashboard needs repo-centric and cross-installation reads, centrally enforced retention, and one durable source of truth for the Audit Log and current-state projection, while still preserving installation isolation for future Installation Reconciliation execution.
 
 ## Considered Options
 
@@ -18,7 +18,6 @@ cyspbot has a read-only dashboard for humans. It authenticates Dashboard Users t
   - Dashboard Sessions
   - Dashboard Users
   - current installation/repository/membership projection
-  - Repository Visibility Cache
   - Installation Reconciliation state and run history
   - Webhook Delivery Log metadata
 - `GitHubInstallationObject` no longer owns the Audit Log or repository projection; it only coalesces Installation Reconciliation signals in the current implementation. Serialized Installation Reconciliation execution is future implementation.
