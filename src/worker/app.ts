@@ -111,6 +111,14 @@ export function createApp(
         return handleGitHubWebhookRequest(request, env, dependencies);
       }
 
+      if (url.pathname === "/github/setup") {
+        if (request.method !== "GET") {
+          return problemResponse(405, { allow: "GET" });
+        }
+
+        return handleGitHubAppSetupRequest(request);
+      }
+
       if (url.pathname === "/login/github") {
         if (request.method !== "GET") {
           return problemResponse(405, { allow: "GET" });
@@ -556,6 +564,16 @@ async function handleGitHubWebhookRequest(
     },
     { status: 202 },
   );
+}
+
+function handleGitHubAppSetupRequest(request: Request): Response {
+  if (!isGitHubAppInstallationSetupCallback(new URL(request.url))) {
+    return dashboardProblemResponse(400, {
+      "set-cookie": clearDashboardStateCookie(),
+    });
+  }
+
+  return dashboardLoginRedirectResponse(undefined, clearDashboardStateCookie(), "/dashboard");
 }
 
 async function handleDashboardLoginRequest(request: Request, env: Env): Promise<Response> {

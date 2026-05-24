@@ -24,5 +24,6 @@ Cyspbot has a read-only dashboard for humans. It authenticates Dashboard Users t
 - `GitHubInstallationObject` no longer owns the Audit Log or repository projection; it only coalesces signals and serializes Installation Reconciliation.
 - Installation Token Issuance continues to resolve installation and repository metadata live from GitHub and must fail closed if final Audit Log persistence to D1 fails.
 - The dashboard uses user-facing repository URLs based on current `owner/name`, but resolves authorization and audit by immutable `repository_id` internally.
+- GitHub App installation setup redirects are treated as onboarding entrypoints, not as dashboard OAuth login completions. The target GitHub App configuration sends setup redirects to `/github/setup`; Cyspbot clears stale OAuth state and restarts `/login/github` from there. If setup-shaped redirects still reach `/auth/github/callback`, that route keeps the same redirect as a defensive fallback and must not exchange an unstateful code.
 
 The concrete schema, Durable Object storage model, and rollout sequence are documented in [docs/dashboard-d1-recut.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/dashboard-d1-recut.md).

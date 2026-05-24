@@ -29,11 +29,21 @@ These continue to authenticate GitHub Actions OIDC Callers and use live GitHub A
 
 ### Dashboard authentication
 
+- `GET /github/setup`
 - `GET /login/github`
 - `GET /auth/github/callback`
 - `GET /logout`
 
 These routes manage GitHub App user authorization and the local Cyspbot Dashboard Session lifecycle.
+
+GitHub App installation setup redirects use `GET /github/setup`. That route is distinct from dashboard OAuth login:
+
+- GitHub sends `installation_id` and `setup_action` when the user installs the app or updates repository access.
+- Cyspbot must not trust `installation_id`, because the setup URL is externally reachable and the query parameter can be spoofed.
+- Cyspbot must not create a Dashboard Session from a setup callback.
+- If a setup callback has a positive integer `installation_id` plus `setup_action=install` or `setup_action=update`, Cyspbot clears any stale OAuth state cookie and redirects to `/login/github?return_to=%2Fdashboard`.
+- `GET /auth/github/callback` keeps the same redirect behavior as a defensive compatibility fallback for setup-shaped callbacks, but the target GitHub App configuration must use `/github/setup`.
+- This preserves the requirement that Dashboard Sessions are created only from a user-initiated, state-bound GitHub App user authorization flow.
 
 ### Dashboard
 
@@ -884,8 +894,9 @@ Auth and redirect controls:
 
 - `/login/github` creates an OAuth `state` value and stores it in a signed short-lived cookie named `__Host-cyspbot_oauth_state` before redirecting to GitHub.
 - The OAuth state cookie uses `Path=/`, does not set a `Domain` attribute, and is `HttpOnly`, `Secure`, and `SameSite=Lax`.
-- `/auth/github/callback` must validate the returned `state` before exchanging the code.
-- GitHub App installation setup callbacks without Cyspbot OAuth state are not exchanged. If `installation_id` is a positive integer and `setup_action` is `install` or `update`, Cyspbot clears any stale state cookie and redirects to `/login/github?return_to=/dashboard`.
+- `/auth/github/callback` must validate the returned `state` before exchanging a dashboard OAuth code.
+- `/github/setup` must not create a Dashboard Session, must not trust `installation_id`, and must redirect recognized install/update setup callbacks to `/login/github?return_to=%2Fdashboard` after clearing stale OAuth state.
+- `/auth/github/callback` may defensively redirect setup-shaped callbacks to `/login/github?return_to=%2Fdashboard`, but it must not exchange a setup callback code without valid OAuth state.
 - Return targets are validated against an explicit allowlist of dashboard route shapes:
   - `/dashboard`
   - `/dashboard/repositories/:owner/:name`
@@ -1010,6 +1021,7 @@ At the end of this phase:
 ### Phase 3: Dashboard authentication cutover
 
 - move auth routes to:
+  - `/github/setup`
   - `/login/github`
   - `/auth/github/callback`
   - `/logout`

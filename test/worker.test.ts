@@ -811,7 +811,36 @@ describe("cyspbot worker", () => {
     expect(response.status).toBe(404);
   });
 
-  it("restarts stateful dashboard login after GitHub App installation setup callbacks", async () => {
+  it("restarts stateful dashboard login from the GitHub App setup URL", async () => {
+    const response = await fetchWorker(
+      "https://example.test/github/setup?installation_id=135120833&setup_action=install",
+      {
+        redirect: "manual",
+      },
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe("/login/github?return_to=%2Fdashboard");
+    expect(responseSetCookies(response)).toContain(
+      "__Host-cyspbot_oauth_state=; Path=/; SameSite=Lax; HttpOnly; Max-Age=0; Secure",
+    );
+  });
+
+  it("rejects malformed GitHub App setup callbacks", async () => {
+    const response = await fetchWorker(
+      "https://example.test/github/setup?installation_id=not-a-number&setup_action=install",
+      {
+        redirect: "manual",
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(responseSetCookies(response)).toContain(
+      "__Host-cyspbot_oauth_state=; Path=/; SameSite=Lax; HttpOnly; Max-Age=0; Secure",
+    );
+  });
+
+  it("keeps a defensive login restart for setup callbacks sent to the OAuth callback", async () => {
     const response = await fetchWorker(
       "https://example.test/auth/github/callback?code=test-dashboard-code&installation_id=135120833&setup_action=install",
       {

@@ -343,7 +343,34 @@ Post-acceptance behavior:
 - `ping` is endpoint validation rather than installation state, so it should be handled at the Worker edge rather than routed to installation-scoped persistence.
 - No further business-event processing is required for compatibility.
 
-### 5.7 Unknown routes
+### 5.7 `GET /github/setup` for GitHub App installation setup
+
+Purpose:
+Handle GitHub's post-install and repository-selection update redirect without weakening the dashboard OAuth state requirement.
+
+Request shape:
+
+- Method: `GET`
+- Path: `/github/setup`
+- Query parameters from GitHub may include:
+  - `installation_id`
+  - `setup_action`
+
+Requirement:
+
+- The GitHub App post-install Setup URL must point at `/github/setup`.
+- The GitHub App OAuth callback URL must point at `/auth/github/callback`.
+- The GitHub App should not enable OAuth user authorization during installation, because that setting prevents use of a distinct Setup URL.
+- A request with `installation_id` as a positive integer and `setup_action` of `install` or `update` is an installation setup callback.
+- Installation setup callbacks are not sufficient to create a Dashboard Session.
+- The service must not trust `installation_id` for authorization, because setup URLs are externally reachable and the query parameter can be spoofed.
+- The service must clear any stale Cyspbot OAuth state cookie and redirect to `/login/github?return_to=%2Fdashboard`.
+- `GET /auth/github/callback` may keep a defensive compatibility fallback for setup-shaped callbacks, but that fallback must not exchange an unstateful `code` and must redirect into `/login/github`.
+
+Rationale:
+GitHub distinguishes the Setup URL from the OAuth callback URL. The Setup URL is for install/update onboarding and carries untrusted installation metadata; the OAuth callback is for completing a user authorization flow. Keeping them separate preserves the installed-app onboarding experience while keeping Dashboard Session creation tied to a user-initiated OAuth flow with Cyspbot's signed state cookie.
+
+### 5.8 Unknown routes
 
 - Return `404 Not Found` with minimal problem details.
 
@@ -716,9 +743,10 @@ The implementation is acceptable only if all of the following are true:
 4. The GitHub access-token request sent upstream is restricted to the Calling Repository ID, does not send a server-defined `permissions` override, and opts in to GitHub's temporary stateless token format header.
 5. Authentication trusts only configured issuers and verifies against coordinated per-issuer JWKS state with bounded freshness, stale serving, and backoff.
 6. `POST /github/webhooks` rejects malformed, oversized, unsigned, or incorrectly signed deliveries; accepts valid signed JSON deliveries with positive integer `installation.id`; and also accepts signed `ping` validation deliveries without `installation.id`.
-7. Authenticated Installation Token Issuance attempts are durably persisted in the central Audit Log before live GitHub lookup, every Audit Log row records the domain outcome, successful issuances record the actual permission set GitHub returned in relational child rows, denials and stable failure reasons are recorded in relational child rows, and the final Installation Token Issuance response fails closed if the required audit write cannot be persisted.
-8. Errors are returned as minimal `application/problem+json` responses for legacy GitHub-specific endpoints and OAuth-style JSON token responses for `POST /token`.
-9. The GitHub App private key remains inside the service secret boundary and is never returned or persisted in logs or API responses.
+7. GitHub App installation setup callbacks are handled at `GET /github/setup`, never create a Dashboard Session, never trust `installation_id` for authorization, clear stale OAuth state, and redirect to `/login/github?return_to=%2Fdashboard`. Setup-shaped callbacks that arrive at `GET /auth/github/callback` are treated only as compatibility fallback and never exchange an unstateful `code`.
+8. Authenticated Installation Token Issuance attempts are durably persisted in the central Audit Log before live GitHub lookup, every Audit Log row records the domain outcome, successful issuances record the actual permission set GitHub returned in relational child rows, denials and stable failure reasons are recorded in relational child rows, and the final Installation Token Issuance response fails closed if the required audit write cannot be persisted.
+9. Errors are returned as minimal `application/problem+json` responses for legacy GitHub-specific endpoints and OAuth-style JSON token responses for `POST /token`.
+10. The GitHub App private key remains inside the service secret boundary and is never returned or persisted in logs or API responses.
 
 ## 15. Implementation Constraints
 
