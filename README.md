@@ -21,7 +21,7 @@ The Dashboard Session, Audit Log, Repository Visibility Cache, and persistence a
     - allows only `schedule`, `workflow_dispatch`, and `push`
     - requires the OIDC `sub` and `ref` context to target the repository's current default branch
     - denies `pull_request` and `pull_request_target`
-  - Mints a fresh GitHub App installation access token:
+  - Issues a fresh GitHub App installation access token:
     - scoped to the calling repository only
     - with whatever repository permissions the GitHub App currently has for that repository
   - Returns:
@@ -33,7 +33,7 @@ The Dashboard Session, Audit Log, Repository Visibility Cache, and persistence a
       "expires_in": 3600
     }
     ```
-  - When minting the upstream GitHub App installation access token, Cyspbot currently opts in to GitHub's temporary stateless token override with `X-GitHub-Stateless-S2S-Token: enabled`.
+  - When issuing the upstream GitHub App installation access token, Cyspbot currently opts in to GitHub's temporary stateless token override with `X-GitHub-Stateless-S2S-Token: enabled`.
 - `POST /github/claims`
   - Authenticates the caller with a GitHub Actions OIDC token.
   - Confirms the configured GitHub App is installed on the calling repository.
@@ -50,7 +50,7 @@ The Dashboard Session, Audit Log, Repository Visibility Cache, and persistence a
   - Legacy compatibility endpoint.
   - Authenticates the caller with a GitHub Actions OIDC token.
   - Applies the same OIDC trust policy as `POST /token`.
-  - Mints a fresh GitHub App installation access token:
+  - Issues a fresh GitHub App installation access token:
     - scoped to the calling repository only
     - with whatever repository permissions the GitHub App currently has for that repository
   - Returns:
@@ -116,7 +116,7 @@ The GitHub-specific endpoints use minimal `application/problem+json` responses.
   - `environment`
 - One Durable Object per trusted OIDC issuer for verifier/JWKS coordination.
 - One Durable Object per GitHub App Installation is retained only for Installation Reconciliation signal coalescing and serialized execution in the target re-cut.
-- D1 is the target durable system of record for the Audit Log, Dashboard Sessions, installation/repository projection, Repository Visibility Cache, and Installation Reconciliation status.
+- D1 is the target durable system of record for the Audit Log, Dashboard Sessions, installation/repository projection, Repository Visibility Cache, and Installation Reconciliation state and run history.
 - Cloudflare Secrets Store holds the GitHub App private key.
 - GitHub App installation is repository authorization.
 
@@ -125,10 +125,10 @@ The GitHub-specific endpoints use minimal `application/problem+json` responses.
 The existing GitHub App registration is the primary authorization control plane for what repository actions Cyspbot-issued tokens can perform:
 
 - Repository permissions:
-  - Any permissions granted here can flow through to repository-scoped tokens minted by Cyspbot.
-  - Cyspbot still narrows tokens to the calling repository and allowed workflow contexts, but it does not down-scope the app's repository permissions further at mint time.
+  - Any permissions granted here can flow through to repository-scoped tokens issued by Cyspbot.
+  - Cyspbot still narrows tokens to the calling repository and allowed workflow contexts, but it does not down-scope the app's repository permissions further at issuance time.
 
-Cyspbot records each mint attempt in a central D1 audit record in the target architecture.
+Cyspbot records each issuance attempt in a central D1 audit record in the target architecture.
 The target Audit Log schema and retention policy are documented in [docs/dashboard-d1-recut.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/dashboard-d1-recut.md).
 
 For the dashboard, GitHub App user authorization is the visibility control plane:
@@ -206,7 +206,7 @@ The test environment uses a deterministic JWKS fixture response so Worker tests 
 ## GitHub Actions usage
 
 Workflows that call Cyspbot directly need `id-token: write`.
-Under the current Token Policy, Token Minting is limited to default-branch `ref` contexts for `schedule`, `workflow_dispatch`, and `push`.
+Under the current Token Policy, Installation Token Issuance is limited to default-branch `ref` contexts for `schedule`, `workflow_dispatch`, and `push`.
 The current checked-in policy is intentionally narrow, but the claim mapping keeps `workflow_ref`, `job_workflow_ref`, and `environment` available for stricter future checks without changing the endpoint contract.
 
 The reusable GitHub Action client for Cyspbot lives in the separate `cyspbot-action` repository. This repository documents and deploys the hosted Cyspbot service.
@@ -215,4 +215,4 @@ Cyspbot will deny `pull_request`, `pull_request_target`, and any non-default-bra
 
 ## GitHub Webhooks
 
-`POST /github/webhooks` accepts signed GitHub App webhook deliveries for installation-scoped events and also accepts the initial signed `ping` delivery used when GitHub validates a webhook configuration. In the target re-cut, webhook deliveries signal Installation Reconciliation through `GitHubInstallationObject`, while Webhook Delivery Log metadata and Installation Reconciliation status live in D1. Full details are in [docs/dashboard-d1-recut.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/dashboard-d1-recut.md).
+`POST /github/webhooks` accepts signed GitHub App webhook deliveries for installation-scoped events and also accepts the initial signed `ping` delivery used when GitHub validates a webhook configuration. In the target re-cut, webhook deliveries signal Installation Reconciliation through `GitHubInstallationObject`, while Webhook Delivery Log metadata and Installation Reconciliation state and run history live in D1. Full details are in [docs/dashboard-d1-recut.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/dashboard-d1-recut.md).

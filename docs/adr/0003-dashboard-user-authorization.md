@@ -14,15 +14,15 @@ Cyspbot will add a read-only dashboard for humans, but the original prototype sh
 - GitHub remains the authority for dashboard repository visibility through the user-to-server installation repository APIs.
 - D1 becomes the durable system of record for:
   - Audit Log
-  - issued-token facts
+  - issued Installation Token facts
   - Dashboard Sessions
   - Dashboard Users
   - current installation/repository/membership projection
   - Repository Visibility Cache
-  - Installation Reconciliation status
+  - Installation Reconciliation state and run history
   - Webhook Delivery Log metadata
 - `GitHubInstallationObject` no longer owns the Audit Log or repository projection; it only coalesces signals and serializes Installation Reconciliation.
-- Token Minting continues to resolve installation and repository metadata live from GitHub and must fail closed if final Audit Log persistence to D1 fails.
+- Installation Token Issuance continues to resolve installation and repository metadata live from GitHub and must fail closed if final Audit Log persistence to D1 fails.
 - The dashboard uses user-facing repository URLs based on current `owner/name`, but resolves authorization and audit by immutable `repository_id` internally.
 
 The concrete schema, Durable Object storage model, and rollout sequence are documented in [docs/dashboard-d1-recut.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/dashboard-d1-recut.md).

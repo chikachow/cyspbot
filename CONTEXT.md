@@ -12,7 +12,7 @@ _Avoid_: Client, user, consumer
 A human GitHub user who authorizes the Cyspbot GitHub App for dashboard access and browses repository audit history through Cyspbot's web UI.
 _Avoid_: Caller, installation, org member as an authorization shortcut
 
-**Token Minting**:
+**Installation Token Issuance**:
 The current Cyspbot capability that exchanges a trusted GitHub Actions OIDC token for a short-lived GitHub App installation access token for workflow runs that satisfy Cyspbot's checked-in OIDC trust policy.
 _Avoid_: Cyspbot itself, app login
 
@@ -21,11 +21,11 @@ The GitHub repository identified by the verified OIDC claims from the **Caller**
 _Avoid_: Target repository, requested repository
 
 **GitHub App Installation**:
-The installation of the configured GitHub App on a specific repository or owner scope from which GitHub can mint a GitHub App installation access token.
+The installation of the configured GitHub App on a specific repository or owner scope for which GitHub can issue a GitHub App installation access token.
 _Avoid_: App session, app login
 
 **Installation Token**:
-Project shorthand for the short-lived GitHub App installation access token minted for the **Calling Repository** through a **GitHub App Installation**.
+Project shorthand for the short-lived GitHub App installation access token issued for the **Calling Repository** through a **GitHub App Installation**.
 _Avoid_: PAT, app JWT, repository secret
 
 **GitHub User Access Token**:
@@ -33,11 +33,11 @@ The GitHub App user-to-server token that represents a signed-in **Dashboard User
 _Avoid_: Installation token, PAT, app JWT
 
 **Token Policy**:
-The Cyspbot-enforced policy code, OIDC trust conditions, and repository narrowing used when minting an **Installation Token**, with repository permissions inherited from the GitHub App configuration.
+The Cyspbot-enforced policy code, OIDC trust conditions, and repository narrowing used when issuing an **Installation Token**, with repository permissions inherited from the GitHub App configuration.
 _Avoid_: Requested scope, ad hoc caller-defined permissions, assumption that Cyspbot fixes the permission set, event-name-only policy, separate policy engine
 
 **Audit Log**:
-A bounded record of **Token Minting** attempts and outcomes kept by **Cyspbot** for operational review, with durable request and issued-token facts stored centrally in D1.
+A bounded record of **Installation Token Issuance** attempts and outcomes kept by **Cyspbot** for operational review, with durable request and issued Installation Token facts stored centrally in D1.
 _Avoid_: Analytics, metrics, installation-local source of truth
 
 **Webhook Receiver**:
@@ -50,7 +50,7 @@ _Avoid_: Permanent event store, raw-payload archive by default
 
 **Installation Reconciliation**:
 The Cyspbot process that refreshes current installation, repository, and installation-membership projection data from GitHub into D1 for one **GitHub App Installation** at a time.
-_Avoid_: Request-time authorization source, opportunistic mint-path cache patching
+_Avoid_: Request-time authorization source, opportunistic issuance-path cache patching
 
 **Installation Coordinator**:
 The per-installation Durable Object that coalesces reconcile signals and serializes **Installation Reconciliation** execution for one **GitHub App Installation**, while D1 remains the durable source of truth.
@@ -69,7 +69,7 @@ The process that uses a **GitHub User Access Token** to call GitHub's user-to-se
 _Avoid_: Authorization sync, entitlement import, reconcile
 
 **Claims Endpoint**:
-A non-minting Cyspbot endpoint that verifies a **Caller** OIDC token and returns Cyspbot's derived identity without issuing an **Installation Token**.
+A Cyspbot endpoint that verifies a **Caller** OIDC token and returns Cyspbot's derived identity without issuing an **Installation Token**.
 _Avoid_: Debug dump, raw JWT inspector
 
 **Token Exchange Endpoint**:
@@ -91,16 +91,16 @@ _Avoid_: Permanent key store, token cache, caller-controlled key source
 - Cyspbot verifies a **Caller** only against a trusted **Issuer Registration**
 - Each **Issuer Registration** owns its own verification policy, including JWKS freshness, staleness, and refresh-backoff rules
 - **Cyspbot** derives exactly one **Calling Repository** from the verified OIDC claims
-- **Token Minting** in **Cyspbot** issues an **Installation Token** only for the **Calling Repository**
+- **Installation Token Issuance** in **Cyspbot** issues an **Installation Token** only for the **Calling Repository**
 - The **Token Policy** is fixed by **Cyspbot** for caller context and repository scope, while repository permissions come from the GitHub App configuration
 - The **Token Policy** currently evaluates immutable and workflow-context GitHub OIDC claims such as `sub`, `repository_id`, `repository_owner_id`, `repository_visibility`, and `ref`
-- **Cyspbot** records an **Audit Log** entry for each **Token Minting** attempt
-- Repeated audit values such as minted permissions and audit outcome reasons may be stored in relational child rows rather than embedded JSON on the main audit row
+- **Cyspbot** records an **Audit Log** entry for each **Installation Token Issuance** attempt
+- Repeated audit values such as issued Installation Token permissions and audit outcome reasons may be stored in relational child rows rather than embedded JSON on the main audit row
 - The main audit row prefers domain fields like `requested_at` and `outcome` over HTTP response details
 - The **Claims Endpoint** verifies caller identity and repository installation relationship without issuing an **Installation Token**
-- The **Token Exchange Endpoint** is the primary **Token Minting** interface; legacy GitHub-specific compatibility endpoints are shims over the same **Token Policy**
+- The **Token Exchange Endpoint** is the primary public interface for **Installation Token Issuance**; legacy GitHub-specific compatibility endpoints are shims over the same **Token Policy**
 - The **JWKS Cache** supplies verification keys for an **Issuer Registration**, but never stores issued **Installation Tokens**
-- A **GitHub App Installation** is the GitHub-side authority that allows **Cyspbot** to mint an **Installation Token**
+- A **GitHub App Installation** is the GitHub-side authority that allows **Cyspbot** to issue an **Installation Token**
 - Cyspbot determines dashboard repository visibility from the intersection GitHub reports for a **Dashboard User**, a **GitHub App Installation**, and that installation's repositories
 - The **Repository Visibility Cache** is an optimization only; GitHub remains the authorization authority for **Dashboard User** repository visibility
 - **Installation Reconciliation** is the only writer that performs full installation-slice replacement, deletion, suspension, or removal decisions for projection rows in D1
@@ -114,18 +114,18 @@ _Avoid_: Permanent key store, token cache, caller-controlled key source
 ## Example dialogue
 
 > **Dev:** "Can this workflow ask for a token for another repository?"
-> **Domain expert:** "No. **Cyspbot** only mints an **Installation Token** for the **Calling Repository** named by the verified OIDC claims."
+> **Domain expert:** "No. **Cyspbot** only issues an **Installation Token** for the **Calling Repository** named by the verified OIDC claims."
 
 > **Dev:** "Can the workflow ask for broader permissions when it needs them?"
-> **Domain expert:** "No. The **Caller** does not choose permissions. The minted token inherits whatever repository permissions the GitHub App currently has."
+> **Domain expert:** "No. The **Caller** does not choose permissions. The issued token inherits whatever repository permissions the GitHub App currently has."
 
-> **Dev:** "Do we keep the minted tokens for reuse?"
+> **Dev:** "Do we keep the issued tokens for reuse?"
 > **Domain expert:** "No. **Cyspbot** records an **Audit Log**, but it does not cache issued **Installation Tokens**."
 
 > **Dev:** "How do we test auth without issuing a token?"
 > **Domain expert:** "Use the **Claims Endpoint** to verify the **Caller** identity and confirm the repository is installed for this app."
 
-> **Dev:** "What decides whether a workflow run is trusted enough to mint?"
+> **Dev:** "What decides whether a workflow run is trusted enough for Installation Token Issuance?"
 > **Domain expert:** "The checked-in **Token Policy** evaluates the verified GitHub OIDC claims in plain code. The current default policy only permits default-branch `ref` contexts for `schedule`, `workflow_dispatch`, and `push`."
 
 > **Dev:** "Can every org member see every repository in the dashboard once the app is installed on the org?"
