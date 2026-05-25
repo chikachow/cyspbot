@@ -52,11 +52,12 @@ export async function getAccessibleDashboardRepositoryByFullName(
   now: string,
 ): Promise<DashboardRepository | null> {
   const fullNameNormalized = normalizeRepositoryFullName(`${owner}/${name}`);
-  const repositoryAccesses = await listAccessibleRepositoryAccesses(env, session, dependencies);
-  const visibleRepository =
-    repositoryAccesses.find(
-      (repository) => normalizeRepositoryFullName(repository.fullName) === fullNameNormalized,
-    ) ?? null;
+  const visibleRepository = await findAccessibleRepositoryAccessByFullName(
+    env,
+    session,
+    dependencies,
+    fullNameNormalized,
+  );
 
   if (visibleRepository === null) {
     return null;
@@ -92,6 +93,33 @@ async function listAccessibleRepositoryAccesses(
   }
 
   return repositoryAccesses;
+}
+
+async function findAccessibleRepositoryAccessByFullName(
+  env: Env,
+  session: DashboardSession,
+  dependencies: GitHubApiDependencies,
+  fullNameNormalized: string,
+): Promise<GitHubUserRepositoryAccess | null> {
+  const installations = await listGitHubUserInstallations(env, session.accessToken, dependencies);
+
+  for (const installation of installations) {
+    const repositories = await listGitHubUserInstallationRepositories(
+      env,
+      session.accessToken,
+      installation.id,
+      dependencies,
+    );
+    const repository = repositories.find(
+      (candidate) => normalizeRepositoryFullName(candidate.fullName) === fullNameNormalized,
+    );
+
+    if (repository !== undefined) {
+      return repository;
+    }
+  }
+
+  return null;
 }
 
 function compareDashboardRepositoryListItems(

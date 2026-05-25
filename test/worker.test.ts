@@ -72,6 +72,13 @@ const dashboardAccessForbiddenApp = createApp({
   now: () => testNow,
 });
 
+const dashboardLaterInstallationFailsApp = createApp({
+  authenticateOidcToken,
+  authenticateRequest,
+  fetch: fetchGitHubDashboardLaterInstallationFailsTestDouble,
+  now: () => testNow,
+});
+
 function fetchWorker(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   return fetchWorkerWithApp(testApp, input, init);
 }
@@ -334,6 +341,36 @@ async function fetchGitHubDashboardAccessForbiddenTestDouble(
     apiPath === "/user/installations"
   ) {
     return new Response(null, { status: 403 });
+  }
+
+  return fetchGitHubTestDouble(request);
+}
+
+async function fetchGitHubDashboardLaterInstallationFailsTestDouble(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  const request = new Request(input, init);
+  const url = new URL(request.url);
+  const apiPath = url.pathname.replace(/^\/__test\/github/u, "");
+  const laterInstallationId = testInstallationId + 1;
+
+  if (
+    (url.hostname === "example.test" || url.hostname === "api.github.com") &&
+    request.method === "GET" &&
+    apiPath === "/user/installations"
+  ) {
+    return Response.json({
+      installations: [{ id: testInstallationId }, { id: laterInstallationId }],
+    });
+  }
+
+  if (
+    (url.hostname === "example.test" || url.hostname === "api.github.com") &&
+    request.method === "GET" &&
+    apiPath === `/user/installations/${laterInstallationId}/repositories`
+  ) {
+    return new Response(null, { status: 500 });
   }
 
   return fetchGitHubTestDouble(request);
@@ -909,6 +946,23 @@ describe("cyspbot worker", () => {
     expect(responseSetCookies(response)).toContain(
       "__Host-cyspbot_dashboard_session=; Path=/; SameSite=Lax; HttpOnly; Max-Age=0; Secure",
     );
+  });
+
+  it("short-circuits dashboard repository details after the requested repository is visible", async () => {
+    const sessionCookie = await createDashboardSessionCookie();
+
+    const response = await fetchWorkerWithApp(
+      dashboardLaterInstallationFailsApp,
+      "https://example.test/dashboard/repositories/cysp/terraform-provider-contentful",
+      {
+        headers: {
+          cookie: cookieHeaderValue(sessionCookie),
+        },
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("Last 5 issuance attempts");
   });
 
   it("authorizes the dashboard with GitHub user auth and renders recent Installation Token Issuance attempts", async () => {
