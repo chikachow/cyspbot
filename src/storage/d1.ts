@@ -6,7 +6,6 @@ import {
   decryptValue,
   createEncryptedValue,
 } from "../dashboard/auth.ts";
-import type { DashboardAuditEntry, DashboardSession } from "../dashboard/types.ts";
 
 const dashboardIdleTtlMs = 2 * 60 * 60 * 1000;
 const dashboardAbsoluteTtlMs = 8 * 60 * 60 * 1000;
@@ -19,6 +18,32 @@ export interface AuditIntent {
 export interface RepositoryAuditSummary {
   lastInstallationTokenIssuanceAt: string | null;
   lastOutcome: string | null;
+}
+
+export interface DashboardSessionRecord {
+  accessToken: string;
+  accessTokenExpiresAt: string | null;
+  absoluteExpiresAt: string;
+  githubLoginDisplay: string;
+  githubUserId: string;
+  id: number;
+  idleExpiresAt: string;
+}
+
+export interface RepositoryAuditEntryRecord {
+  actor: string | null;
+  auditState: "finalization_failed" | "finalized" | "pending";
+  eventName: string;
+  expiresAt: string | null;
+  fullNameDisplay: string;
+  id: number;
+  installationId: number | null;
+  outcome: "denied" | "internal_error" | "issued" | "upstream_error" | null;
+  permissions: Record<string, string>;
+  reasons: string[];
+  ref: string | null;
+  requestedAt: string;
+  workflowRef: string | null;
 }
 
 type SessionRow = Record<"encrypted_github_user_token_blob" | "github_user_id", string> &
@@ -263,7 +288,7 @@ export async function getDashboardSession(
   env: Env,
   rawSessionToken: string,
   now: string,
-): Promise<DashboardSession | null> {
+): Promise<DashboardSessionRecord | null> {
   const sessionTokenHash = await dashboardSessionTokenHash(env, rawSessionToken);
   const row = await env.DB.prepare(
     `
@@ -344,7 +369,7 @@ export async function listRepositoryAuditEntries(
   env: Env,
   repositoryId: number,
   limit: number,
-): Promise<DashboardAuditEntry[]> {
+): Promise<RepositoryAuditEntryRecord[]> {
   const rows = await env.DB.prepare(
     `
       SELECT
@@ -523,7 +548,7 @@ async function listAuditReasons(env: Env, auditEntryId: number): Promise<string[
   return rows.results.map((row) => row.outcome_reason);
 }
 
-function normalizeAuditState(value: string): DashboardAuditEntry["auditState"] {
+function normalizeAuditState(value: string): RepositoryAuditEntryRecord["auditState"] {
   if (value === "pending" || value === "finalized" || value === "finalization_failed") {
     return value;
   }
@@ -531,7 +556,7 @@ function normalizeAuditState(value: string): DashboardAuditEntry["auditState"] {
   return "finalization_failed";
 }
 
-function normalizeOutcome(value: string | null): DashboardAuditEntry["outcome"] {
+function normalizeOutcome(value: string | null): RepositoryAuditEntryRecord["outcome"] {
   if (
     value === null ||
     value === "denied" ||

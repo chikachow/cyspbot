@@ -18,18 +18,7 @@ export async function listAccessibleDashboardRepositories(
   dependencies: GitHubApiDependencies,
   now: string,
 ): Promise<DashboardRepositoryListItem[]> {
-  const installations = await listGitHubUserInstallations(env, session.accessToken, dependencies);
-  const repositoryAccesses: GitHubUserRepositoryAccess[] = [];
-
-  for (const installation of installations) {
-    const repositories = await listGitHubUserInstallationRepositories(
-      env,
-      session.accessToken,
-      installation.id,
-      dependencies,
-    );
-    repositoryAccesses.push(...repositories);
-  }
+  const repositoryAccesses = await listAccessibleRepositoryAccesses(env, session, dependencies);
 
   const auditSummaries = await listRepositoryAuditSummaries(
     env,
@@ -63,26 +52,11 @@ export async function getAccessibleDashboardRepositoryByFullName(
   now: string,
 ): Promise<DashboardRepository | null> {
   const fullNameNormalized = normalizeRepositoryFullName(`${owner}/${name}`);
-  const installations = await listGitHubUserInstallations(env, session.accessToken, dependencies);
-  let visibleRepository: GitHubUserRepositoryAccess | null = null;
-
-  for (const installation of installations) {
-    const repositories = await listGitHubUserInstallationRepositories(
-      env,
-      session.accessToken,
-      installation.id,
-      dependencies,
-    );
-
-    visibleRepository ??=
-      repositories.find(
-        (repository) => normalizeRepositoryFullName(repository.fullName) === fullNameNormalized,
-      ) ?? null;
-
-    if (visibleRepository !== null) {
-      break;
-    }
-  }
+  const repositoryAccesses = await listAccessibleRepositoryAccesses(env, session, dependencies);
+  const visibleRepository =
+    repositoryAccesses.find(
+      (repository) => normalizeRepositoryFullName(repository.fullName) === fullNameNormalized,
+    ) ?? null;
 
   if (visibleRepository === null) {
     return null;
@@ -97,6 +71,27 @@ export async function getAccessibleDashboardRepositoryByFullName(
     repositoryId,
     repositoryVisibility: visibleRepository.private ? "private" : "public",
   };
+}
+
+async function listAccessibleRepositoryAccesses(
+  env: Env,
+  session: DashboardSession,
+  dependencies: GitHubApiDependencies,
+): Promise<GitHubUserRepositoryAccess[]> {
+  const installations = await listGitHubUserInstallations(env, session.accessToken, dependencies);
+  const repositoryAccesses: GitHubUserRepositoryAccess[] = [];
+
+  for (const installation of installations) {
+    const repositories = await listGitHubUserInstallationRepositories(
+      env,
+      session.accessToken,
+      installation.id,
+      dependencies,
+    );
+    repositoryAccesses.push(...repositories);
+  }
+
+  return repositoryAccesses;
 }
 
 function compareDashboardRepositoryListItems(
