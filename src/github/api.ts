@@ -1,13 +1,7 @@
 import { importPKCS8, SignJWT } from "jose";
 
 import type { Env } from "../env.ts";
-import type { GitHubActionsPrincipal } from "../oidc/principals.ts";
-import {
-  evaluateTokenPolicy,
-  type TokenPolicyAllowDecision,
-  type TokenPolicyDecision,
-  type TokenPolicyRepository,
-} from "../policy/token-policy.ts";
+import type { TokenPolicyRepository } from "../policy/token-policy.ts";
 
 const githubAcceptHeader = "application/vnd.github+json";
 const githubApiVersion = "2022-11-28";
@@ -23,21 +17,6 @@ export interface GitHubApiDependencies {
 const defaultGitHubApiDependencies: GitHubApiDependencies = {
   fetch: (input, init) => fetch(input, init),
 };
-
-export class TokenPolicyDeniedError extends Error {
-  public readonly policyDecision?: TokenPolicyDecision;
-  public readonly repository?: GitHubRepository;
-
-  public constructor(
-    message: string,
-    policyDecision?: TokenPolicyDecision,
-    repository?: GitHubRepository,
-  ) {
-    super(message);
-    this.policyDecision = policyDecision;
-    this.repository = repository;
-  }
-}
 
 export class GitHubApiError extends Error {
   public readonly status: number;
@@ -157,58 +136,7 @@ export async function resolveInstallationForRepository(
   return { id: body.id };
 }
 
-export async function authorizeInstallationTokenIssuance(
-  env: Env,
-  installationId: number,
-  caller: GitHubActionsPrincipal,
-  dependencies: GitHubApiDependencies = defaultGitHubApiDependencies,
-): Promise<{ policyDecision: TokenPolicyAllowDecision; repository: GitHubRepository }> {
-  const metadataToken = await createRepositoryMetadataToken(
-    env,
-    installationId,
-    caller.repositoryId,
-    dependencies,
-  );
-  const repository = await getRepository(env, caller.repository, metadataToken.token, dependencies);
-  const policyDecision = evaluateTokenPolicy(caller, repository);
-
-  if (policyDecision.decision !== "allow") {
-    throw new TokenPolicyDeniedError(
-      "Token Policy denied Installation Token Issuance",
-      policyDecision,
-      repository,
-    );
-  }
-
-  return { policyDecision, repository };
-}
-
-export async function createRepositoryScopedInstallationToken(
-  env: Env,
-  installationId: number,
-  repositoryId: string,
-  permissions: Record<string, string>,
-  dependencies: GitHubApiDependencies = defaultGitHubApiDependencies,
-): Promise<InstallationToken> {
-  return createInstallationToken(env, installationId, repositoryId, permissions, dependencies);
-}
-
-async function createRepositoryMetadataToken(
-  env: Env,
-  installationId: number,
-  repositoryId: string,
-  dependencies: GitHubApiDependencies,
-): Promise<InstallationToken> {
-  return createInstallationToken(
-    env,
-    installationId,
-    repositoryId,
-    { metadata: "read" },
-    dependencies,
-  );
-}
-
-async function createInstallationToken(
+export async function createInstallationToken(
   env: Env,
   installationId: number,
   repositoryId: string,
@@ -400,7 +328,7 @@ export async function refreshGitHubUserAccessToken(
   return parseGitHubUserAccessTokenResponse(response);
 }
 
-async function getRepository(
+export async function getRepository(
   env: Env,
   repository: string,
   installationToken: string,

@@ -1,14 +1,21 @@
 import { createHmac, createPrivateKey } from "node:crypto";
 
+import type { OidcIssuerVerifierObject } from "../src/durable-objects/oidc-issuer-verifier-object.ts";
 import type { Env } from "../src/env.ts";
-import type { AuthenticateRequestResult } from "../src/worker/authentication.ts";
+import { loadIssuerRegistrationByIssuer } from "../src/oidc/issuer-registrations.ts";
+import type { VerifyOidcTokenResult } from "../src/oidc/principals.ts";
+import { authenticateOidcToken, authenticateRequest } from "../src/worker/authentication.ts";
 import { createApp } from "../src/worker/app.ts";
 import d1SchemaSql from "../migrations/0001_dashboard_d1_recut.sql?raw";
 import { env } from "cloudflare:workers";
-import { SignJWT } from "jose";
+import { decodeJwt, SignJWT } from "jose";
 import { beforeAll, describe, expect, it } from "vitest";
 
 const workerEnv = env as unknown as Env;
+const testEnv: Env = {
+  ...workerEnv,
+  OIDC_ISSUER_VERIFIER: fakeOidcIssuerVerifierNamespace(),
+};
 
 const testPrivateKeyPem = `-----BEGIN PRIVATE KEY-----
 MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC27Vu1+aKPooBG
@@ -52,8 +59,8 @@ const testDashboardRefreshToken = "ghr_test_token";
 const testNow = new Date("2026-05-24T00:00:00.000Z");
 
 const testApp = createApp({
-  authenticateOidcToken: authenticateTestOidcToken,
-  authenticateRequest: authenticateTestRequest,
+  authenticateOidcToken,
+  authenticateRequest,
   fetch: fetchGitHubTestDouble,
   now: () => testNow,
 });
@@ -68,7 +75,7 @@ function fetchWorker(input: RequestInfo | URL, init?: RequestInit): Promise<Resp
   return Promise.resolve(
     handler(
       new Request(input, init) as Parameters<typeof handler>[0],
-      workerEnv,
+      testEnv,
       {} as ExecutionContext,
     ),
   );
@@ -116,84 +123,6 @@ async function createOidcToken(overrides?: Partial<Record<string, string>>): Pro
     .setExpirationTime(now + 300)
     .setSubject(sub ?? "repo:cysp/terraform-provider-contentful:ref:refs/heads/main")
     .sign(privateKey);
-}
-
-async function authenticateTestRequest(
-  request: Request,
-  env: Env,
-): Promise<AuthenticateRequestResult> {
-  const authorization = request.headers.get("authorization");
-  const [scheme, token] = authorization?.split(/\s+/, 2) ?? [];
-
-  if (scheme?.toLowerCase() !== "bearer" || token === undefined || token.length === 0) {
-    return {
-      httpStatus: 401,
-      ok: false,
-      responseHeaders: {
-        "www-authenticate": "Bearer",
-      },
-    };
-  }
-
-  return authenticateTestOidcToken(token, request, env);
-}
-
-async function authenticateTestOidcToken(
-  token: string,
-  _request: Request,
-  _env: Env,
-): Promise<AuthenticateRequestResult> {
-  const payload = JSON.parse(
-    new TextDecoder().decode(base64UrlToBytes(token.split(".")[1] ?? "")),
-  ) as Record<string, unknown>;
-  const subject = stringClaim(payload, "sub");
-  const parsedSubject = parseGitHubOidcSubject(subject);
-
-  return {
-    context: {
-      issuerRegistration: {
-        allowedAlgorithms: ["RS256"],
-        audience: "cyspbot",
-        defaultFreshMs: 300_000,
-        issuer: "https://token.actions.githubusercontent.com",
-        jwksUri: "https://token.actions.githubusercontent.com/.well-known/jwks",
-        mapPrincipal: () => null,
-        maxBackoffMs: 300_000,
-        maxFreshMs: 900_000,
-        minFreshMs: 60_000,
-        principalKind: "github-actions",
-        refreshBackoffBaseMs: 5_000,
-        requireKid: true,
-        staleWhileErrorMs: 600_000,
-      },
-      principal: {
-        actor: optionalStringClaim(payload, "actor"),
-        baseRef: optionalStringClaim(payload, "base_ref"),
-        environment: optionalStringClaim(payload, "environment"),
-        eventName: stringClaim(payload, "event_name"),
-        headRef: optionalStringClaim(payload, "head_ref"),
-        jobWorkflowRef: optionalStringClaim(payload, "job_workflow_ref"),
-        rawSubject: subject,
-        ref: optionalStringClaim(payload, "ref"),
-        refType: optionalStringClaim(payload, "ref_type"),
-        repository: stringClaim(payload, "repository"),
-        repositoryId: stringClaim(payload, "repository_id"),
-        repositoryOwnerId: optionalStringClaim(payload, "repository_owner_id"),
-        repositoryVisibility: optionalStringClaim(payload, "repository_visibility"),
-        runAttempt: optionalStringClaim(payload, "run_attempt"),
-        runId: optionalStringClaim(payload, "run_id"),
-        sha: optionalStringClaim(payload, "sha"),
-        subjectContextKind: parsedSubject.contextKind,
-        subjectContextValue: parsedSubject.contextValue,
-        subjectRepository: parsedSubject.repository,
-        type: "github-actions",
-        workflow: optionalStringClaim(payload, "workflow"),
-        workflowRef: optionalStringClaim(payload, "workflow_ref"),
-      },
-      resolvedKeyId: "test-key-1",
-    },
-    ok: true,
-  };
 }
 
 async function fetchGitHubTestDouble(
@@ -354,51 +283,49 @@ function oauthTokenResponse(body: string): Response {
   });
 }
 
-function stringClaim(payload: Record<string, unknown>, name: string): string {
-  const value = payload[name];
-
-  if (typeof value !== "string") {
-    throw new Error(`missing test claim ${name}`);
-  }
-
-  return value;
+function fakeOidcIssuerVerifierNamespace(): DurableObjectNamespace<OidcIssuerVerifierObject> {
+  return {
+    getByName() {
+      return {
+        verifyOidcToken: verifyTestOidcToken,
+      };
+    },
+  } as unknown as DurableObjectNamespace<OidcIssuerVerifierObject>;
 }
 
-function optionalStringClaim(payload: Record<string, unknown>, name: string): string | null {
-  const value = payload[name];
+async function verifyTestOidcToken(token: string, issuer: string): Promise<VerifyOidcTokenResult> {
+  const registration = loadIssuerRegistrationByIssuer(testEnv, issuer);
 
-  return typeof value === "string" ? value : null;
-}
-
-function base64UrlToBytes(value: string): Uint8Array {
-  const padded = value.padEnd(value.length + ((4 - (value.length % 4 || 4)) % 4), "=");
-  const base64 = padded.replaceAll("-", "+").replaceAll("_", "/");
-  const binary = atob(base64);
-
-  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
-}
-
-function parseGitHubOidcSubject(subject: string): {
-  contextKind: string | null;
-  contextValue: string | null;
-  repository: string | null;
-} {
-  const match = /^repo:([^:]+):([^:]+)(?::(.+))?$/u.exec(subject);
-
-  if (match === null) {
+  if (registration === null) {
     return {
-      contextKind: null,
-      contextValue: null,
-      repository: null,
+      issuer,
+      ok: false,
+      reason: "configuration_error",
     };
   }
 
-  const [, repository, contextKind, rawContextValue] = match;
+  const payload = decodeJwt(token);
+  const claims: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(payload)) {
+    claims[key] = value;
+  }
+
+  const principal = registration.mapPrincipal(claims);
+
+  if (principal === null) {
+    return {
+      issuer,
+      ok: false,
+      reason: "invalid_claims",
+    };
+  }
 
   return {
-    contextKind: contextKind ?? null,
-    contextValue: rawContextValue === undefined ? null : decodeURIComponent(rawContextValue),
-    repository: repository === undefined ? null : decodeURIComponent(repository),
+    issuer,
+    ok: true,
+    principal,
+    resolvedKeyId: "test-key-1",
   };
 }
 

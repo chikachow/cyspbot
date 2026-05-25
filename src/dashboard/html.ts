@@ -2,7 +2,7 @@ import type {
   DashboardAuditEntry,
   DashboardRepository,
   DashboardRepositoryListItem,
-} from "../storage/d1.ts";
+} from "./types.ts";
 
 export function renderDashboardRepositoryListPage(input: {
   githubLogin: string;

@@ -947,21 +947,10 @@ On a signed non-`ping` webhook, the installation coordinator sets:
 - `reconciliation_state = pending`, unless it was already `running`
 - `updated_at = now`
 
-### Installation Coordinator Local State
-
-The installation coordinator has one logical local state object per installation:
-
-```ts
-interface InstallationCoordinatorState {
-  currentRunId?: number;
-  currentRunToken?: string;
-  lastSignalAt?: string;
-  reconcileRequested: boolean;
-  reconcileRunning: boolean;
-}
-```
-
-In the current product, only signal coalescing is implemented. Audit Log, dashboard sessions, retry counters, durable failure history, and dashboard visibility do not live exclusively in the coordinator.
+In the current product, the installation coordinator persists no separate local
+state. D1 is the durable source for reconciliation signal state. Audit Log,
+dashboard sessions, retry counters, durable failure history, and dashboard
+visibility do not live in the coordinator.
 
 ## 13. Observability and Secret Handling
 

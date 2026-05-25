@@ -1,19 +1,12 @@
 import type { Env } from "../env.ts";
-import type {
-  GitHubApiDependencies,
-  GitHubUserRepositoryAccess,
-  GitHubUserAccessToken,
-} from "../github/api.ts";
-import {
-  listGitHubUserInstallationRepositories,
-  listGitHubUserInstallations,
-} from "../github/api.ts";
+import type { GitHubUserAccessToken } from "../github/api.ts";
 import type { GitHubActionsPrincipal } from "../oidc/principals.ts";
 import {
   dashboardSessionTokenHash,
   decryptValue,
   createEncryptedValue,
 } from "../dashboard/auth.ts";
+import type { DashboardAuditEntry, DashboardSession } from "../dashboard/types.ts";
 
 const dashboardIdleTtlMs = 2 * 60 * 60 * 1000;
 const dashboardAbsoluteTtlMs = 8 * 60 * 60 * 1000;
@@ -23,48 +16,9 @@ export interface AuditIntent {
   requestedAt: string;
 }
 
-export interface DashboardSession {
-  accessToken: string;
-  accessTokenExpiresAt: string | null;
-  absoluteExpiresAt: string;
-  githubLoginDisplay: string;
-  githubUserId: string;
-  id: number;
-  idleExpiresAt: string;
-}
-
-export interface DashboardRepositoryListItem {
-  archivedAt: string | null;
-  fullNameDisplay: string;
-  installationId: number;
+export interface RepositoryAuditSummary {
   lastInstallationTokenIssuanceAt: string | null;
   lastOutcome: string | null;
-  repositoryId: number;
-  repositoryVisibility: string;
-}
-
-export interface DashboardRepository {
-  archivedAt: string | null;
-  fullNameDisplay: string;
-  fullNameNormalized: string;
-  repositoryId: number;
-  repositoryVisibility: string;
-}
-
-export interface DashboardAuditEntry {
-  actor: string | null;
-  auditState: "finalization_failed" | "finalized" | "pending";
-  eventName: string;
-  expiresAt: string | null;
-  fullNameDisplay: string;
-  id: number;
-  installationId: number | null;
-  outcome: "denied" | "internal_error" | "issued" | "upstream_error" | null;
-  permissions: Record<string, string>;
-  reasons: string[];
-  ref: string | null;
-  requestedAt: string;
-  workflowRef: string | null;
 }
 
 type SessionRow = Record<"encrypted_github_user_token_blob" | "github_user_id", string> &
@@ -386,93 +340,6 @@ export async function deleteDashboardSession(env: Env, rawSessionToken: string):
     .run();
 }
 
-export async function listAccessibleDashboardRepositories(
-  env: Env,
-  session: DashboardSession,
-  dependencies: GitHubApiDependencies,
-  now: string,
-): Promise<DashboardRepositoryListItem[]> {
-  const installations = await listGitHubUserInstallations(env, session.accessToken, dependencies);
-  const repositoryAccesses: GitHubUserRepositoryAccess[] = [];
-
-  for (const installation of installations) {
-    const repositories = await listGitHubUserInstallationRepositories(
-      env,
-      session.accessToken,
-      installation.id,
-      dependencies,
-    );
-    repositoryAccesses.push(...repositories);
-  }
-
-  const auditSummaries = await listRepositoryAuditSummaries(
-    env,
-    repositoryAccesses.map((repository) => parseRepositoryId(repository.githubRepoId)),
-  );
-
-  return repositoryAccesses
-    .map((repository) => {
-      const repositoryId = parseRepositoryId(repository.githubRepoId);
-      const auditSummary = auditSummaries.get(repositoryId);
-
-      return {
-        archivedAt: repository.archived ? now : null,
-        fullNameDisplay: repository.fullName,
-        installationId: repository.installationId,
-        lastInstallationTokenIssuanceAt: auditSummary?.lastInstallationTokenIssuanceAt ?? null,
-        lastOutcome: auditSummary?.lastOutcome ?? null,
-        repositoryId,
-        repositoryVisibility: repository.private ? "private" : "public",
-      };
-    })
-    .sort(compareDashboardRepositoryListItems);
-}
-
-export async function getAccessibleDashboardRepositoryByFullName(
-  env: Env,
-  session: DashboardSession,
-  owner: string,
-  name: string,
-  dependencies: GitHubApiDependencies,
-  now: string,
-): Promise<DashboardRepository | null> {
-  const fullNameNormalized = normalizeRepositoryFullName(`${owner}/${name}`);
-  const installations = await listGitHubUserInstallations(env, session.accessToken, dependencies);
-  let visibleRepository: GitHubUserRepositoryAccess | null = null;
-
-  for (const installation of installations) {
-    const repositories = await listGitHubUserInstallationRepositories(
-      env,
-      session.accessToken,
-      installation.id,
-      dependencies,
-    );
-
-    visibleRepository ??=
-      repositories.find(
-        (repository) => normalizeRepositoryFullName(repository.fullName) === fullNameNormalized,
-      ) ?? null;
-
-    if (visibleRepository !== null) {
-      break;
-    }
-  }
-
-  if (visibleRepository === null) {
-    return null;
-  }
-
-  const repositoryId = parseRepositoryId(visibleRepository.githubRepoId);
-
-  return {
-    archivedAt: visibleRepository.archived ? now : null,
-    fullNameDisplay: visibleRepository.fullName,
-    fullNameNormalized,
-    repositoryId,
-    repositoryVisibility: visibleRepository.private ? "private" : "public",
-  };
-}
-
 export async function listRepositoryAuditEntries(
   env: Env,
   repositoryId: number,
@@ -565,75 +432,50 @@ export async function recordWebhookDelivery(
     .run();
 }
 
-async function listRepositoryAuditSummaries(
+export async function listRepositoryAuditSummaries(
   env: Env,
   repositoryIds: number[],
-): Promise<
-  Map<number, { lastInstallationTokenIssuanceAt: string | null; lastOutcome: string | null }>
-> {
+): Promise<Map<number, RepositoryAuditSummary>> {
   const uniqueRepositoryIds = Array.from(new Set(repositoryIds));
-  const visibleRepositoryIds = new Set(uniqueRepositoryIds);
 
   if (uniqueRepositoryIds.length === 0) {
     return new Map();
   }
 
-  const rows = await env.DB.prepare(
-    `
-      SELECT
-        entries.caller_repository_id AS repository_id,
-        MAX(entries.requested_at) AS last_installation_token_issuance_at,
-        (
-          SELECT latest.outcome
-          FROM installation_token_issuance_audit_entries latest
-          WHERE latest.caller_repository_id =
-            entries.caller_repository_id
-          ORDER BY latest.requested_at DESC, latest.id DESC
-          LIMIT 1
-        ) AS last_outcome
-      FROM installation_token_issuance_audit_entries entries
-      GROUP BY entries.caller_repository_id
-    `,
-  ).all<RepositoryAuditSummaryRow>();
+  const summaries = new Map<number, RepositoryAuditSummary>();
 
-  return new Map(
-    rows.results
-      .filter((row) => visibleRepositoryIds.has(row.repository_id))
-      .map((row) => [
-        row.repository_id,
-        {
-          lastInstallationTokenIssuanceAt: row.last_installation_token_issuance_at,
-          lastOutcome: row.last_outcome,
-        },
-      ]),
-  );
-}
+  for (const chunk of chunks(uniqueRepositoryIds, 500)) {
+    const placeholders = chunk.map(() => "?").join(", ");
+    const rows = await env.DB.prepare(
+      `
+        SELECT
+          entries.caller_repository_id AS repository_id,
+          MAX(entries.requested_at) AS last_installation_token_issuance_at,
+          (
+            SELECT latest.outcome
+            FROM installation_token_issuance_audit_entries latest
+            WHERE latest.caller_repository_id =
+              entries.caller_repository_id
+            ORDER BY latest.requested_at DESC, latest.id DESC
+            LIMIT 1
+          ) AS last_outcome
+        FROM installation_token_issuance_audit_entries entries
+        WHERE entries.caller_repository_id IN (${placeholders})
+        GROUP BY entries.caller_repository_id
+      `,
+    )
+      .bind(...chunk)
+      .all<RepositoryAuditSummaryRow>();
 
-function compareDashboardRepositoryListItems(
-  left: DashboardRepositoryListItem,
-  right: DashboardRepositoryListItem,
-): number {
-  const leftArchived = left.archivedAt === null ? 0 : 1;
-  const rightArchived = right.archivedAt === null ? 0 : 1;
-
-  if (leftArchived !== rightArchived) {
-    return leftArchived - rightArchived;
+    for (const row of rows.results) {
+      summaries.set(row.repository_id, {
+        lastInstallationTokenIssuanceAt: row.last_installation_token_issuance_at,
+        lastOutcome: row.last_outcome,
+      });
+    }
   }
 
-  const leftLastIssuance = left.lastInstallationTokenIssuanceAt ?? "";
-  const rightLastIssuance = right.lastInstallationTokenIssuanceAt ?? "";
-
-  if (leftLastIssuance !== rightLastIssuance) {
-    return rightLastIssuance.localeCompare(leftLastIssuance);
-  }
-
-  const fullNameComparison = left.fullNameDisplay.localeCompare(right.fullNameDisplay);
-
-  if (fullNameComparison !== 0) {
-    return fullNameComparison;
-  }
-
-  return left.installationId - right.installationId;
+  return summaries;
 }
 
 function effectiveSessionExpiresAt(row: SessionRow): string {
@@ -715,4 +557,14 @@ function parseRepositoryId(value: string): number {
   }
 
   return parsed;
+}
+
+function chunks<T>(values: T[], size: number): T[][] {
+  const result: T[][] = [];
+
+  for (let index = 0; index < values.length; index += size) {
+    result.push(values.slice(index, index + size));
+  }
+
+  return result;
 }

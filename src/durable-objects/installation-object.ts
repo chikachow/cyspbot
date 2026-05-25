@@ -20,16 +20,6 @@ export type SignalInstallationReconciliationResult =
   | SignalInstallationReconciliationFailure
   | SignalInstallationReconciliationSuccess;
 
-interface InstallationCoordinatorState {
-  currentRunId?: number;
-  currentRunToken?: string;
-  lastSignalAt?: string;
-  reconcileRequested: boolean;
-  reconcileRunning: boolean;
-}
-
-const coordinatorStateKey = "installation_coordinator_state";
-
 export class GitHubInstallationObject extends DurableObject<Env> {
   public async signalInstallationReconciliation(
     request: SignalInstallationReconciliationRequest,
@@ -42,13 +32,6 @@ export class GitHubInstallationObject extends DurableObject<Env> {
     }
 
     const now = new Date().toISOString();
-    const state = await this.readState();
-
-    await this.ctx.storage.put(coordinatorStateKey, {
-      ...state,
-      lastSignalAt: now,
-      reconcileRequested: true,
-    } satisfies InstallationCoordinatorState);
 
     await this.env.DB.prepare(
       `
@@ -75,18 +58,5 @@ export class GitHubInstallationObject extends DurableObject<Env> {
     return {
       ok: true,
     };
-  }
-
-  private async readState(): Promise<InstallationCoordinatorState> {
-    const state = (await this.ctx.storage.get(coordinatorStateKey)) as
-      | InstallationCoordinatorState
-      | undefined;
-
-    return (
-      state ?? {
-        reconcileRequested: false,
-        reconcileRunning: false,
-      }
-    );
   }
 }
