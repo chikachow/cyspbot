@@ -1,5 +1,5 @@
 import type { Env } from "../env.ts";
-import type { GitHubApiDependencies } from "../github/api.ts";
+import type { GitHubApiDependencies } from "../github/http.ts";
 import {
   authenticateOidcToken as defaultAuthenticateOidcToken,
   authenticateRequest as defaultAuthenticateRequest,

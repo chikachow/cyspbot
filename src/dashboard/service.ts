@@ -1,10 +1,10 @@
 import type { Env } from "../env.ts";
+import type { GitHubApiDependencies } from "../github/http.ts";
 import {
   listGitHubUserInstallationRepositories,
   listGitHubUserInstallations,
-  type GitHubApiDependencies,
   type GitHubUserRepositoryAccess,
-} from "../github/api.ts";
+} from "../github/user.ts";
 import { listRepositoryAuditSummaries } from "../storage/audit-log.ts";
 import type {
   DashboardRepository,

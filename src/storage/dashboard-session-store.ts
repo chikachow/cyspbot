@@ -1,5 +1,5 @@
 import type { Env } from "../env.ts";
-import type { GitHubUserAccessToken } from "../github/api.ts";
+import type { GitHubUserAccessToken } from "../github/user.ts";
 import {
   dashboardSessionTokenHash,
   decryptValue,

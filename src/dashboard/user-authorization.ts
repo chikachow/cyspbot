@@ -1,10 +1,6 @@
 import type { Env } from "../env.ts";
-import {
-  exchangeGitHubUserCode,
-  getAuthenticatedGitHubUser,
-  GitHubApiError,
-  type GitHubApiDependencies,
-} from "../github/api.ts";
+import { GitHubApiError, type GitHubApiDependencies } from "../github/http.ts";
+import { exchangeGitHubUserCode, getAuthenticatedGitHubUser } from "../github/user.ts";
 import {
   createDashboardSession,
   deleteDashboardSession,

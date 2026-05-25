@@ -1,12 +1,11 @@
 import type { Env } from "../env.ts";
 import {
   createInstallationToken,
-  GitHubApiError,
   getRepository,
-  type GitHubApiDependencies,
   type GitHubRepository,
   resolveInstallationForRepository,
-} from "../github/api.ts";
+} from "../github/app.ts";
+import { GitHubApiError, type GitHubApiDependencies } from "../github/http.ts";
 import type { AuthenticatedContext, GitHubActionsPrincipal } from "../oidc/principals.ts";
 import {
   createAuditIntent,

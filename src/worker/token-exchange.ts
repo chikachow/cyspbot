@@ -1,5 +1,6 @@
 import type { Env } from "../env.ts";
-import { GitHubApiError, resolveInstallationForRepository } from "../github/api.ts";
+import { resolveInstallationForRepository } from "../github/app.ts";
+import { GitHubApiError } from "../github/http.ts";
 import { jsonResponse, problemResponse } from "../http/problem-details.ts";
 import { issueInstallationTokenForContext } from "../policy/installation-token-issuance.ts";
 import { githubActionsPrincipal } from "./authentication.ts";
