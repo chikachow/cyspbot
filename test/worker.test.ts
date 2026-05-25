@@ -204,11 +204,11 @@ async function fetchGitHubTestDouble(
     return oauthTokenResponse(new TextDecoder().decode(await request.arrayBuffer()));
   }
 
-  if (url.hostname !== "example.test" && url.hostname !== "api.github.com") {
+  const apiPath = gitHubApiPathForTestDouble(request);
+
+  if (apiPath === null) {
     return new Response(null, { status: 404 });
   }
-
-  const apiPath = url.pathname.replace(/^\/__test\/github/u, "");
 
   if (request.headers.get("authorization") === null) {
     return new Response(null, { status: 401 });
@@ -332,14 +332,9 @@ async function fetchGitHubDashboardAccessForbiddenTestDouble(
   init?: RequestInit,
 ): Promise<Response> {
   const request = new Request(input, init);
-  const url = new URL(request.url);
-  const apiPath = url.pathname.replace(/^\/__test\/github/u, "");
+  const apiPath = gitHubApiPathForTestDouble(request);
 
-  if (
-    (url.hostname === "example.test" || url.hostname === "api.github.com") &&
-    request.method === "GET" &&
-    apiPath === "/user/installations"
-  ) {
+  if (request.method === "GET" && apiPath === "/user/installations") {
     return new Response(null, { status: 403 });
   }
 
@@ -351,22 +346,16 @@ async function fetchGitHubDashboardLaterInstallationFailsTestDouble(
   init?: RequestInit,
 ): Promise<Response> {
   const request = new Request(input, init);
-  const url = new URL(request.url);
-  const apiPath = url.pathname.replace(/^\/__test\/github/u, "");
+  const apiPath = gitHubApiPathForTestDouble(request);
   const laterInstallationId = testInstallationId + 1;
 
-  if (
-    (url.hostname === "example.test" || url.hostname === "api.github.com") &&
-    request.method === "GET" &&
-    apiPath === "/user/installations"
-  ) {
+  if (request.method === "GET" && apiPath === "/user/installations") {
     return Response.json({
       installations: [{ id: testInstallationId }, { id: laterInstallationId }],
     });
   }
 
   if (
-    (url.hostname === "example.test" || url.hostname === "api.github.com") &&
     request.method === "GET" &&
     apiPath === `/user/installations/${laterInstallationId}/repositories`
   ) {
@@ -374,6 +363,16 @@ async function fetchGitHubDashboardLaterInstallationFailsTestDouble(
   }
 
   return fetchGitHubTestDouble(request);
+}
+
+function gitHubApiPathForTestDouble(request: Request): string | null {
+  const url = new URL(request.url);
+
+  if (url.hostname !== "example.test" && url.hostname !== "api.github.com") {
+    return null;
+  }
+
+  return url.pathname.replace(/^\/__test\/github/u, "");
 }
 
 function oauthTokenResponse(body: string): Response {
