@@ -1,6 +1,6 @@
 import type { Env } from "../env.ts";
 import type { SignalInstallationReconciliationResult } from "../durable-objects/installation-object.ts";
-import { recordWebhookDelivery } from "../storage/d1.ts";
+import { recordWebhookDelivery } from "../storage/webhook-delivery-log.ts";
 import type { AppDependencies } from "./dependencies.ts";
 import { jsonResponse, problemResponse } from "./problem-details.ts";
 

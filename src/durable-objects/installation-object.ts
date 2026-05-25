@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 
 import type { Env } from "../env.ts";
+import { recordInstallationReconciliationSignal } from "../storage/installation-reconciliation.ts";
 
 export interface SignalInstallationReconciliationRequest {
   installationId: number;
@@ -31,29 +32,10 @@ export class GitHubInstallationObject extends DurableObject<Env> {
       };
     }
 
-    const now = new Date().toISOString();
-
-    await this.env.DB.prepare(
-      `
-        INSERT INTO installation_reconciliation_states (
-          installation_id,
-          reconciliation_state,
-          reconciliation_requested,
-          last_requested_at,
-          updated_at
-        ) VALUES (?, 'pending', 1, ?, ?)
-        ON CONFLICT(installation_id) DO UPDATE SET
-          reconciliation_requested = 1,
-          last_requested_at = excluded.last_requested_at,
-          reconciliation_state = CASE
-            WHEN reconciliation_state = 'running' THEN reconciliation_state
-            ELSE 'pending'
-          END,
-          updated_at = excluded.updated_at
-      `,
-    )
-      .bind(request.installationId, now, now)
-      .run();
+    await recordInstallationReconciliationSignal(this.env, {
+      installationId: request.installationId,
+      requestedAt: new Date().toISOString(),
+    });
 
     return {
       ok: true,

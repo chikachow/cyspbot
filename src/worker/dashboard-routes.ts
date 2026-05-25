@@ -21,12 +21,12 @@ import {
   getAuthenticatedGitHubUser,
   GitHubApiError,
 } from "../github/api.ts";
+import { listRepositoryAuditEntries } from "../storage/audit-log.ts";
 import {
   createDashboardSession,
   deleteDashboardSession,
   getDashboardSession,
-  listRepositoryAuditEntries,
-} from "../storage/d1.ts";
+} from "../storage/dashboard-session-store.ts";
 import type { AppDependencies } from "./dependencies.ts";
 import { problemResponse } from "./problem-details.ts";
 

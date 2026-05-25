@@ -5,7 +5,7 @@ import {
   type GitHubApiDependencies,
   type GitHubUserRepositoryAccess,
 } from "../github/api.ts";
-import { listRepositoryAuditSummaries } from "../storage/d1.ts";
+import { listRepositoryAuditSummaries } from "../storage/audit-log.ts";
 import type {
   DashboardRepository,
   DashboardRepositoryListItem,

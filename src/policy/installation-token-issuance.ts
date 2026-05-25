@@ -12,7 +12,7 @@ import {
   createAuditIntent,
   finalizeAuditEntry,
   markAuditFinalizationFailed,
-} from "../storage/d1.ts";
+} from "../storage/audit-log.ts";
 import {
   evaluateTokenPolicy,
   type TokenPolicyAllowDecision,
