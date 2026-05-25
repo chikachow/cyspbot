@@ -4,12 +4,14 @@ import {
   handleDashboardCallbackRequest,
   handleDashboardLoginRequest,
   handleDashboardLogoutRequest,
+  handleGitHubAppSetupRequest,
+} from "../dashboard/user-authorization.ts";
+import {
   handleDashboardRepositoryDetailsRequest,
   handleDashboardRepositoryListRequest,
-  handleGitHubAppSetupRequest,
 } from "./dashboard-routes.ts";
 import { defaultDependencies, type AppDependencies } from "./dependencies.ts";
-import { problemResponse } from "./problem-details.ts";
+import { problemResponse } from "../http/problem-details.ts";
 import {
   handleClaimsRequest,
   handleTokenExchangeRequest,

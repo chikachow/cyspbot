@@ -1,8 +1,8 @@
 import type { Env } from "../env.ts";
 import type { SignalInstallationReconciliationResult } from "../durable-objects/installation-object.ts";
+import { jsonResponse, problemResponse } from "../http/problem-details.ts";
 import { recordWebhookDelivery } from "../storage/webhook-delivery-log.ts";
 import type { AppDependencies } from "./dependencies.ts";
-import { jsonResponse, problemResponse } from "./problem-details.ts";
 
 const textEncoder = new TextEncoder();
 const maxWebhookBodyBytes = 256 * 1024;

@@ -1,9 +1,9 @@
 import type { Env } from "../env.ts";
 import { GitHubApiError, resolveInstallationForRepository } from "../github/api.ts";
+import { jsonResponse, problemResponse } from "../http/problem-details.ts";
 import { issueInstallationTokenForContext } from "../policy/installation-token-issuance.ts";
 import { githubActionsPrincipal } from "./authentication.ts";
 import type { AppDependencies } from "./dependencies.ts";
-import { jsonResponse, problemResponse } from "./problem-details.ts";
 
 const tokenExchangeGrantType = "urn:ietf:params:oauth:grant-type:token-exchange";
 const githubInstallationAccessTokenType = "urn:chikachow:github-app-installation-access-token";

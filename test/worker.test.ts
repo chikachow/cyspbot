@@ -65,8 +65,23 @@ const testApp = createApp({
   now: () => testNow,
 });
 
+const dashboardAccessForbiddenApp = createApp({
+  authenticateOidcToken,
+  authenticateRequest,
+  fetch: fetchGitHubDashboardAccessForbiddenTestDouble,
+  now: () => testNow,
+});
+
 function fetchWorker(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  const handler = testApp.fetch;
+  return fetchWorkerWithApp(testApp, input, init);
+}
+
+function fetchWorkerWithApp(
+  app: ReturnType<typeof createApp>,
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  const handler = app.fetch;
 
   if (handler === undefined) {
     throw new Error("test app has no fetch handler");
@@ -79,6 +94,47 @@ function fetchWorker(input: RequestInfo | URL, init?: RequestInit): Promise<Resp
       {} as ExecutionContext,
     ),
   );
+}
+
+async function createDashboardSessionCookie(): Promise<string> {
+  await workerEnv.DB.prepare(
+    `
+      UPDATE dashboard_users
+      SET session_revoked_after = NULL
+      WHERE github_user_id = ?
+    `,
+  )
+    .bind("42")
+    .run();
+
+  const loginResponse = await fetchWorker("https://example.test/login/github", {
+    redirect: "manual",
+  });
+  expect(loginResponse.status).toBe(302);
+  const stateCookie = responseSetCookies(loginResponse)[0];
+  expect(stateCookie).toBeDefined();
+  expect(stateCookie).toContain("__Host-cyspbot_oauth_state=");
+  const authorizeUrl = new URL(loginResponse.headers.get("location") ?? "https://example.test");
+  const state = authorizeUrl.searchParams.get("state");
+  expect(state).not.toBeNull();
+
+  const callbackResponse = await fetchWorker(
+    `https://example.test/auth/github/callback?code=test-dashboard-code&state=${encodeURIComponent(state ?? "")}`,
+    {
+      headers: {
+        cookie: cookieHeaderValue(stateCookie!),
+      },
+      redirect: "manual",
+    },
+  );
+  expect(callbackResponse.status).toBe(302);
+  expect(callbackResponse.headers.get("location")).toBe("/dashboard");
+  const sessionCookie = responseSetCookies(callbackResponse).find((cookie) =>
+    cookie.startsWith("__Host-cyspbot_dashboard_session="),
+  );
+  expect(sessionCookie).toBeDefined();
+
+  return sessionCookie!;
 }
 
 function authorizationHeaders(
@@ -262,6 +318,25 @@ async function fetchGitHubTestDouble(
   }
 
   return new Response(`No test GitHub response for ${request.method} ${path}`, { status: 404 });
+}
+
+async function fetchGitHubDashboardAccessForbiddenTestDouble(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  const request = new Request(input, init);
+  const url = new URL(request.url);
+  const apiPath = url.pathname.replace(/^\/__test\/github/u, "");
+
+  if (
+    (url.hostname === "example.test" || url.hostname === "api.github.com") &&
+    request.method === "GET" &&
+    apiPath === "/user/installations"
+  ) {
+    return new Response(null, { status: 403 });
+  }
+
+  return fetchGitHubTestDouble(request);
 }
 
 function oauthTokenResponse(body: string): Response {
@@ -815,6 +890,27 @@ describe("cyspbot worker", () => {
     );
   });
 
+  it("clears the dashboard session when GitHub denies repository access refresh", async () => {
+    const sessionCookie = await createDashboardSessionCookie();
+
+    const response = await fetchWorkerWithApp(
+      dashboardAccessForbiddenApp,
+      "https://example.test/dashboard",
+      {
+        headers: {
+          cookie: cookieHeaderValue(sessionCookie),
+        },
+        redirect: "manual",
+      },
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe("/login/github?return_to=%2Fdashboard");
+    expect(responseSetCookies(response)).toContain(
+      "__Host-cyspbot_dashboard_session=; Path=/; SameSite=Lax; HttpOnly; Max-Age=0; Secure",
+    );
+  });
+
   it("authorizes the dashboard with GitHub user auth and renders recent Installation Token Issuance attempts", async () => {
     const firstIssuance = await fetchWorker("https://example.test/token", {
       body: await tokenExchangeRequestBody(),
@@ -842,36 +938,11 @@ describe("cyspbot worker", () => {
     expect(dashboardRedirect.status).toBe(302);
     expect(dashboardRedirect.headers.get("location")).toBe("/login/github?return_to=%2Fdashboard");
 
-    const loginResponse = await fetchWorker("https://example.test/login/github", {
-      redirect: "manual",
-    });
-    expect(loginResponse.status).toBe(302);
-    const stateCookie = responseSetCookies(loginResponse)[0];
-    expect(stateCookie).toBeDefined();
-    expect(stateCookie).toContain("__Host-cyspbot_oauth_state=");
-    const authorizeUrl = new URL(loginResponse.headers.get("location") ?? "https://example.test");
-    const state = authorizeUrl.searchParams.get("state");
-    expect(state).not.toBeNull();
-
-    const callbackResponse = await fetchWorker(
-      `https://example.test/auth/github/callback?code=test-dashboard-code&state=${encodeURIComponent(state ?? "")}`,
-      {
-        headers: {
-          cookie: cookieHeaderValue(stateCookie!),
-        },
-        redirect: "manual",
-      },
-    );
-    expect(callbackResponse.status).toBe(302);
-    expect(callbackResponse.headers.get("location")).toBe("/dashboard");
-    const sessionCookie = responseSetCookies(callbackResponse).find((cookie) =>
-      cookie.startsWith("__Host-cyspbot_dashboard_session="),
-    );
-    expect(sessionCookie).toBeDefined();
+    const sessionCookie = await createDashboardSessionCookie();
 
     const dashboardResponse = await fetchWorker("https://example.test/dashboard", {
       headers: {
-        cookie: cookieHeaderValue(sessionCookie!),
+        cookie: cookieHeaderValue(sessionCookie),
       },
     });
     expect(dashboardResponse.status).toBe(200);
@@ -883,7 +954,7 @@ describe("cyspbot worker", () => {
       "https://example.test/dashboard/repositories/cysp/terraform-provider-contentful",
       {
         headers: {
-          cookie: cookieHeaderValue(sessionCookie!),
+          cookie: cookieHeaderValue(sessionCookie),
         },
       },
     );
@@ -905,7 +976,7 @@ describe("cyspbot worker", () => {
 
     const revokedSessionResponse = await fetchWorker("https://example.test/dashboard", {
       headers: {
-        cookie: cookieHeaderValue(sessionCookie!),
+        cookie: cookieHeaderValue(sessionCookie),
       },
       redirect: "manual",
     });
