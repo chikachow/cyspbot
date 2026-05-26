@@ -7,6 +7,7 @@ import {
   handleGitHubAppSetupRequest,
 } from "../dashboard/user-authorization.ts";
 import {
+  handleDashboardPullRequestHaikuRequest,
   handleDashboardRepositoryDetailsRequest,
   handleDashboardRepositoryListRequest,
 } from "./dashboard-routes.ts";
@@ -18,6 +19,7 @@ import {
   tokenExchangeMethodNotAllowedResponse,
 } from "./token-exchange.ts";
 import { handleGitHubWebhookRequest } from "./webhook.ts";
+import { parsePullRequestHaikuQueueMessage } from "../pull-request-haiku/queue.ts";
 
 export function createApp(
   dependencies: AppDependencies = defaultDependencies,
@@ -98,6 +100,14 @@ export function createApp(
         return handleDashboardRepositoryListRequest(request, env, dependencies);
       }
 
+      if (url.pathname === "/dashboard/pull-request-haikus") {
+        if (request.method !== "GET" && request.method !== "POST") {
+          return problemResponse(405, { allow: "GET, POST" });
+        }
+
+        return handleDashboardPullRequestHaikuRequest(request, env, dependencies);
+      }
+
       if (url.pathname.startsWith("/dashboard/repositories/")) {
         if (request.method !== "GET") {
           return problemResponse(405, { allow: "GET" });
@@ -107,6 +117,23 @@ export function createApp(
       }
 
       return problemResponse(404);
+    },
+    async queue(batch, env): Promise<void> {
+      for (const message of batch.messages) {
+        const pullRequestHaikuMessage = parsePullRequestHaikuQueueMessage(message.body);
+
+        if (pullRequestHaikuMessage === null) {
+          message.ack();
+          continue;
+        }
+
+        try {
+          await dependencies.processPullRequestHaikuMessage(env, pullRequestHaikuMessage);
+          message.ack();
+        } catch {
+          message.retry({ delaySeconds: 60 });
+        }
+      }
     },
   };
 }

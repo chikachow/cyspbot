@@ -7,7 +7,8 @@ The current product is intentionally narrow:
 - `POST /token` is the primary token exchange endpoint.
 - `POST /github/claims` verifies caller identity and GitHub App installation presence without issuing an Installation Token.
 - `POST /github/webhooks` accepts signed GitHub App webhooks, records metadata, and signals installation reconciliation.
-- `GET /dashboard` is a read-only operational dashboard for repository visibility and recent Installation Token Issuance audit history.
+- Signed `pull_request` webhooks for opted-in repositories enqueue a pull request haiku comment refresh.
+- `GET /dashboard` is an operational dashboard for repository visibility, recent Installation Token Issuance audit history, and admin pull request haiku opt-ins.
 
 The primary service contract is [docs/service-contract.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/service-contract.md). The documentation map is [docs/README.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/README.md).
 
@@ -62,6 +63,10 @@ Verifies a GitHub Actions OIDC bearer token and confirms the configured GitHub A
 
 Accepts signed JSON GitHub App webhook deliveries up to `256 KiB`. Non-`ping` events require a positive integer `installation.id`. Accepted non-`ping` deliveries signal the per-installation coordinator and write metadata to D1. Raw webhook bodies are not retained.
 
+For repositories listed in `pull_request_haiku_repository_opt_ins`, accepted `pull_request` deliveries for `opened`, `reopened`, `synchronize`, `edited`, and `ready_for_review` enqueue asynchronous haiku comment work. The worker reads mechanical change facts from the pull request and changed file list, excluding human-authored pull request text such as title and body, then creates or updates one marker-owned pull request comment containing:
+
+- a generated haiku representing the pull request change
+
 ## Dashboard
 
 The dashboard uses GitHub App user authorization, not GitHub Actions OIDC. A Dashboard User can see only repositories GitHub returns for that user through the GitHub App user-to-server installation repository APIs.
@@ -74,6 +79,7 @@ Implemented dashboard routes:
 - `GET /auth/github/callback`
 - `GET /logout`
 - `GET /dashboard`
+- `GET`, `POST /dashboard/pull-request-haikus`
 - `GET /dashboard/repositories/:owner/:name`
 
 Repository detail URLs use current `owner/name` as a locator. The service resolves that to immutable GitHub repository ID internally after confirming the signed-in user can see the repository through GitHub's user-to-server APIs.
@@ -116,6 +122,8 @@ Excluded from the current product surface:
 
 The GitHub App registration is the upper-bound authorization control plane for repository permissions. cyspbot narrows issued tokens to the calling repository, allowed workflow contexts, and the checked-in permission request used for token issuance.
 
+Pull request haiku comments require the installed GitHub App to grant `Pull requests: write` and `Issues: write`. cyspbot requests those permissions only for the opted-in pull request comment worker.
+
 Dashboard setup uses separate GitHub App URLs:
 
 - Setup URL: `https://cyspbot.chikachow.org/github/setup`
@@ -155,7 +163,7 @@ Production is configured for the custom domain `cyspbot.chikachow.org`. The prod
 5. Deploy:
 
    ```bash
-   pnpm run deploy:production
+   pnpm run deploy
    ```
 
 ## Local Development
@@ -181,6 +189,13 @@ Production is configured for the custom domain `cyspbot.chikachow.org`. The prod
    ```
 
 Production uses Secrets Store. Local development and tests may use `GITHUB_APP_PRIVATE_KEY_PEM`.
+
+The pull request haiku worker also expects the configured queue to exist before deployment:
+
+```bash
+pnpm exec wrangler queues create cyspbot-pr-haiku
+pnpm exec wrangler queues create cyspbot-pr-haiku-test
+```
 
 ## GitHub Actions Usage
 

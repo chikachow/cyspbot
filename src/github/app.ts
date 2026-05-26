@@ -173,7 +173,7 @@ async function appAuthenticationHeaders(env: Env): Promise<HeadersInit> {
   };
 }
 
-function installationAuthenticationHeaders(token: string): HeadersInit {
+export function installationAuthenticationHeaders(token: string): HeadersInit {
   return {
     accept: githubAcceptHeader,
     authorization: `Bearer ${token}`,

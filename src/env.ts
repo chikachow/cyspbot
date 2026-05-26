@@ -1,5 +1,6 @@
 import type { GitHubInstallationObject } from "./durable-objects/installation-object.ts";
 import type { OidcIssuerVerifierObject } from "./durable-objects/oidc-issuer-verifier-object.ts";
+import type { PullRequestHaikuQueueMessage } from "./pull-request-haiku/queue.ts";
 
 export interface SecretsStoreSecretBinding {
   get(): Promise<string | null>;
@@ -18,7 +19,11 @@ export interface Env {
   GITHUB_APP_PRIVATE_KEY_PEM?: string;
   GITHUB_WEB_BASE_URL?: string;
   DB: D1Database;
+  AI?: Ai;
   GITHUB_INSTALLATION: DurableObjectNamespace<GitHubInstallationObject>;
   GITHUB_WEBHOOK_SECRET?: string;
   OIDC_ISSUER_VERIFIER: DurableObjectNamespace<OidcIssuerVerifierObject>;
+  PULL_REQUEST_HAIKU_ADMIN_GITHUB_USER_IDS?: string;
+  PULL_REQUEST_HAIKU_QUEUE: Queue<PullRequestHaikuQueueMessage>;
+  PULL_REQUEST_HAIKU_TEXT_MODEL?: string;
 }

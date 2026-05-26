@@ -14,6 +14,7 @@ export interface DashboardRepositoryListItem {
   installationId: number;
   lastInstallationTokenIssuanceAt: string | null;
   lastOutcome: string | null;
+  pullRequestHaikuEnabled?: boolean;
   repositoryId: number;
   repositoryVisibility: string;
 }

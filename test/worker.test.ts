@@ -1,4 +1,5 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { createExecutionContext, createMessageBatch, getQueueResult } from "cloudflare:test";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
   authorizationHeaders,
@@ -6,12 +7,15 @@ import {
   createDashboardSessionCookie,
   dashboardAccessForbiddenApp,
   dashboardLaterInstallationFailsApp,
+  enqueuedPullRequestHaikuMessages,
   fetchWorker,
   fetchWorkerWithApp,
   githubInstallationAccessTokenType,
   githubWebhookHeaders,
   migrateTestDatabase,
   responseSetCookies,
+  testEnv,
+  testApp,
   tokenExchangeRequestBody,
   workerEnv,
 } from "./support/worker.ts";
@@ -19,6 +23,13 @@ import {
 describe("cyspbot worker", () => {
   beforeAll(async () => {
     await migrateTestDatabase();
+  });
+
+  beforeEach(async () => {
+    enqueuedPullRequestHaikuMessages.length = 0;
+    await workerEnv.DB.prepare("DELETE FROM pull_request_haiku_runs").run();
+    await workerEnv.DB.prepare("DELETE FROM pull_request_haiku_comments").run();
+    await workerEnv.DB.prepare("DELETE FROM pull_request_haiku_repository_opt_ins").run();
   });
 
   it("redirects the service root to the dashboard", async () => {
@@ -406,6 +417,194 @@ describe("cyspbot worker", () => {
     });
   });
 
+  it("does not enqueue pull request haiku comments until the repository is opted in", async () => {
+    const body = JSON.stringify({
+      action: "synchronize",
+      installation: {
+        id: 67890,
+      },
+      pull_request: {
+        head: {
+          sha: "abc123def456abc123def456abc123def456abcd",
+        },
+        number: 12,
+      },
+      repository: {
+        full_name: "cysp/terraform-provider-contentful",
+        id: 123456789,
+      },
+    });
+    const headers = githubWebhookHeaders(
+      body,
+      "test-webhook-secret",
+      "pull_request",
+      "delivery-pr-not-opted-in",
+    );
+
+    const response = await fetchWorker("https://example.test/github/webhooks", {
+      body,
+      headers,
+      method: "POST",
+    });
+
+    expect(response.status).toBe(202);
+    expect(enqueuedPullRequestHaikuMessages).toHaveLength(0);
+  });
+
+  it("enqueues opted-in pull request webhook deliveries for haiku comment processing", async () => {
+    await workerEnv.DB.prepare(
+      `
+        INSERT OR REPLACE INTO pull_request_haiku_repository_opt_ins (
+          repository_id,
+          repository_full_name_display,
+          enabled_at,
+          enabled_by
+        ) VALUES (?, ?, ?, ?)
+      `,
+    )
+      .bind(123456789, "cysp/terraform-provider-contentful", "2026-05-24T00:00:00.000Z", "test")
+      .run();
+
+    const body = JSON.stringify({
+      action: "synchronize",
+      installation: {
+        id: 67890,
+      },
+      pull_request: {
+        head: {
+          sha: "abc123def456abc123def456abc123def456abcd",
+        },
+        number: 12,
+      },
+      repository: {
+        full_name: "cysp/terraform-provider-contentful",
+        id: 123456789,
+      },
+    });
+    const headers = githubWebhookHeaders(
+      body,
+      "test-webhook-secret",
+      "pull_request",
+      "delivery-pr-opted-in",
+    );
+
+    const response = await fetchWorker("https://example.test/github/webhooks", {
+      body,
+      headers,
+      method: "POST",
+    });
+
+    expect(response.status).toBe(202);
+    expect(enqueuedPullRequestHaikuMessages).toEqual([
+      {
+        action: "synchronize",
+        deliveryId: "delivery-pr-opted-in",
+        enqueuedAt: "2026-05-24T00:00:00.000Z",
+        headSha: "abc123def456abc123def456abc123def456abcd",
+        installationId: 67890,
+        pullRequestNumber: 12,
+        repositoryFullName: "cysp/terraform-provider-contentful",
+        repositoryId: 123456789,
+      },
+    ]);
+  });
+
+  it("processes pull request haiku queue messages into one upserted PR comment", async () => {
+    await workerEnv.DB.prepare(
+      `
+        INSERT OR REPLACE INTO pull_request_haiku_comments (
+          repository_id,
+          pull_request_number,
+          repository_full_name_display,
+          current_head_sha,
+          updated_at
+        ) VALUES (?, ?, ?, ?, ?)
+      `,
+    )
+      .bind(
+        123456789,
+        12,
+        "cysp/terraform-provider-contentful",
+        "abc123def456abc123def456abc123def456abcd",
+        "2026-05-24T00:00:00.000Z",
+      )
+      .run();
+    await workerEnv.DB.prepare(
+      `
+        INSERT OR REPLACE INTO pull_request_haiku_runs (
+          delivery_id,
+          repository_id,
+          repository_full_name_display,
+          pull_request_number,
+          installation_id,
+          action,
+          head_sha,
+          run_status,
+          queued_at,
+          updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?)
+      `,
+    )
+      .bind(
+        "delivery-pr-queue",
+        123456789,
+        "cysp/terraform-provider-contentful",
+        12,
+        67890,
+        "synchronize",
+        "abc123def456abc123def456abc123def456abcd",
+        "2026-05-24T00:00:00.000Z",
+        "2026-05-24T00:00:00.000Z",
+      )
+      .run();
+
+    const queueHandler = testApp.queue;
+
+    if (queueHandler === undefined) {
+      throw new Error("test app has no queue handler");
+    }
+
+    const ctx = createExecutionContext();
+    const batch = createMessageBatch("cyspbot-pr-haiku-test", [
+      {
+        attempts: 1,
+        body: {
+          action: "synchronize",
+          deliveryId: "delivery-pr-queue",
+          enqueuedAt: "2026-05-24T00:00:00.000Z",
+          headSha: "abc123def456abc123def456abc123def456abcd",
+          installationId: 67890,
+          pullRequestNumber: 12,
+          repositoryFullName: "cysp/terraform-provider-contentful",
+          repositoryId: 123456789,
+        },
+        id: "message-1",
+        timestamp: new Date("2026-05-24T00:00:00.000Z"),
+      },
+    ]);
+
+    await queueHandler(batch, testEnv, ctx);
+
+    const queueResult = await getQueueResult(batch, ctx);
+    expect(queueResult.outcome).toBe("ok");
+
+    const row = await workerEnv.DB.prepare(
+      `
+        SELECT run_status, comment_id, output_kind
+        FROM pull_request_haiku_runs
+        WHERE delivery_id = ?
+      `,
+    )
+      .bind("delivery-pr-queue")
+      .first<{ comment_id: number; output_kind: string; run_status: string }>();
+
+    expect(row).toEqual({
+      comment_id: 987654,
+      output_kind: "markdown",
+      run_status: "succeeded",
+    });
+  });
+
   it("does not expose the obsolete durable object migration endpoint", async () => {
     const response = await fetchWorker(
       "https://example.test/internal/durable-objects/github-installations/migrate",
@@ -543,6 +742,53 @@ describe("cyspbot worker", () => {
     expect(repositoryHtml).toContain("Last 5 issuance attempts");
     expect(repositoryHtml).toContain("issued");
     expect(repositoryHtml).toContain("octocat");
+
+    const haikuSettingsResponse = await fetchWorker(
+      "https://example.test/dashboard/pull-request-haikus",
+      {
+        headers: {
+          cookie: cookieHeaderValue(sessionCookie),
+        },
+      },
+    );
+    expect(haikuSettingsResponse.status).toBe(200);
+    const haikuSettingsHtml = await haikuSettingsResponse.text();
+    expect(haikuSettingsHtml).toContain("Pull request haikus");
+    expect(haikuSettingsHtml).toContain("cysp/terraform-provider-contentful");
+    expect(haikuSettingsHtml).toContain("Disabled");
+
+    const enableHaikusResponse = await fetchWorker(
+      "https://example.test/dashboard/pull-request-haikus",
+      {
+        body: new URLSearchParams({
+          action: "enable",
+          repository_id: "123456789",
+        }).toString(),
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+          cookie: cookieHeaderValue(sessionCookie),
+          origin: "https://example.test",
+        },
+        method: "POST",
+        redirect: "manual",
+      },
+    );
+    expect(enableHaikusResponse.status).toBe(302);
+    expect(enableHaikusResponse.headers.get("location")).toBe("/dashboard/pull-request-haikus");
+
+    const optInRow = await workerEnv.DB.prepare(
+      `
+        SELECT repository_full_name_display, enabled_by
+        FROM pull_request_haiku_repository_opt_ins
+        WHERE repository_id = ?
+      `,
+    )
+      .bind(123456789)
+      .first<{ enabled_by: string; repository_full_name_display: string }>();
+    expect(optInRow).toEqual({
+      enabled_by: "sally",
+      repository_full_name_display: "cysp/terraform-provider-contentful",
+    });
 
     await workerEnv.DB.prepare(
       `

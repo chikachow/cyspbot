@@ -6,6 +6,7 @@ import type {
 
 export function renderDashboardRepositoryListPage(input: {
   githubLogin: string;
+  pullRequestHaikuAdmin: boolean;
   repositories: DashboardRepositoryListItem[];
 }): string {
   const activeRepositories = input.repositories.filter(
@@ -23,11 +24,80 @@ export function renderDashboardRepositoryListPage(input: {
           <h1>Repository audit</h1>
           <p>Signed in as <strong>${escapeHtml(input.githubLogin)}</strong>.</p>
         </div>
-        <a class="secondary-link" href="/logout">Sign out</a>
+        <div class="header-actions">
+          ${
+            input.pullRequestHaikuAdmin
+              ? '<a class="secondary-link" href="/dashboard/pull-request-haikus">Pull request haikus</a>'
+              : ""
+          }
+          <a class="secondary-link" href="/logout">Sign out</a>
+        </div>
       </header>
       ${renderRepositorySection("Active repositories", activeRepositories)}
       ${archivedRepositories.length === 0 ? "" : renderRepositorySection("Archived repositories", archivedRepositories)}`,
     title: "Cyspbot dashboard",
+  });
+}
+
+export function renderDashboardPullRequestHaikuPage(input: {
+  githubLogin: string;
+  repositories: DashboardRepositoryListItem[];
+}): string {
+  const rows =
+    input.repositories.length === 0
+      ? `<tr><td colspan="5" class="empty">No repositories are currently visible.</td></tr>`
+      : input.repositories
+          .map((repository) => {
+            const enabled = repository.pullRequestHaikuEnabled === true;
+            const action = enabled ? "disable" : "enable";
+            const label = enabled ? "Disable" : "Enable";
+
+            return `
+              <tr>
+                <td>${escapeHtml(repository.fullNameDisplay)}</td>
+                <td>${escapeHtml(repository.repositoryVisibility)}</td>
+                <td>${repository.installationId}</td>
+                <td>${enabled ? "Enabled" : "Disabled"}</td>
+                <td>
+                  <form method="post" action="/dashboard/pull-request-haikus">
+                    <input type="hidden" name="repository_id" value="${repository.repositoryId}">
+                    <input type="hidden" name="action" value="${action}">
+                    <button type="submit">${label}</button>
+                  </form>
+                </td>
+              </tr>`;
+          })
+          .join("");
+
+  return renderPage({
+    body: `
+      <header class="page-header">
+        <div>
+          <p class="eyebrow">Cyspbot Dashboard</p>
+          <h1>Pull request haikus</h1>
+          <p>Signed in as <strong>${escapeHtml(input.githubLogin)}</strong>.</p>
+        </div>
+        <div class="header-actions">
+          <a class="secondary-link" href="/dashboard">Repository audit</a>
+          <a class="secondary-link" href="/logout">Sign out</a>
+        </div>
+      </header>
+      <section class="panel">
+        <h2>Repository opt-ins</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Repository</th>
+              <th>Visibility</th>
+              <th>Installation</th>
+              <th>Haikus</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </section>`,
+    title: "Pull request haikus",
   });
 }
 
@@ -235,6 +305,20 @@ function renderPage(input: { body: string; title: string }): string {
         background: #fff;
       }
       .secondary-link:focus-visible, a:focus-visible {
+        outline: 3px solid rgba(11, 92, 116, 0.35);
+        outline-offset: 2px;
+      }
+      button {
+        min-height: 34px;
+        padding: 0 12px;
+        border-radius: 6px;
+        border: 1px solid var(--line);
+        background: #fff;
+        color: var(--accent);
+        font: inherit;
+        cursor: pointer;
+      }
+      button:focus-visible {
         outline: 3px solid rgba(11, 92, 116, 0.35);
         outline-offset: 2px;
       }

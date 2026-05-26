@@ -1,13 +1,29 @@
 import type { SignalInstallationReconciliationResult } from "../durable-objects/installation-object.ts";
 import type { Env } from "../env.ts";
+import type { PullRequestHaikuQueueMessage } from "../pull-request-haiku/queue.ts";
+import {
+  pullRequestHaikuRepositoryOptedIn,
+  recordPullRequestHaikuQueued,
+} from "../storage/pull-request-haiku.ts";
 import { recordWebhookDelivery } from "../storage/webhook-delivery-log.ts";
 import { verifyGitHubWebhookSignature } from "./signature.ts";
 
 const maxWebhookBodyBytes = 256 * 1024;
 
 interface InstallationWebhookPayload {
+  action?: unknown;
   installation?: {
     id?: number;
+  };
+  pull_request?: {
+    head?: {
+      sha?: unknown;
+    };
+    number?: unknown;
+  };
+  repository?: {
+    full_name?: unknown;
+    id?: unknown;
   };
 }
 
@@ -32,6 +48,7 @@ interface WebhookDeliveryLogContext {
 }
 
 export interface WebhookDeliveryAcceptanceDependencies {
+  enqueuePullRequestHaikuMessage(env: Env, message: PullRequestHaikuQueueMessage): Promise<void>;
   now(): Date;
 }
 
@@ -148,11 +165,103 @@ export async function acceptGitHubWebhookDelivery(
     });
   }
 
+  const pullRequestHaikuResult = await enqueuePullRequestHaikuIfNeeded({
+    deliveryId,
+    dependencies,
+    env,
+    event,
+    installationId,
+    payload,
+    receivedAt,
+  });
+
   return acceptRecordedWebhookDelivery(env, logContext, {
     body: { accepted: true },
     installationId,
-    metadata: { signal_source: "webhook" },
+    metadata: {
+      signal_source: "webhook",
+      ...(pullRequestHaikuResult === null ? {} : { pull_request_haiku: pullRequestHaikuResult }),
+    },
   });
+}
+
+async function enqueuePullRequestHaikuIfNeeded(input: {
+  deliveryId: string;
+  dependencies: WebhookDeliveryAcceptanceDependencies;
+  env: Env;
+  event: string;
+  installationId: number;
+  payload: InstallationWebhookPayload;
+  receivedAt: string;
+}): Promise<string | null> {
+  if (input.event !== "pull_request") {
+    return null;
+  }
+
+  const action = typeof input.payload.action === "string" ? input.payload.action : "";
+
+  if (!pullRequestHaikuActionSupported(action)) {
+    return "ignored_action";
+  }
+
+  const repositoryId = input.payload.repository?.id;
+  const repositoryFullName = input.payload.repository?.full_name;
+  const pullRequestNumber = input.payload.pull_request?.number;
+  const headSha = input.payload.pull_request?.head?.sha;
+
+  if (
+    typeof repositoryId !== "number" ||
+    !Number.isSafeInteger(repositoryId) ||
+    repositoryId <= 0 ||
+    typeof repositoryFullName !== "string" ||
+    repositoryFullName.length === 0 ||
+    typeof pullRequestNumber !== "number" ||
+    !Number.isSafeInteger(pullRequestNumber) ||
+    pullRequestNumber <= 0 ||
+    typeof headSha !== "string" ||
+    headSha.length === 0
+  ) {
+    return "invalid_payload";
+  }
+
+  if (!(await pullRequestHaikuRepositoryOptedIn(input.env, repositoryId))) {
+    return "repository_not_opted_in";
+  }
+
+  const message = {
+    action,
+    deliveryId: input.deliveryId,
+    enqueuedAt: input.receivedAt,
+    headSha,
+    installationId: input.installationId,
+    pullRequestNumber,
+    repositoryFullName,
+    repositoryId,
+  } satisfies PullRequestHaikuQueueMessage;
+
+  await recordPullRequestHaikuQueued(input.env, {
+    action,
+    deliveryId: input.deliveryId,
+    headSha,
+    installationId: input.installationId,
+    pullRequestNumber,
+    queuedAt: input.receivedAt,
+    repositoryFullName,
+    repositoryId,
+  });
+  await input.dependencies.enqueuePullRequestHaikuMessage(input.env, message);
+
+  return "queued";
+}
+
+function pullRequestHaikuActionSupported(action: string): boolean {
+  return (
+    action === "opened" ||
+    action === "reopened" ||
+    action === "synchronize" ||
+    action === "edited" ||
+    action === "ready_for_review"
+  );
 }
 
 async function acceptRecordedWebhookDelivery(

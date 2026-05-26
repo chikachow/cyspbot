@@ -1,10 +1,12 @@
 import { createHmac, createPrivateKey } from "node:crypto";
 
 import d1SchemaSql from "../../migrations/0001_dashboard_d1_recut.sql?raw";
+import pullRequestHaikuSchemaSql from "../../migrations/0004_pull_request_haiku.sql?raw";
 import type { OidcIssuerVerifierObject } from "../../src/durable-objects/oidc-issuer-verifier-object.ts";
 import type { Env } from "../../src/env.ts";
 import { loadIssuerRegistrationByIssuer } from "../../src/oidc/issuer-registrations.ts";
 import type { VerifyOidcTokenResult } from "../../src/oidc/principals.ts";
+import type { PullRequestHaikuQueueMessage } from "../../src/pull-request-haiku/queue.ts";
 import { authenticateOidcToken, authenticateRequest } from "../../src/worker/authentication.ts";
 import { createApp } from "../../src/worker/app.ts";
 import { env } from "cloudflare:workers";
@@ -12,10 +14,6 @@ import { decodeJwt, SignJWT } from "jose";
 import { expect } from "vitest";
 
 export const workerEnv = env as unknown as Env;
-const testEnv: Env = {
-  ...workerEnv,
-  OIDC_ISSUER_VERIFIER: fakeOidcIssuerVerifierNamespace(),
-};
 
 const testPrivateKeyPem = `-----BEGIN PRIVATE KEY-----
 MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC27Vu1+aKPooBG
@@ -46,6 +44,21 @@ cT0XqIpKa8tyk2RAMjqM52QwttVzRnDjhqrpyM+9HsPyP7huvTlkpwLBE8GR7cP3
 guigOK0SOM7v+1ceZuh/bm8=
 -----END PRIVATE KEY-----
 `;
+export const testEnv: Env = {
+  ...workerEnv,
+  DASHBOARD_SESSION_LOOKUP_SECRET: "test-dashboard-session-lookup-secret",
+  DASHBOARD_TOKEN_ENCRYPTION_SECRET: "test-dashboard-token-encryption-secret",
+  GITHUB_API_BASE_URL: "https://example.test/__test/github",
+  GITHUB_APP_ID: "12345",
+  GITHUB_APP_CLIENT_ID: "Iv1.testclientid",
+  GITHUB_APP_CLIENT_SECRET: "test-client-secret",
+  GITHUB_APP_PRIVATE_KEY: undefined,
+  GITHUB_APP_PRIVATE_KEY_PEM: testPrivateKeyPem,
+  GITHUB_WEBHOOK_SECRET: "test-webhook-secret",
+  OIDC_ISSUER_VERIFIER: fakeOidcIssuerVerifierNamespace(),
+  PULL_REQUEST_HAIKU_ADMIN_GITHUB_USER_IDS: "42",
+  PULL_REQUEST_HAIKU_TEXT_MODEL: "@cf/qwen/qwen3-30b-a3b-fp8",
+};
 const tokenExchangeGrantType = "urn:ietf:params:oauth:grant-type:token-exchange";
 export const githubInstallationAccessTokenType =
   "urn:chikachow:github-app-installation-access-token";
@@ -58,30 +71,53 @@ const testRepositoryVisibility = "private";
 const testDashboardAccessToken = "ghu_test_token";
 const testDashboardRefreshToken = "ghr_test_token";
 const testNow = new Date("2026-05-24T00:00:00.000Z");
+export const enqueuedPullRequestHaikuMessages: PullRequestHaikuQueueMessage[] = [];
 
-const testApp = createApp({
+export const testApp = createApp({
   authenticateOidcToken,
   authenticateRequest,
+  enqueuePullRequestHaikuMessage: async (_env, message) => {
+    enqueuedPullRequestHaikuMessages.push(message);
+  },
   fetch: fetchGitHubTestDouble,
   now: () => testNow,
+  processPullRequestHaikuMessage: async (env, message) => {
+    const { processPullRequestHaikuMessage } =
+      await import("../../src/pull-request-haiku/processor.ts");
+
+    await processPullRequestHaikuMessage(env, message, {
+      generatePullRequestHaiku: async () => ({
+        haiku: {
+          text: "Queue winds softly\nComments bloom on branch changes\nReview dawns again",
+        },
+        model: "@cf/qwen/qwen3-30b-a3b-fp8",
+      }),
+      fetch: fetchGitHubTestDouble,
+      now: () => testNow,
+    });
+  },
 });
 
 export const dashboardAccessForbiddenApp = createApp({
   authenticateOidcToken,
   authenticateRequest,
+  enqueuePullRequestHaikuMessage: async () => undefined,
   fetch: fetchGitHubDashboardAccessForbiddenTestDouble,
   now: () => testNow,
+  processPullRequestHaikuMessage: async () => undefined,
 });
 
 export const dashboardLaterInstallationFailsApp = createApp({
   authenticateOidcToken,
   authenticateRequest,
+  enqueuePullRequestHaikuMessage: async () => undefined,
   fetch: fetchGitHubDashboardLaterInstallationFailsTestDouble,
   now: () => testNow,
+  processPullRequestHaikuMessage: async () => undefined,
 });
 
 export async function migrateTestDatabase(): Promise<void> {
-  for (const statement of d1SchemaSql.split(/;\s*(?:\n|$)/u)) {
+  for (const statement of `${d1SchemaSql}\n${pullRequestHaikuSchemaSql}`.split(/;\s*(?:\n|$)/u)) {
     if (statement.trim().length > 0) {
       await workerEnv.DB.prepare(statement).run();
     }
@@ -165,12 +201,13 @@ export function githubWebhookHeaders(
   body: string,
   secret: string,
   event = "installation_repositories",
+  deliveryId = "delivery-123",
 ): Record<string, string> {
   const signature = createHmac("sha256", secret).update(body).digest("hex");
 
   return {
     "content-type": "application/json",
-    "x-github-delivery": "delivery-123",
+    "x-github-delivery": deliveryId,
     "x-github-event": event,
     "x-hub-signature-256": `sha256=${signature}`,
   };
@@ -325,6 +362,26 @@ async function fetchGitHubTestDouble(
       requestedPermissions["contents"] !== "write" ||
       requestedPermissions["pull_requests"] !== "write"
     ) {
+      if (
+        Object.keys(requestedPermissions).length === 3 &&
+        requestedPermissions["issues"] === "write" &&
+        requestedPermissions["metadata"] === "read" &&
+        requestedPermissions["pull_requests"] === "write"
+      ) {
+        return Response.json(
+          {
+            expires_at: "2030-01-01T00:00:00Z",
+            permissions: {
+              issues: "write",
+              metadata: "read",
+              pull_requests: "write",
+            },
+            token: "ghs_test_pr_ai_token",
+          },
+          { status: 201 },
+        );
+      }
+
       return new Response(null, { status: 500 });
     }
 
@@ -336,6 +393,75 @@ async function fetchGitHubTestDouble(
           pull_requests: "write",
         },
         token: "ghs_test_token",
+      },
+      { status: 201 },
+    );
+  }
+
+  if (request.method === "GET" && apiPath === `/repos/${testRepository}/pulls/12`) {
+    return Response.json({
+      additions: 120,
+      base: { ref: "main" },
+      body: "Adds the first pull request haiku comment.",
+      changed_files: 3,
+      deletions: 30,
+      draft: false,
+      head: { ref: "feature/pr-haiku", sha: "abc123def456abc123def456abc123def456abcd" },
+      html_url: "https://github.com/cysp/terraform-provider-contentful/pull/12",
+      number: 12,
+      title: "Add pull request haiku comments",
+      user: { login: "sally" },
+    });
+  }
+
+  if (request.method === "GET" && apiPath === `/repos/${testRepository}/pulls/12/files`) {
+    return Response.json([
+      {
+        additions: 80,
+        changes: 90,
+        deletions: 10,
+        filename: "src/worker/app.ts",
+        status: "modified",
+      },
+      {
+        additions: 30,
+        changes: 40,
+        deletions: 10,
+        filename: "migrations/0004_pull_request_haiku.sql",
+        status: "added",
+      },
+      {
+        additions: 10,
+        changes: 20,
+        deletions: 10,
+        filename: "test/worker.test.ts",
+        status: "modified",
+      },
+    ]);
+  }
+
+  if (request.method === "GET" && apiPath === `/repos/${testRepository}/issues/12/comments`) {
+    return Response.json([]);
+  }
+
+  if (request.method === "POST" && apiPath === `/repos/${testRepository}/issues/12/comments`) {
+    const body = (await request.json()) as Record<string, unknown>;
+
+    if (
+      typeof body["body"] !== "string" ||
+      !body["body"].includes("cyspbot:pull-request-haiku") ||
+      !body["body"].includes('<p align="center">') ||
+      !body["body"].includes("<em>Queue winds softly<br>") ||
+      !body["body"].includes("Comments bloom on branch changes<br>") ||
+      !body["body"].includes("Review dawns again</em>")
+    ) {
+      return new Response(null, { status: 500 });
+    }
+
+    return Response.json(
+      {
+        body: body["body"],
+        id: 987654,
       },
       { status: 201 },
     );

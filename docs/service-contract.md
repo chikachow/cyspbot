@@ -10,7 +10,7 @@ cyspbot is a hosted Security Token Service for GitHub Actions workflows.
 
 It verifies GitHub Actions OIDC tokens from a closed set of trusted issuers, derives the calling repository from verified claims, confirms that the configured GitHub App is installed on that repository, and issues a fresh repository-scoped GitHub App installation access token only when the verified workflow context passes cyspbot policy.
 
-The service also exposes a small read-only dashboard for humans who authorize the same GitHub App through GitHub App user authorization. Dashboard users can see only repositories GitHub returns for that human user through GitHub's user-to-server installation repository APIs.
+The service also exposes a small dashboard for humans who authorize the same GitHub App through GitHub App user authorization. Dashboard users can see only repositories GitHub returns for that human user through GitHub's user-to-server installation repository APIs. Configured dashboard admins can toggle pull request haiku opt-ins for repositories GitHub returns for them.
 
 ## 2. Public Route Matrix
 
@@ -27,6 +27,8 @@ All route matching is exact unless noted.
 | `/auth/github/callback`                | `GET`  | Complete dashboard GitHub App user authorization                             | `302` to stored return target |
 | `/logout`                              | `GET`  | Delete dashboard session                                                     | `302` to `/dashboard`         |
 | `/dashboard`                           | `GET`  | Repository audit dashboard list                                              | `200` HTML or login redirect  |
+| `/dashboard/pull-request-haikus`       | `GET`  | Pull request haiku repository opt-in list                                    | `200` HTML or login redirect  |
+| `/dashboard/pull-request-haikus`       | `POST` | Toggle pull request haiku repository opt-in                                  | `302` or problem details      |
 | `/dashboard/repositories/:owner/:name` | `GET`  | Repository audit dashboard detail                                            | `200` HTML or login redirect  |
 
 Unknown routes return `404` problem details.
@@ -443,6 +445,20 @@ Delivery metadata persistence uses GitHub's delivery ID as an idempotency key. R
 
 The idempotency key applies only to the durable delivery log row. A valid duplicate delivery can still be accepted and can still signal installation reconciliation again.
 
+### Pull Request Haiku Comment Queueing
+
+Signed `pull_request` webhook deliveries also participate in pull request haiku comment processing when all of these conditions hold:
+
+- action is `opened`, `reopened`, `synchronize`, `edited`, or `ready_for_review`
+- `repository.id`, `repository.full_name`, `pull_request.number`, and `pull_request.head.sha` are present
+- `repository.id` exists in `pull_request_haiku_repository_opt_ins`
+
+The webhook handler writes queue state in D1 and sends one message to `PULL_REQUEST_HAIKU_QUEUE`. The queue consumer creates or updates a single marker-owned issue comment on the pull request. The visible comment body is a generated haiku representing the pull request change.
+
+The queue consumer reads mechanical pull request change facts and changed files from GitHub using a repository-scoped installation token with `metadata: read`, `pull_requests: write`, and `issues: write`. It does not send human-authored pull request text, such as the title or body, to the model. It does not read full patches in the first implementation. The consumer skips stale queue messages when the stored current head SHA no longer matches the message head SHA.
+
+The AI output is advisory presentation content only. It is not an authorization input and does not change Installation Token Issuance policy.
+
 ## 8. Dashboard Authentication Routes
 
 Dashboard authentication is separate from GitHub Actions OIDC authentication.
@@ -545,6 +561,8 @@ The GitHub App is configured with distinct URLs:
 - OAuth callback URL: `<service-origin>/auth/github/callback`
 - Webhook URL: `<service-origin>/github/webhooks`
 
+For pull request haiku comments, the GitHub App installation must grant `Pull requests: write` and `Issues: write`. The consumer requests a repository-scoped installation token with those permissions plus `Metadata: read`.
+
 The app does not rely on GitHub's "request user authorization during installation" flow for dashboard sessions. Installation setup redirects are onboarding entrypoints only; dashboard sessions are created only by the explicit state-bound `/login/github` to `/auth/github/callback` flow.
 
 ### Session Semantics
@@ -629,6 +647,33 @@ Visible HTML contract:
 
 If GitHub returns `401` or `403` during dashboard visibility refresh, the service deletes the session and redirects to login. Other GitHub visibility failures return `503` problem details.
 
+### `GET /dashboard/pull-request-haikus`
+
+Purpose: list repositories currently visible to the signed-in dashboard user and show whether pull request haiku comments are enabled.
+
+Access is limited to configured dashboard admin GitHub user IDs. Non-admin dashboard users receive `403` problem details. The configured production admin is GitHub user ID `742696`.
+
+Read flow:
+
+1. Validate dashboard session.
+2. Confirm the dashboard user's immutable GitHub user ID is configured as a pull request haiku admin.
+3. Fetch the dashboard user's current GitHub installations and repositories.
+4. Join visible repository IDs to `pull_request_haiku_repository_opt_ins`.
+5. Render HTML.
+
+### `POST /dashboard/pull-request-haikus`
+
+Purpose: enable or disable pull request haiku comments for one visible repository.
+
+The route accepts `application/x-www-form-urlencoded` with:
+
+- `repository_id`
+- `action` equal to `enable` or `disable`
+
+The request must have an `Origin` header matching the request URL origin. The service validates the dashboard session, confirms the user is configured as a pull request haiku admin, fetches repositories GitHub currently returns for the user, and applies the requested toggle only when the repository ID is in that visible set.
+
+Successful toggles redirect to `/dashboard/pull-request-haikus`.
+
 ### `GET /dashboard/repositories/:owner/:name`
 
 Purpose: show recent Installation Token Issuance audit rows for one visible repository.
@@ -697,7 +742,7 @@ Defaults:
 - GitHub API base: `https://api.github.com`
 - GitHub web base: `https://github.com`
 
-Implementations may make these configurable for tests or non-production environments, but the production contract uses GitHub.
+Implementations may make these configurable for tests or local runs, but the production contract uses GitHub.
 
 ### GitHub App Authentication
 
@@ -922,6 +967,46 @@ Logical fields:
 - optional small redacted metadata JSON
 
 The log stores metadata only. It does not store raw payloads, signatures, secrets, or OAuth/session/token material.
+
+### Pull Request Haiku Repository Opt-In
+
+Logical fields:
+
+- GitHub repository ID
+- repository full name display
+- enabled timestamp
+- optional enabled-by note
+
+Only opted-in repositories receive pull request haiku comment processing.
+
+### Pull Request Haiku Comment State
+
+Logical fields:
+
+- GitHub repository ID
+- pull request number
+- repository full name display
+- GitHub issue comment ID when known
+- current head SHA
+- last rendered head SHA
+- updated timestamp
+
+### Pull Request Haiku Run
+
+Logical fields:
+
+- GitHub delivery ID as primary idempotency key
+- GitHub repository ID and display full name
+- pull request number
+- installation ID
+- webhook action
+- head SHA
+- run status: `queued`, `running`, `succeeded`, `skipped`, or `failed`
+- queued, started, completed, and updated timestamps
+- optional GitHub issue comment ID
+- optional AI model
+- optional output kind
+- optional error code and bounded error message
 
 ### Installation Reconciliation State
 

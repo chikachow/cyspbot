@@ -1,26 +1,16 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "cyspbot-dev",
+  "name": "cyspbot",
   "main": "src/index.ts",
   "compatibility_date": "2026-05-07",
   "compatibility_flags": ["nodejs_compat"],
   "observability": {
     "enabled": true,
   },
-  "vars": {
-    "AUDIT_LOG_MAX_ENTRIES": "5000",
-    "AUDIT_LOG_RETENTION_DAYS": "180",
-    "GITHUB_API_BASE_URL": "https://api.github.com",
-    "GITHUB_APP_ID": "2419473",
+  "ai": {
+    "binding": "AI",
+    "remote": true,
   },
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "cyspbot-dev",
-      "database_id": "00000000-0000-0000-0000-000000000000",
-      "migrations_dir": "migrations",
-    },
-  ],
   "durable_objects": {
     "bindings": [
       {
@@ -33,6 +23,54 @@
       },
     ],
   },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "cyspbot",
+      "database_id": "35a687d9-6669-4021-8ce6-07def640e973",
+      "migrations_dir": "migrations",
+    },
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "PULL_REQUEST_HAIKU_QUEUE",
+        "queue": "cyspbot-pr-haiku",
+      },
+    ],
+    "consumers": [
+      {
+        "queue": "cyspbot-pr-haiku",
+        "max_batch_size": 5,
+        "max_batch_timeout": 10,
+        "max_retries": 3,
+      },
+    ],
+  },
+  "routes": [
+    {
+      "pattern": "cyspbot.chikachow.org",
+      "custom_domain": true,
+    },
+  ],
+  "vars": {
+    "AUDIT_LOG_MAX_ENTRIES": "5000",
+    "AUDIT_LOG_RETENTION_DAYS": "180",
+    "GITHUB_API_BASE_URL": "https://api.github.com",
+    "GITHUB_APP_ID": "2419473",
+    "GITHUB_APP_CLIENT_ID": "Iv23liTtjzogToOIUmVg",
+    "PULL_REQUEST_HAIKU_ADMIN_GITHUB_USER_IDS": "742696",
+    "PULL_REQUEST_HAIKU_TEXT_MODEL": "@cf/qwen/qwen3-30b-a3b-fp8",
+  },
+  "secrets_store_secrets": [
+    {
+      "binding": "GITHUB_APP_PRIVATE_KEY",
+      "secret_name": "CYSPBOT_GITHUB_APP_PRIVATE_KEY",
+      "store_id": "d38c6b7fbcc143dba27208fa1c044e37",
+    },
+  ],
+  "preview_urls": false,
+  "workers_dev": true,
   "migrations": [
     {
       "tag": "v1",
@@ -44,38 +82,12 @@
     },
   ],
   "env": {
-    "preview": {
-      "name": "cyspbot-preview",
-      "durable_objects": {
-        "bindings": [
-          {
-            "name": "GITHUB_INSTALLATION",
-            "class_name": "GitHubInstallationObject",
-          },
-          {
-            "name": "OIDC_ISSUER_VERIFIER",
-            "class_name": "OidcIssuerVerifierObject",
-          },
-        ],
-      },
-      "d1_databases": [
-        {
-          "binding": "DB",
-          "database_name": "cyspbot-preview",
-          "database_id": "00000000-0000-0000-0000-000000000000",
-          "migrations_dir": "migrations",
-        },
-      ],
-      "vars": {
-        "AUDIT_LOG_MAX_ENTRIES": "5000",
-        "AUDIT_LOG_RETENTION_DAYS": "180",
-        "GITHUB_API_BASE_URL": "https://api.github.com",
-        "GITHUB_APP_ID": "2419473",
-        "GITHUB_APP_CLIENT_ID": "Iv23liTtjzogToOIUmVg",
-      },
-    },
     "test": {
       "name": "cyspbot-test",
+      "ai": {
+        "binding": "AI",
+        "remote": true,
+      },
       "durable_objects": {
         "bindings": [
           {
@@ -96,6 +108,22 @@
           "migrations_dir": "migrations",
         },
       ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "PULL_REQUEST_HAIKU_QUEUE",
+            "queue": "cyspbot-pr-haiku-test",
+          },
+        ],
+        "consumers": [
+          {
+            "queue": "cyspbot-pr-haiku-test",
+            "max_batch_size": 5,
+            "max_batch_timeout": 10,
+            "max_retries": 3,
+          },
+        ],
+      },
       "vars": {
         "AUDIT_LOG_MAX_ENTRIES": "5000",
         "AUDIT_LOG_RETENTION_DAYS": "180",
@@ -105,44 +133,9 @@
         "GITHUB_APP_ID": "12345",
         "GITHUB_APP_CLIENT_ID": "Iv1.testclientid",
         "GITHUB_APP_CLIENT_SECRET": "test-client-secret",
-        "GITHUB_APP_PRIVATE_KEY_PEM": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC27Vu1+aKPooBG\n8zJHy9cbx0FAO26Fk2HnzYpl/Tm7POL6Pxzht2HO6GOTEv7OKz7o0TzG6XdDz5ci\n+IP6eKHVPPRupH7wbYOqxp4zRhPMaVaaJFQ27ApXANOKxz+UBjGe/JMFQaTA/O3k\nNJ0WoNXlMUDDWlLzmkz767EmqkrOeDO+/I11BSw3r07Kheu1C5LZ/Bv/IE1JINsV\nNzzN4cVHXmI9HXkLAHwDzeUs0cu7ar6Vxfl4ON5lDptwKptntfU4nn7p1zZK9q0Q\nQVjPRVwhaLy+XofSoO57xf5euJyYDxa9T3iqAZO1WZ7kXHIZUY6Mrws6NVmbt2cp\nBM77ECyLAgMBAAECggEAA3x4j/pG99fP/AosfiPLYLMmcjPvwknxxrorFhCCZigd\n50kGouKc0ZWqOCZXhtRaKZO7RcszQ66UIc18rmxYITk9K1KlPK3JoZqRb0a5n96u\nENf6ZuWOuOPCJFXxxz9q+K21m5cJrcfkPMIn8EN2cBzFMDPressJBpASWztJm6+0\ng6uTBt6l9CU3ObvjyORefXSfPwkhGKNfvgy75/VSlddcDAV+wjH14JdqWdMlntHH\nfMRPboYC3cvik6YsWb6qNGfjXz+Hzeba7D13y+QGYWrdfBfavbTHqkgZKas7AmyY\nTdrl1VlWD+h03Tec3DkhIxrdeA1+Wf+wmBjonmURSQKBgQDgrpsNIe8Ee/TT7VMz\n4fb3GfplRv0lshPfYW5W4ULEga2Oviz32BtSPhgG6NFZwIJ+MTxQhvPwGMQuYfqR\nCR3SG9O+m+kr4CLJJLxQ0RHBQ9VtP9wVOKqUiNkE9ez7mqx3/RF8oenNUPkAUFso\n1O0d9p87H5xpGZ43NVupfGpL1wKBgQDQbM0rYOK+1YToh7RanFLW0MpvQcvQHjsF\nqJ56yoza0f/3FNyrEy7vcwzI5m+mQLfRMLkrvljv+iavjylG2cZDr+/lK4QQRcyM\nLQctBJeSXw/y2+dS7AvL5XJQkRe8hpZTpFNdVsOnzWrqEl674CrFZKo89ORIirLJ\n7GJJgZTubQKBgQDF2FrGNKRREYnj9+41GHws2N5Jwjn1sJqZMCVGMbNmcD5RHJti\nXxSn1e+4XdjDLKZ70oUm777sJBLUOQi4IAv3UPOiu42WSha3gjak/4Sf50iPnBUD\nRtPGWb6oBJn6cBgAzIJSegzz86JfqWKsUNq/cMSD/nDvh1Rvjve5BcpgHwKBgAKi\n7bF3x0Z8svKyDMD8qzuWZokjvu1CBKMcr+yDtWZrM56vf98WHgjfXrEH4S+sL+cQ\ng7ce8EcQ1f5whCgmRxDCH/m5JDGEgILhau7R2Qz78Nq0l2eAHuIUY+7K9w7mcO5b\n7MYIe+8adRjC5LnhqwjWLiUZP+3++yX8vH2LixO9AoGATPqMHTEaIrIh999ahqmv\nOulHU1mIPsNEzbagWNwCmDJB5+MJPE76j59Gg1NMVmRQvDOnhktjCdyr7cLoSyb5\ncT0XqIpKa8tyk2RAMjqM52QwttVzRnDjhqrpyM+9HsPyP7huvTlkpwLBE8GR7cP3\nguigOK0SOM7v+1ceZuh/bm8=\n-----END PRIVATE KEY-----\n",
         "GITHUB_WEBHOOK_SECRET": "test-webhook-secret",
-      },
-    },
-    "production": {
-      "name": "cyspbot",
-      "durable_objects": {
-        "bindings": [
-          {
-            "name": "GITHUB_INSTALLATION",
-            "class_name": "GitHubInstallationObject",
-          },
-          {
-            "name": "OIDC_ISSUER_VERIFIER",
-            "class_name": "OidcIssuerVerifierObject",
-          },
-        ],
-      },
-      "d1_databases": [
-        {
-          "binding": "DB",
-          "database_name": "cyspbot",
-          "database_id": "35a687d9-6669-4021-8ce6-07def640e973",
-          "migrations_dir": "migrations",
-        },
-      ],
-      "routes": [
-        {
-          "pattern": "cyspbot.chikachow.org",
-          "custom_domain": true,
-        },
-      ],
-      "vars": {
-        "AUDIT_LOG_MAX_ENTRIES": "5000",
-        "AUDIT_LOG_RETENTION_DAYS": "180",
-        "GITHUB_API_BASE_URL": "https://api.github.com",
-        "GITHUB_APP_ID": "2419473",
-        "GITHUB_APP_CLIENT_ID": "Iv23liTtjzogToOIUmVg",
+        "PULL_REQUEST_HAIKU_ADMIN_GITHUB_USER_IDS": "42",
+        "PULL_REQUEST_HAIKU_TEXT_MODEL": "@cf/qwen/qwen3-30b-a3b-fp8",
       },
       "secrets_store_secrets": [
         {
@@ -151,8 +144,6 @@
           "store_id": "d38c6b7fbcc143dba27208fa1c044e37",
         },
       ],
-      "preview_urls": false,
-      "workers_dev": true,
     },
   },
 }

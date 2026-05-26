@@ -5,18 +5,18 @@
   "type": "module",
   "scripts": {
     "check": "node --run format:check && node --run lint && node --run typecheck && node --run test && node --run wrangler:check",
-    "deploy": "wrangler deploy",
-    "deploy:preview": "wrangler deploy --env preview",
-    "deploy:production": "wrangler deploy --env production",
+    "deploy": "wrangler deploy --env=\"\"",
+    "deploy:production": "wrangler deploy --env=\"\"",
     "dev": "wrangler dev",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "lint": "oxlint --type-aware --report-unused-disable-directives .",
     "lint:fix": "oxlint --type-aware --fix .",
+    "pull-request-haiku:probe": "node scripts/pull-request-haiku-probe.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "types:worker": "wrangler types",
-    "wrangler:check": "wrangler deploy --dry-run --env production",
+    "wrangler:check": "wrangler deploy --dry-run --env=\"\"",
     "wrangler:whoami": "wrangler whoami"
   },
   "dependencies": {
