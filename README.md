@@ -157,7 +157,7 @@ Production is configured for the custom domain `cyspbot.chikachow.org`. The prod
    - `DASHBOARD_TOKEN_ENCRYPTION_SECRET`
    - D1 binding `DB`
    - Durable Object bindings `GITHUB_INSTALLATION` and `OIDC_ISSUER_VERIFIER`
-   - optional Flagship binding `FLAGS` for the `pull-request-haiku` feature flag
+   - Flagship binding `FLAGS` for the `pull-request-haiku` feature flag
 
 4. Apply D1 migrations from [migrations](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/migrations).
 

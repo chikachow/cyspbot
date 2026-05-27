@@ -11,6 +11,13 @@
     "binding": "AI",
     "remote": true,
   },
+  "flagship": [
+    {
+      "binding": "FLAGS",
+      "app_id": "31c635ba-b0ad-422c-8708-5330d64c5cd8",
+      "remote": true,
+    },
+  ],
   "durable_objects": {
     "bindings": [
       {
@@ -88,6 +95,13 @@
         "binding": "AI",
         "remote": true,
       },
+      "flagship": [
+        {
+          "binding": "FLAGS",
+          "app_id": "31c635ba-b0ad-422c-8708-5330d64c5cd8",
+          "remote": true,
+        },
+      ],
       "durable_objects": {
         "bindings": [
           {
