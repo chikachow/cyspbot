@@ -451,9 +451,10 @@ Signed `pull_request` webhook deliveries also participate in pull request haiku 
 
 - action is `opened`, `reopened`, `synchronize`, `edited`, or `ready_for_review`
 - `repository.id`, `repository.full_name`, `pull_request.number`, and `pull_request.head.sha` are present
+- the `pull-request-haiku` Flagship feature flag evaluates to enabled
 - `repository.id` exists in `pull_request_haiku_repository_opt_ins`
 
-The webhook handler writes queue state in D1 and sends one message to `PULL_REQUEST_HAIKU_QUEUE`. The queue consumer creates or updates a single marker-owned issue comment on the pull request. The visible comment body is a generated haiku representing the pull request change.
+The webhook handler evaluates the feature flag with mechanical identifiers only: installation ID, repository ID, repository full name, and pull request number. It writes queue state in D1 and sends one message to `PULL_REQUEST_HAIKU_QUEUE` only when the feature flag is enabled and the repository is opted in. The queue consumer creates or updates a single marker-owned issue comment on the pull request. The visible comment body is a generated haiku representing the pull request change.
 
 The queue consumer reads mechanical pull request change facts and changed files from GitHub using a repository-scoped installation token with `metadata: read`, `pull_requests: write`, and `issues: write`. It does not send human-authored pull request text, such as the title or body, to the model. It does not read full patches in the first implementation. The consumer skips stale queue messages when the stored current head SHA no longer matches the message head SHA.
 
@@ -977,7 +978,7 @@ Logical fields:
 - enabled timestamp
 - optional enabled-by note
 
-Only opted-in repositories receive pull request haiku comment processing.
+Only repositories that are opted in while the `pull-request-haiku` Flagship feature flag is enabled receive pull request haiku comment processing.
 
 ### Pull Request Haiku Comment State
 

@@ -6,6 +6,14 @@ export interface SecretsStoreSecretBinding {
   get(): Promise<string | null>;
 }
 
+export interface FeatureFlagBinding {
+  getBooleanValue(
+    flagKey: string,
+    defaultValue: boolean,
+    context?: Record<string, string | number | boolean>,
+  ): Promise<boolean>;
+}
+
 export interface Env {
   AUDIT_LOG_MAX_ENTRIES?: string;
   AUDIT_LOG_RETENTION_DAYS?: string;
@@ -20,6 +28,7 @@ export interface Env {
   GITHUB_WEB_BASE_URL?: string;
   DB: D1Database;
   AI?: Ai;
+  FLAGS?: FeatureFlagBinding;
   GITHUB_INSTALLATION: DurableObjectNamespace<GitHubInstallationObject>;
   GITHUB_WEBHOOK_SECRET?: string;
   OIDC_ISSUER_VERIFIER: DurableObjectNamespace<OidcIssuerVerifierObject>;

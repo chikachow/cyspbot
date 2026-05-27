@@ -1,5 +1,6 @@
 import type { SignalInstallationReconciliationResult } from "../durable-objects/installation-object.ts";
 import type { Env } from "../env.ts";
+import { pullRequestHaikuFeatureEnabled } from "../pull-request-haiku/feature-flag.ts";
 import type { PullRequestHaikuQueueMessage } from "../pull-request-haiku/queue.ts";
 import {
   pullRequestHaikuRepositoryOptedIn,
@@ -222,6 +223,17 @@ async function enqueuePullRequestHaikuIfNeeded(input: {
     headSha.length === 0
   ) {
     return "invalid_payload";
+  }
+
+  if (
+    !(await pullRequestHaikuFeatureEnabled(input.env, {
+      installationId: input.installationId,
+      pullRequestNumber,
+      repositoryFullName,
+      repositoryId,
+    }))
+  ) {
+    return "feature_disabled";
   }
 
   if (!(await pullRequestHaikuRepositoryOptedIn(input.env, repositoryId))) {

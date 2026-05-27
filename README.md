@@ -7,7 +7,7 @@ The current product is intentionally narrow:
 - `POST /token` is the primary token exchange endpoint.
 - `POST /github/claims` verifies caller identity and GitHub App installation presence without issuing an Installation Token.
 - `POST /github/webhooks` accepts signed GitHub App webhooks, records metadata, and signals installation reconciliation.
-- Signed `pull_request` webhooks for opted-in repositories enqueue a pull request haiku comment refresh.
+- Signed `pull_request` webhooks enqueue a pull request haiku comment refresh when the Flagship feature flag is enabled and the repository is opted in.
 - `GET /dashboard` is an operational dashboard for repository visibility, recent Installation Token Issuance audit history, and admin pull request haiku opt-ins.
 
 The primary service contract is [docs/service-contract.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/service-contract.md). The documentation map is [docs/README.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/README.md).
@@ -63,7 +63,7 @@ Verifies a GitHub Actions OIDC bearer token and confirms the configured GitHub A
 
 Accepts signed JSON GitHub App webhook deliveries up to `256 KiB`. Non-`ping` events require a positive integer `installation.id`. Accepted non-`ping` deliveries signal the per-installation coordinator and write metadata to D1. Raw webhook bodies are not retained.
 
-For repositories listed in `pull_request_haiku_repository_opt_ins`, accepted `pull_request` deliveries for `opened`, `reopened`, `synchronize`, `edited`, and `ready_for_review` enqueue asynchronous haiku comment work. The worker reads mechanical change facts from the pull request and changed file list, excluding human-authored pull request text such as title and body, then creates or updates one marker-owned pull request comment containing:
+When the `pull-request-haiku` Flagship feature flag is enabled, repositories listed in `pull_request_haiku_repository_opt_ins` have accepted `pull_request` deliveries for `opened`, `reopened`, `synchronize`, `edited`, and `ready_for_review` enqueue asynchronous haiku comment work. The worker reads mechanical change facts from the pull request and changed file list, excluding human-authored pull request text such as title and body, then creates or updates one marker-owned pull request comment containing:
 
 - a generated haiku representing the pull request change
 
@@ -157,6 +157,7 @@ Production is configured for the custom domain `cyspbot.chikachow.org`. The prod
    - `DASHBOARD_TOKEN_ENCRYPTION_SECRET`
    - D1 binding `DB`
    - Durable Object bindings `GITHUB_INSTALLATION` and `OIDC_ISSUER_VERIFIER`
+   - optional Flagship binding `FLAGS` for the `pull-request-haiku` feature flag
 
 4. Apply D1 migrations from [migrations](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/migrations).
 

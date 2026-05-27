@@ -27,6 +27,7 @@ describe("cyspbot worker", () => {
 
   beforeEach(async () => {
     enqueuedPullRequestHaikuMessages.length = 0;
+    testEnv.FLAGS = undefined;
     await workerEnv.DB.prepare("DELETE FROM pull_request_haiku_runs").run();
     await workerEnv.DB.prepare("DELETE FROM pull_request_haiku_comments").run();
     await workerEnv.DB.prepare("DELETE FROM pull_request_haiku_repository_opt_ins").run();
@@ -449,6 +450,77 @@ describe("cyspbot worker", () => {
 
     expect(response.status).toBe(202);
     expect(enqueuedPullRequestHaikuMessages).toHaveLength(0);
+  });
+
+  it("does not enqueue pull request haiku comments when the feature flag is disabled", async () => {
+    await workerEnv.DB.prepare(
+      `
+        INSERT OR REPLACE INTO pull_request_haiku_repository_opt_ins (
+          repository_id,
+          repository_full_name_display,
+          enabled_at,
+          enabled_by
+        ) VALUES (?, ?, ?, ?)
+      `,
+    )
+      .bind(123456789, "cysp/terraform-provider-contentful", "2026-05-24T00:00:00.000Z", "test")
+      .run();
+
+    const evaluations: Array<{
+      context?: Record<string, string | number | boolean>;
+      defaultValue: boolean;
+      flagKey: string;
+    }> = [];
+    testEnv.FLAGS = {
+      async getBooleanValue(flagKey, defaultValue, context) {
+        evaluations.push({ context, defaultValue, flagKey });
+        return false;
+      },
+    };
+
+    const body = JSON.stringify({
+      action: "synchronize",
+      installation: {
+        id: 67890,
+      },
+      pull_request: {
+        head: {
+          sha: "abc123def456abc123def456abc123def456abcd",
+        },
+        number: 12,
+      },
+      repository: {
+        full_name: "cysp/terraform-provider-contentful",
+        id: 123456789,
+      },
+    });
+    const headers = githubWebhookHeaders(
+      body,
+      "test-webhook-secret",
+      "pull_request",
+      "delivery-pr-flag-disabled",
+    );
+
+    const response = await fetchWorker("https://example.test/github/webhooks", {
+      body,
+      headers,
+      method: "POST",
+    });
+
+    expect(response.status).toBe(202);
+    expect(enqueuedPullRequestHaikuMessages).toHaveLength(0);
+    expect(evaluations).toEqual([
+      {
+        context: {
+          installationId: 67890,
+          pullRequestNumber: 12,
+          repositoryFullName: "cysp/terraform-provider-contentful",
+          repositoryId: 123456789,
+        },
+        defaultValue: true,
+        flagKey: "pull-request-haiku",
+      },
+    ]);
   });
 
   it("enqueues opted-in pull request webhook deliveries for haiku comment processing", async () => {
