@@ -94,6 +94,18 @@ const baseTestDependencies = {
 
     await processPullRequestHaikuMessage(env, message, {
       generatePullRequestHaiku: async () => ({
+        costEstimate: {
+          cachedInputTokens: null,
+          estimatedCostUsd: 0.0000577,
+          estimatedNeurons: 5.2345,
+          inputTokens: 1000,
+          inputUsdPerMillionTokens: 0.051,
+          model: "@cf/qwen/qwen3-30b-a3b-fp8",
+          outputTokens: 20,
+          outputUsdPerMillionTokens: 0.335,
+          scope: "prompt",
+          totalTokens: 1020,
+        },
         haiku: {
           text: "Queue winds softly\nComments bloom on branch changes\nReview dawns again",
         },
@@ -415,6 +427,8 @@ async function fetchGitHubTestDouble(
     if (
       typeof body["body"] !== "string" ||
       !body["body"].includes("cyspbot:pull-request-haiku") ||
+      !body["body"].includes("cyspbot:pull-request-haiku-cost") ||
+      !body["body"].includes('"estimatedCostUsd":0.0000577') ||
       !body["body"].includes('<p align="center">') ||
       !body["body"].includes("<em>Queue winds softly<br>") ||
       !body["body"].includes("Comments bloom on branch changes<br>") ||

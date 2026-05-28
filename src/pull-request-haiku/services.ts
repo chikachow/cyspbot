@@ -18,7 +18,7 @@ import {
   markPullRequestHaikuRunStarted,
   markPullRequestHaikuRunSucceeded,
 } from "../storage/pull-request-haiku.ts";
-import type { PullRequestHaiku } from "./comment.ts";
+import type { PullRequestHaiku, PullRequestHaikuCostEstimate } from "./comment.ts";
 import type { PullRequestHaikuInput } from "./input.ts";
 
 export type PullRequestHaikuTextModel =
@@ -26,6 +26,7 @@ export type PullRequestHaikuTextModel =
   | "@cf/qwen/qwen3-30b-a3b-fp8";
 
 export interface PullRequestHaikuTextResult {
+  costEstimate?: PullRequestHaikuCostEstimate;
   haiku: PullRequestHaiku;
   model: PullRequestHaikuTextModel | null;
 }
