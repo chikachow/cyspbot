@@ -455,7 +455,7 @@ Signed `pull_request` webhook deliveries also participate in pull request haiku 
 
 The webhook handler evaluates the feature flag with mechanical identifiers only: installation ID, repository ID, repository full name, and pull request number. It writes queue state in D1 and sends one message to `PULL_REQUEST_HAIKU_QUEUE` only when the feature flag is enabled and the repository is opted in. The queue consumer creates or updates a single marker-owned issue comment on the pull request. The visible comment body is a generated haiku representing the pull request change.
 
-The queue consumer reads mechanical pull request change facts and changed files from GitHub using a repository-scoped installation token with `metadata: read`, `pull_requests: write`, and `issues: write`. It does not send human-authored pull request text, such as the title or body, to the model. It does send changed filenames and aggregate change counts, so repository opt-in is required before processing private or sensitive repositories. It does not read full patches in the first implementation. The consumer skips stale queue messages when the stored current head SHA no longer matches the message head SHA.
+The queue consumer reads code-related pull request change facts and changed files from GitHub using a repository-scoped installation token with `metadata: read`, `pull_requests: write`, and `issues: write`. It does not send human-authored pull request text, such as the title, body, branch names, commit messages, or review comments, to the model. Model input contains filenames, aggregate change counts, and changed-file patch hunks up to a conservative prompt budget. Oversized input is truncated at file boundaries. The consumer skips stale queue messages when the stored current head SHA no longer matches the message head SHA.
 
 The AI output is advisory presentation content only. It is not an authorization input and does not change Installation Token Issuance policy.
 
@@ -959,10 +959,8 @@ Logical fields:
 
 - GitHub repository ID
 - repository full name display
-- enabled timestamp
-- optional enabled-by note
 
-Only repositories that are opted in while the `pull-request-haiku` Flagship feature flag is enabled receive pull request haiku comment processing.
+Only repositories that are opted in while the `pull-request-haiku` Flagship feature flag is enabled receive pull request haiku comment processing. Diff context is enabled for every repository opt-in.
 
 ### Pull Request Haiku Comment State
 

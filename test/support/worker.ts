@@ -2,6 +2,7 @@ import { createPrivateKey } from "node:crypto";
 
 import d1SchemaSql from "../../migrations/0001_dashboard_d1_recut.sql?raw";
 import pullRequestHaikuSchemaSql from "../../migrations/0004_pull_request_haiku.sql?raw";
+import pullRequestHaikuOptInAttributionSql from "../../migrations/0006_drop_pull_request_haiku_opt_in_attribution.sql?raw";
 import type { OidcIssuerVerifierObject } from "../../src/durable-objects/oidc-issuer-verifier-object.ts";
 import type { Env } from "../../src/env.ts";
 import { loadIssuerRegistrationByIssuer } from "../../src/oidc/issuer-registrations.ts";
@@ -124,7 +125,9 @@ export const dashboardRepositoryAdminDeniedApp = createApp({
 });
 
 export async function migrateTestDatabase(): Promise<void> {
-  for (const statement of `${d1SchemaSql}\n${pullRequestHaikuSchemaSql}`.split(/;\s*(?:\n|$)/u)) {
+  for (const statement of `${d1SchemaSql}
+${pullRequestHaikuSchemaSql}
+${pullRequestHaikuOptInAttributionSql}`.split(/;\s*(?:\n|$)/u)) {
     if (statement.trim().length > 0) {
       await workerEnv.DB.prepare(statement).run();
     }
@@ -371,6 +374,8 @@ async function fetchGitHubTestDouble(
         changes: 90,
         deletions: 10,
         filename: "src/worker/app.ts",
+        patch:
+          "@@ -1,3 +1,4 @@\n import { createApp } from './app';\n+import { queueHaiku } from './haiku';",
         status: "modified",
       },
       {
@@ -378,6 +383,7 @@ async function fetchGitHubTestDouble(
         changes: 40,
         deletions: 10,
         filename: "migrations/0004_pull_request_haiku.sql",
+        patch: "@@ -1,3 +1,4 @@\n CREATE TABLE pull_request_haiku_runs (\n+  output_kind TEXT",
         status: "added",
       },
       {
@@ -385,6 +391,8 @@ async function fetchGitHubTestDouble(
         changes: 20,
         deletions: 10,
         filename: "test/worker.test.ts",
+        patch:
+          "@@ -1,3 +1,4 @@\n describe('worker', () => {\n+  it('writes haiku comments', async () => {})",
         status: "modified",
       },
     ]);

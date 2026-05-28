@@ -82,8 +82,6 @@ export async function handleDashboardPullRequestHaikuRequest(
   if (request.method === "POST") {
     const response = await handlePullRequestHaikuToggleRequestWithAccessErrors({
       env,
-      githubLogin: dashboardSession.session.githubLoginDisplay,
-      now,
       rawSessionToken: dashboardSession.rawSessionToken,
       session: dashboardSession.session,
       request,
@@ -137,8 +135,6 @@ export async function handleDashboardPullRequestHaikuRequest(
 async function handlePullRequestHaikuToggleRequestWithAccessErrors(input: {
   dependencies: AppDependencies;
   env: Env;
-  githubLogin: string;
-  now: string;
   rawSessionToken: string;
   request: Request;
   session: DashboardSession;
@@ -222,8 +218,6 @@ export async function handleDashboardRepositoryDetailsRequest(
 async function handlePullRequestHaikuToggleRequest(input: {
   dependencies: AppDependencies;
   env: Env;
-  githubLogin: string;
-  now: string;
   request: Request;
   session: DashboardSession;
 }): Promise<Response | null> {
@@ -247,8 +241,6 @@ async function handlePullRequestHaikuToggleRequest(input: {
     input.env,
     {
       enabled: action === "enable",
-      enabledAt: input.now,
-      enabledBy: input.githubLogin,
       repositoryId,
       session: input.session,
     },

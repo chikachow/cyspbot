@@ -13,17 +13,10 @@ import {
 
 export interface GitHubPullRequestDetails {
   additions: number;
-  baseRef: string;
-  body: string | null;
   changedFiles: number;
   deletions: number;
-  draft: boolean;
-  headRef: string;
   headSha: string;
-  htmlUrl: string;
   number: number;
-  title: string;
-  userLogin: string;
 }
 
 export interface GitHubPullRequestChangedFile {
@@ -31,6 +24,7 @@ export interface GitHubPullRequestChangedFile {
   changes: number;
   deletions: number;
   filename: string;
+  patch: string | null;
   status: string;
 }
 
@@ -41,23 +35,12 @@ export interface GitHubIssueComment {
 
 interface GitHubPullRequestApiResponse {
   additions?: unknown;
-  base?: {
-    ref?: unknown;
-  };
-  body?: unknown;
   changed_files?: unknown;
   deletions?: unknown;
-  draft?: unknown;
   head?: {
-    ref?: unknown;
     sha?: unknown;
   };
-  html_url?: unknown;
   number?: unknown;
-  title?: unknown;
-  user?: {
-    login?: unknown;
-  };
 }
 
 interface GitHubPullRequestChangedFileApiResponse {
@@ -65,6 +48,7 @@ interface GitHubPullRequestChangedFileApiResponse {
   changes?: unknown;
   deletions?: unknown;
   filename?: unknown;
+  patch?: unknown;
   status?: unknown;
 }
 
@@ -105,14 +89,7 @@ export async function getPullRequestDetails(
 
   if (
     typeof body.number !== "number" ||
-    typeof body.title !== "string" ||
-    (body.body !== null && body.body !== undefined && typeof body.body !== "string") ||
-    typeof body.html_url !== "string" ||
-    typeof body.user?.login !== "string" ||
     typeof body.head?.sha !== "string" ||
-    typeof body.head.ref !== "string" ||
-    typeof body.base?.ref !== "string" ||
-    typeof body.draft !== "boolean" ||
     typeof body.additions !== "number" ||
     typeof body.deletions !== "number" ||
     typeof body.changed_files !== "number"
@@ -122,17 +99,10 @@ export async function getPullRequestDetails(
 
   return {
     additions: body.additions,
-    baseRef: body.base.ref,
-    body: body.body ?? null,
     changedFiles: body.changed_files,
     deletions: body.deletions,
-    draft: body.draft,
-    headRef: body.head.ref,
     headSha: body.head.sha,
-    htmlUrl: body.html_url,
     number: body.number,
-    title: body.title,
-    userLogin: body.user.login,
   };
 }
 
@@ -174,6 +144,7 @@ export async function listPullRequestChangedFiles(
         changes: file.changes,
         deletions: file.deletions,
         filename: file.filename,
+        patch: typeof file.patch === "string" ? file.patch : null,
         status: file.status,
       });
     }

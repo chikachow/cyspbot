@@ -6,8 +6,6 @@ import {
   listIssueComments,
   listPullRequestChangedFiles,
   updateIssueComment,
-  type GitHubPullRequestChangedFile,
-  type GitHubPullRequestDetails,
 } from "../github/pull-request.ts";
 import { GitHubApiError, type GitHubApiDependencies } from "../github/http.ts";
 import {
@@ -23,6 +21,7 @@ import {
   type PullRequestHaiku,
   renderPullRequestHaikuComment,
 } from "./comment.ts";
+import { buildPullRequestHaikuInput, type PullRequestHaikuInput } from "./input.ts";
 import type { PullRequestHaikuQueueMessage } from "./queue.ts";
 
 type PullRequestHaikuTextModel = "@cf/meta/llama-3.2-3b-instruct" | "@cf/qwen/qwen3-30b-a3b-fp8";
@@ -38,8 +37,7 @@ export interface PullRequestHaikuDependencies extends GitHubApiDependencies {
   now(): Date;
   generatePullRequestHaiku?(
     env: Env,
-    pullRequest: GitHubPullRequestDetails,
-    files: GitHubPullRequestChangedFile[],
+    input: PullRequestHaikuInput,
   ): Promise<PullRequestHaikuTextResult>;
 }
 
@@ -116,10 +114,14 @@ async function executePullRequestHaikuRun(
       dependencies,
     ),
   ]);
+  const input = buildPullRequestHaikuInput({
+    files,
+    pullRequest,
+  });
   const textResult =
     dependencies.generatePullRequestHaiku === undefined
-      ? await generatePullRequestHaiku(env, pullRequest, files)
-      : await dependencies.generatePullRequestHaiku(env, pullRequest, files);
+      ? await generatePullRequestHaiku(env, input)
+      : await dependencies.generatePullRequestHaiku(env, input);
   const body = renderPullRequestHaikuComment({
     haiku: textResult.haiku,
     pullRequest,
@@ -174,8 +176,7 @@ function finalizePullRequestHaikuRun(
 
 async function generatePullRequestHaiku(
   env: Env,
-  pullRequest: GitHubPullRequestDetails,
-  files: GitHubPullRequestChangedFile[],
+  input: PullRequestHaikuInput,
 ): Promise<PullRequestHaikuTextResult> {
   const fallback = fallbackPullRequestHaiku();
   const fallbackResult = {
@@ -194,8 +195,8 @@ async function generatePullRequestHaiku(
       max_tokens: 180,
       messages: [
         {
-          content: `You write one short haiku for a GitHub pull request from mechanical changed-file facts only.
-Be inventive, but stay grounded in the provided facts and do not claim to have read patches.
+          content: `You write one short haiku for a GitHub pull request from code-related pull request facts and bounded diff hunks.
+Be inventive, but stay grounded in the provided code facts and diff context.
 The facts intentionally exclude human-authored pull request text such as titles, descriptions, branch names, and commit messages.
 Do not spend tokens on reasoning. Return the haiku directly. /no_think
 
@@ -205,7 +206,7 @@ Prefer haiku-like imagery over strict syllable counting. Do not include a title,
           role: "system",
         },
         {
-          content: `/no_think\n${JSON.stringify(pullRequestFacts(pullRequest, files))}`,
+          content: `/no_think\n${JSON.stringify(input)}`,
           role: "user",
         },
       ],
@@ -217,7 +218,7 @@ Prefer haiku-like imagery over strict syllable counting. Do not include a title,
 
     if (response === null) {
       console.error("pull_request_haiku_text_generation_unrecognized_response", {
-        pull_request: pullRequest.number,
+        input_kind: input.kind,
         response_shape: responseShape(result),
       });
       return fallbackResult;
@@ -230,7 +231,7 @@ Prefer haiku-like imagery over strict syllable counting. Do not include a title,
   } catch (error) {
     console.error("pull_request_haiku_generation_failed", {
       message: error instanceof Error ? error.message : String(error),
-      pull_request: pullRequest.number,
+      input_kind: input.kind,
     });
     return fallbackResult;
   }
@@ -374,25 +375,6 @@ function responseShape(result: unknown): string {
   }
 
   return Object.keys(result).sort().join(",");
-}
-
-function pullRequestFacts(
-  pullRequest: GitHubPullRequestDetails,
-  files: GitHubPullRequestChangedFile[],
-) {
-  return {
-    changed_files: pullRequest.changedFiles,
-    files: files.slice(0, 80).map((file) => ({
-      additions: file.additions,
-      deletions: file.deletions,
-      filename: file.filename,
-      status: file.status,
-    })),
-    stats: {
-      additions: pullRequest.additions,
-      deletions: pullRequest.deletions,
-    },
-  };
 }
 
 function haikuString(value: string, fallback: string): string {

@@ -486,13 +486,11 @@ describe("cyspbot worker", () => {
       `
         INSERT OR REPLACE INTO pull_request_haiku_repository_opt_ins (
           repository_id,
-          repository_full_name_display,
-          enabled_at,
-          enabled_by
-        ) VALUES (?, ?, ?, ?)
+          repository_full_name_display
+        ) VALUES (?, ?)
       `,
     )
-      .bind(123456789, "cysp/terraform-provider-contentful", "2026-05-24T00:00:00.000Z", "test")
+      .bind(123456789, "cysp/terraform-provider-contentful")
       .run();
 
     const evaluations: Array<{
@@ -557,13 +555,11 @@ describe("cyspbot worker", () => {
       `
         INSERT OR REPLACE INTO pull_request_haiku_repository_opt_ins (
           repository_id,
-          repository_full_name_display,
-          enabled_at,
-          enabled_by
-        ) VALUES (?, ?, ?, ?)
+          repository_full_name_display
+        ) VALUES (?, ?)
       `,
     )
-      .bind(123456789, "cysp/terraform-provider-contentful", "2026-05-24T00:00:00.000Z", "test")
+      .bind(123456789, "cysp/terraform-provider-contentful")
       .run();
 
     const body = JSON.stringify({
@@ -697,7 +693,11 @@ describe("cyspbot worker", () => {
       `,
     )
       .bind("delivery-pr-queue")
-      .first<{ comment_id: number; output_kind: string; run_status: string }>();
+      .first<{
+        comment_id: number;
+        output_kind: string;
+        run_status: string;
+      }>();
 
     expect(row).toEqual({
       comment_id: 987654,
@@ -879,15 +879,16 @@ describe("cyspbot worker", () => {
 
     const optInRow = await workerEnv.DB.prepare(
       `
-        SELECT repository_full_name_display, enabled_by
+        SELECT repository_full_name_display
         FROM pull_request_haiku_repository_opt_ins
         WHERE repository_id = ?
       `,
     )
       .bind(123456789)
-      .first<{ enabled_by: string; repository_full_name_display: string }>();
+      .first<{
+        repository_full_name_display: string;
+      }>();
     expect(optInRow).toEqual({
-      enabled_by: "sally",
       repository_full_name_display: "cysp/terraform-provider-contentful",
     });
 

@@ -38,8 +38,6 @@ export async function setPullRequestHaikuRepositoryOptIn(
   env: Env,
   input: {
     enabled: boolean;
-    enabledAt: string;
-    enabledBy: string;
     repositoryFullName: string;
     repositoryId: number;
   },
@@ -60,17 +58,13 @@ export async function setPullRequestHaikuRepositoryOptIn(
     `
       INSERT INTO pull_request_haiku_repository_opt_ins (
         repository_id,
-        repository_full_name_display,
-        enabled_at,
-        enabled_by
-      ) VALUES (?, ?, ?, ?)
+        repository_full_name_display
+      ) VALUES (?, ?)
       ON CONFLICT(repository_id) DO UPDATE SET
-        repository_full_name_display = excluded.repository_full_name_display,
-        enabled_at = excluded.enabled_at,
-        enabled_by = excluded.enabled_by
+        repository_full_name_display = excluded.repository_full_name_display
     `,
   )
-    .bind(input.repositoryId, input.repositoryFullName, input.enabledAt, input.enabledBy)
+    .bind(input.repositoryId, input.repositoryFullName)
     .run();
 }
 

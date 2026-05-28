@@ -121,6 +121,7 @@ _Avoid_: Trust configuration, token cache, global verifier state
 - The **Webhook Receiver** accepts GitHub webhook deliveries only after signature and envelope validation
 - The **Webhook Receiver** routes each accepted **Installation Reconciliation** signal to the **Installation Coordinator** keyed by **GitHub App Installation**
 - cyspbot does not keep a generic webhook delivery log. Future current-state repair happens through **Installation Reconciliation**, and pull request haiku work records its own queue and run state.
+- Pull request haiku model input contains code-related pull request facts and bounded changed-file patch hunks, without title, body, branch name, commit message, or review-comment text.
 - The **Webhook Receiver** fails closed with a server-side error when no webhook secret is configured
 - Full **Installation Reconciliation** execution, scheduled retry dispatch, cleanup jobs, and dashboard diagnostics are future implementation work, not current product behavior.
 

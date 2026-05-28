@@ -41,8 +41,6 @@ export async function setDashboardPullRequestHaikuOptIn(
   env: Env,
   input: {
     enabled: boolean;
-    enabledAt: string;
-    enabledBy: string;
     repositoryId: number;
     session: DashboardSession;
   },
@@ -69,8 +67,6 @@ export async function setDashboardPullRequestHaikuOptIn(
 
   await setPullRequestHaikuRepositoryOptIn(env, {
     enabled: input.enabled,
-    enabledAt: input.enabledAt,
-    enabledBy: input.enabledBy,
     repositoryFullName: repository.fullName,
     repositoryId: input.repositoryId,
   });

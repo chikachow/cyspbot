@@ -1,0 +1,5 @@
+ALTER TABLE pull_request_haiku_repository_opt_ins
+DROP COLUMN enabled_at;
+
+ALTER TABLE pull_request_haiku_repository_opt_ins
+DROP COLUMN enabled_by;
