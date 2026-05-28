@@ -30,13 +30,15 @@ type RouteHandler = (
 
 interface ExactRoute {
   handler: RouteHandler;
-  methods: string;
+  methodNotAllowed?: () => Response;
+  methods: readonly string[];
   path: string;
 }
 
 interface PrefixRoute {
   handler: RouteHandler;
-  methods: string;
+  methodNotAllowed?: () => Response;
+  methods: readonly string[];
   prefix: string;
 }
 
@@ -45,61 +47,62 @@ type WorkerRoute = ExactRoute | PrefixRoute;
 const workerRoutes: WorkerRoute[] = [
   {
     handler: () => dashboardRedirectResponse("/dashboard"),
-    methods: "GET",
+    methods: ["GET"],
     path: "/",
   },
   {
     handler: (request, env, dependencies) => handleTokenExchangeRequest(request, env, dependencies),
-    methods: "POST",
+    methodNotAllowed: tokenExchangeMethodNotAllowedResponse,
+    methods: ["POST"],
     path: "/token",
   },
   {
     handler: (request, env, dependencies) => handleClaimsRequest(request, env, dependencies),
-    methods: "POST",
+    methods: ["POST"],
     path: "/github/claims",
   },
   {
     handler: (request, env, dependencies) => handleGitHubWebhookRequest(request, env, dependencies),
-    methods: "POST",
+    methods: ["POST"],
     path: "/github/webhooks",
   },
   {
     handler: (request) => handleGitHubAppSetupRequest(request),
-    methods: "GET",
+    methods: ["GET"],
     path: "/github/setup",
   },
   {
     handler: (request, env) => handleDashboardLoginRequest(request, env),
-    methods: "GET",
+    methods: ["GET"],
     path: "/login/github",
   },
   {
     handler: (request, env, dependencies) =>
       handleDashboardCallbackRequest(request, env, dependencies),
-    methods: "GET",
+    methods: ["GET"],
     path: "/auth/github/callback",
   },
   {
     handler: (request, env) => handleDashboardLogoutRequest(request, env),
-    methods: "GET",
+    methods: ["GET"],
     path: "/logout",
   },
   {
     handler: (request, env, dependencies) =>
       handleDashboardRepositoryListRequest(request, env, dependencies),
-    methods: "GET",
+    methods: ["GET"],
     path: "/dashboard",
   },
   {
     handler: (request, env, dependencies) =>
       handleDashboardPullRequestHaikuRequest(request, env, dependencies),
-    methods: "GET, POST",
+    methods: ["GET", "POST"],
     path: "/dashboard/pull-request-haikus",
   },
   {
     handler: (request, env, dependencies, url) =>
       handleDashboardRepositoryDetailsRequest(request, env, url.pathname, dependencies),
-    methods: "GET",
+    methods: ["GET"],
     prefix: "/dashboard/repositories/",
   },
 ];
@@ -117,9 +120,9 @@ export function createApp(
       }
 
       if (!methodAllowed(route, request.method)) {
-        return url.pathname === "/token"
-          ? tokenExchangeMethodNotAllowedResponse()
-          : problemResponse(405, { allow: route.methods });
+        return (
+          route.methodNotAllowed?.() ?? problemResponse(405, { allow: route.methods.join(", ") })
+        );
       }
 
       return route.handler(request, env, dependencies, url);
@@ -151,8 +154,5 @@ function routeMatches(route: WorkerRoute, pathname: string): boolean {
 }
 
 function methodAllowed(route: WorkerRoute, method: string): boolean {
-  return route.methods
-    .split(",")
-    .map((value) => value.trim())
-    .includes(method);
+  return route.methods.includes(method);
 }

@@ -37,6 +37,16 @@ interface AuthenticatedWebhookEnvelope {
   receivedAt: string;
 }
 
+type ParsedWebhookDelivery =
+  | {
+      kind: "installation";
+      installationId: number;
+      payload: InstallationWebhookPayload;
+    }
+  | {
+      kind: "ping";
+    };
+
 export interface WebhookDeliveryAcceptanceDependencies {
   enqueuePullRequestHaikuMessage(env: Env, message: PullRequestHaikuQueueMessage): Promise<void>;
   now(): Date;
@@ -52,6 +62,7 @@ export type WebhookDeliveryAcceptanceResult =
       kind: "rejected";
       status: number;
     };
+type WebhookDeliveryRejection = Extract<WebhookDeliveryAcceptanceResult, { kind: "rejected" }>;
 
 export async function acceptGitHubWebhookDelivery(
   request: Request,
@@ -74,11 +85,11 @@ export async function acceptGitHubWebhookDelivery(
 
   const parsedDelivery = parseWebhookDelivery(envelope);
 
-  if (parsedDelivery.kind !== "parsed") {
+  if (parsedDelivery.kind === "rejected") {
     return parsedDelivery;
   }
 
-  if (envelope.event === "ping") {
+  if (parsedDelivery.kind === "ping") {
     return accepted({ accepted: true, event: envelope.event });
   }
 
@@ -163,9 +174,7 @@ async function authenticateWebhookEnvelope(
 
 function parseWebhookDelivery(
   envelope: AuthenticatedWebhookEnvelope,
-):
-  | { installationId: number; kind: "parsed"; payload: InstallationWebhookPayload }
-  | WebhookDeliveryAcceptanceResult {
+): ParsedWebhookDelivery | WebhookDeliveryRejection {
   let payload: InstallationWebhookPayload;
 
   try {
@@ -177,11 +186,7 @@ function parseWebhookDelivery(
   }
 
   if (envelope.event === "ping") {
-    return {
-      installationId: 0,
-      kind: "parsed",
-      payload,
-    };
+    return { kind: "ping" };
   }
 
   const installationId = payload.installation?.id;
@@ -192,7 +197,7 @@ function parseWebhookDelivery(
 
   return {
     installationId,
-    kind: "parsed",
+    kind: "installation",
     payload,
   };
 }
@@ -287,7 +292,9 @@ function pullRequestHaikuActionSupported(action: string): boolean {
   );
 }
 
-function accepted(body: WebhookAcceptedBody): WebhookDeliveryAcceptanceResult {
+function accepted(
+  body: WebhookAcceptedBody,
+): Extract<WebhookDeliveryAcceptanceResult, { kind: "accepted" }> {
   return {
     body,
     kind: "accepted",
@@ -295,7 +302,7 @@ function accepted(body: WebhookAcceptedBody): WebhookDeliveryAcceptanceResult {
   };
 }
 
-function rejected(status: number): WebhookDeliveryAcceptanceResult {
+function rejected(status: number): WebhookDeliveryRejection {
   return {
     kind: "rejected",
     status,

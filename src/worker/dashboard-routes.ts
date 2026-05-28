@@ -8,8 +8,8 @@ import { parseDashboardRepositoryRoute } from "../dashboard/paths.ts";
 import type { DashboardSession } from "../dashboard/types.ts";
 import {
   getAccessibleDashboardRepositoryByFullName,
+  listAccessibleDashboardRepositories,
   listDashboardPullRequestHaikuModel,
-  listDashboardRepositoryListModel,
   setDashboardPullRequestHaikuOptIn,
 } from "../dashboard/service.ts";
 import {
@@ -33,10 +33,10 @@ export async function handleDashboardRepositoryListRequest(
   }
 
   const now = dependencies.now().toISOString();
-  let repositories: Awaited<ReturnType<typeof listDashboardRepositoryListModel>>;
+  let repositories: Awaited<ReturnType<typeof listAccessibleDashboardRepositories>>;
 
   try {
-    repositories = await listDashboardRepositoryListModel(
+    repositories = await listAccessibleDashboardRepositories(
       env,
       dashboardSession.session,
       dependencies,
@@ -78,6 +78,25 @@ export async function handleDashboardPullRequestHaikuRequest(
   }
 
   const now = dependencies.now().toISOString();
+
+  if (request.method === "POST") {
+    const response = await handlePullRequestHaikuToggleRequestWithAccessErrors({
+      env,
+      githubLogin: dashboardSession.session.githubLoginDisplay,
+      now,
+      rawSessionToken: dashboardSession.rawSessionToken,
+      session: dashboardSession.session,
+      request,
+      dependencies,
+    });
+
+    if (response !== null) {
+      return response;
+    }
+
+    return dashboardRedirectResponse("/dashboard/pull-request-haikus");
+  }
+
   let repositories: Awaited<ReturnType<typeof listDashboardPullRequestHaikuModel>>;
 
   try {
@@ -107,29 +126,36 @@ export async function handleDashboardPullRequestHaikuRequest(
     return problemResponse(403);
   }
 
-  if (request.method === "POST") {
-    const response = await handlePullRequestHaikuToggleRequest({
-      env,
-      githubLogin: dashboardSession.session.githubLoginDisplay,
-      now,
-      session: dashboardSession.session,
-      request,
-      dependencies,
-    });
-
-    if (response !== null) {
-      return response;
-    }
-
-    return dashboardRedirectResponse("/dashboard/pull-request-haikus");
-  }
-
   return htmlResponse(
     renderDashboardPullRequestHaikuPage({
       githubLogin: dashboardSession.session.githubLoginDisplay,
       repositories,
     }),
   );
+}
+
+async function handlePullRequestHaikuToggleRequestWithAccessErrors(input: {
+  dependencies: AppDependencies;
+  env: Env;
+  githubLogin: string;
+  now: string;
+  rawSessionToken: string;
+  request: Request;
+  session: DashboardSession;
+}): Promise<Response | null> {
+  try {
+    return handlePullRequestHaikuToggleRequest(input);
+  } catch (error) {
+    const response = await responseForDashboardRepositoryAccessCheckError({
+      env: input.env,
+      request: input.request,
+      error,
+      githubUserId: input.session.githubUserId,
+      rawSessionToken: input.rawSessionToken,
+    });
+
+    return response ?? problemResponse(503);
+  }
 }
 
 export async function handleDashboardRepositoryDetailsRequest(
@@ -228,6 +254,10 @@ async function handlePullRequestHaikuToggleRequest(input: {
     },
     input.dependencies,
   );
+
+  if (result === "forbidden") {
+    return problemResponse(403);
+  }
 
   if (result === "not_found") {
     return problemResponse(404);

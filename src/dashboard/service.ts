@@ -16,15 +16,6 @@ import type {
   DashboardSession,
 } from "./types.ts";
 
-export async function listDashboardRepositoryListModel(
-  env: Env,
-  session: DashboardSession,
-  dependencies: GitHubApiDependencies,
-  now: string,
-): Promise<DashboardRepositoryListItem[]> {
-  return listAccessibleDashboardRepositories(env, session, dependencies, now);
-}
-
 export async function listDashboardPullRequestHaikuModel(
   env: Env,
   session: DashboardSession,
@@ -56,8 +47,16 @@ export async function setDashboardPullRequestHaikuOptIn(
     session: DashboardSession;
   },
   dependencies: GitHubApiDependencies,
-): Promise<"not_found" | "ok"> {
+): Promise<"forbidden" | "not_found" | "ok"> {
   const repositories = await listAccessibleRepositoryAccesses(env, input.session, dependencies);
+  const administeredRepositories = repositories.filter(
+    (repository) => repository.permissions.admin,
+  );
+
+  if (administeredRepositories.length === 0) {
+    return "forbidden";
+  }
+
   const repository = repositories.find(
     (candidate) =>
       candidate.permissions.admin &&
