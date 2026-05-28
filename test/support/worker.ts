@@ -7,9 +7,15 @@ import type { OidcIssuerVerifierObject } from "../../src/durable-objects/oidc-is
 import type { Env } from "../../src/env.ts";
 import { loadIssuerRegistrationByIssuer } from "../../src/oidc/issuer-registrations.ts";
 import type { VerifyOidcTokenResult } from "../../src/oidc/principals.ts";
+import { pullRequestHaikuFeatureEnabled } from "../../src/pull-request-haiku/feature-flag.ts";
 import type { PullRequestHaikuQueueMessage } from "../../src/pull-request-haiku/queue.ts";
+import {
+  pullRequestHaikuRepositoryOptedIn,
+  recordPullRequestHaikuQueued,
+} from "../../src/storage/pull-request-haiku.ts";
 import { authenticateOidcToken, authenticateRequest } from "../../src/worker/authentication.ts";
 import { createApp } from "../../src/worker/app.ts";
+import type { AppDependencies } from "../../src/worker/dependencies.ts";
 import { env } from "cloudflare:workers";
 import { decodeJwt, SignJWT } from "jose";
 
@@ -72,7 +78,7 @@ const testDashboardRefreshToken = "ghr_test_token";
 const testNow = new Date("2026-05-24T00:00:00.000Z");
 export const enqueuedPullRequestHaikuMessages: PullRequestHaikuQueueMessage[] = [];
 
-export const testApp = createApp({
+const baseTestDependencies = {
   authenticateOidcToken,
   authenticateRequest,
   enqueuePullRequestHaikuMessage: async (_env, message) => {
@@ -80,6 +86,8 @@ export const testApp = createApp({
   },
   fetch: fetchGitHubTestDouble,
   now: () => testNow,
+  pullRequestHaikuFeatureEnabled,
+  pullRequestHaikuRepositoryOptedIn,
   processPullRequestHaikuMessage: async (env, message) => {
     const { processPullRequestHaikuMessage } =
       await import("../../src/pull-request-haiku/processor.ts");
@@ -95,32 +103,31 @@ export const testApp = createApp({
       now: () => testNow,
     });
   },
-});
+  reconcileInstallation: (env, installationId) =>
+    env.GITHUB_INSTALLATION.getByName(String(installationId)).signalInstallationReconciliation({
+      installationId,
+      signalSource: "webhook",
+    }),
+  recordPullRequestHaikuQueued,
+} satisfies AppDependencies;
+
+export const testApp = createApp(baseTestDependencies);
 
 export const dashboardAccessForbiddenApp = createApp({
-  authenticateOidcToken,
-  authenticateRequest,
-  enqueuePullRequestHaikuMessage: async () => undefined,
+  ...baseTestDependencies,
   fetch: fetchGitHubDashboardAccessForbiddenTestDouble,
-  now: () => testNow,
   processPullRequestHaikuMessage: async () => undefined,
 });
 
 export const dashboardLaterInstallationFailsApp = createApp({
-  authenticateOidcToken,
-  authenticateRequest,
-  enqueuePullRequestHaikuMessage: async () => undefined,
+  ...baseTestDependencies,
   fetch: fetchGitHubDashboardLaterInstallationFailsTestDouble,
-  now: () => testNow,
   processPullRequestHaikuMessage: async () => undefined,
 });
 
 export const dashboardRepositoryAdminDeniedApp = createApp({
-  authenticateOidcToken,
-  authenticateRequest,
-  enqueuePullRequestHaikuMessage: async () => undefined,
+  ...baseTestDependencies,
   fetch: fetchGitHubDashboardRepositoryAdminDeniedTestDouble,
-  now: () => testNow,
   processPullRequestHaikuMessage: async () => undefined,
 });
 

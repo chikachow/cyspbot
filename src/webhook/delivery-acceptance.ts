@@ -1,11 +1,6 @@
 import type { SignalInstallationReconciliationResult } from "../durable-objects/installation-object.ts";
 import type { Env } from "../env.ts";
-import { pullRequestHaikuFeatureEnabled } from "../pull-request-haiku/feature-flag.ts";
 import type { PullRequestHaikuQueueMessage } from "../pull-request-haiku/queue.ts";
-import {
-  pullRequestHaikuRepositoryOptedIn,
-  recordPullRequestHaikuQueued,
-} from "../storage/pull-request-haiku.ts";
 import { verifyGitHubWebhookSignature } from "./signature.ts";
 
 const maxWebhookBodyBytes = 256 * 1024;
@@ -49,6 +44,33 @@ type ParsedWebhookDelivery =
 
 export interface WebhookDeliveryAcceptanceDependencies {
   enqueuePullRequestHaikuMessage(env: Env, message: PullRequestHaikuQueueMessage): Promise<void>;
+  pullRequestHaikuFeatureEnabled(
+    env: Env,
+    input: {
+      installationId: number;
+      pullRequestNumber: number;
+      repositoryFullName: string;
+      repositoryId: number;
+    },
+  ): Promise<boolean>;
+  pullRequestHaikuRepositoryOptedIn(env: Env, repositoryId: number): Promise<boolean>;
+  reconcileInstallation(
+    env: Env,
+    installationId: number,
+  ): Promise<SignalInstallationReconciliationResult>;
+  recordPullRequestHaikuQueued(
+    env: Env,
+    input: {
+      action: string;
+      deliveryId: string;
+      headSha: string;
+      installationId: number;
+      pullRequestNumber: number;
+      queuedAt: string;
+      repositoryFullName: string;
+      repositoryId: number;
+    },
+  ): Promise<void>;
   now(): Date;
 }
 
@@ -93,11 +115,7 @@ export async function acceptGitHubWebhookDelivery(
     return accepted({ accepted: true, event: envelope.event });
   }
 
-  const stub = env.GITHUB_INSTALLATION.getByName(String(parsedDelivery.installationId));
-  const result = (await stub.signalInstallationReconciliation({
-    installationId: parsedDelivery.installationId,
-    signalSource: "webhook",
-  })) as SignalInstallationReconciliationResult;
+  const result = await dependencies.reconcileInstallation(env, parsedDelivery.installationId);
 
   if (!result.ok) {
     return rejected(result.status);
@@ -242,7 +260,7 @@ async function enqueuePullRequestHaikuIfNeeded(input: {
   }
 
   if (
-    !(await pullRequestHaikuFeatureEnabled(input.env, {
+    !(await input.dependencies.pullRequestHaikuFeatureEnabled(input.env, {
       installationId: input.installationId,
       pullRequestNumber,
       repositoryFullName,
@@ -252,7 +270,7 @@ async function enqueuePullRequestHaikuIfNeeded(input: {
     return "feature_disabled";
   }
 
-  if (!(await pullRequestHaikuRepositoryOptedIn(input.env, repositoryId))) {
+  if (!(await input.dependencies.pullRequestHaikuRepositoryOptedIn(input.env, repositoryId))) {
     return "repository_not_opted_in";
   }
 
@@ -267,7 +285,7 @@ async function enqueuePullRequestHaikuIfNeeded(input: {
     repositoryId,
   } satisfies PullRequestHaikuQueueMessage;
 
-  await recordPullRequestHaikuQueued(input.env, {
+  await input.dependencies.recordPullRequestHaikuQueued(input.env, {
     action,
     deliveryId: input.deliveryId,
     headSha,

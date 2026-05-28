@@ -1,5 +1,6 @@
 import type { Env } from "../env.ts";
 import type { GitHubApiDependencies } from "../github/http.ts";
+import { pullRequestHaikuFeatureEnabled } from "../pull-request-haiku/feature-flag.ts";
 import {
   authenticateOidcToken as defaultAuthenticateOidcToken,
   authenticateRequest as defaultAuthenticateRequest,
@@ -7,8 +8,14 @@ import {
 } from "./authentication.ts";
 import { processPullRequestHaikuMessage as defaultProcessPullRequestHaikuMessage } from "../pull-request-haiku/processor.ts";
 import type { PullRequestHaikuQueueMessage } from "../pull-request-haiku/queue.ts";
+import {
+  pullRequestHaikuRepositoryOptedIn,
+  recordPullRequestHaikuQueued,
+} from "../storage/pull-request-haiku.ts";
+import type { WebhookDeliveryAcceptanceDependencies } from "../webhook/delivery-acceptance.ts";
 
-export interface AppDependencies extends GitHubApiDependencies {
+export interface AppDependencies
+  extends GitHubApiDependencies, WebhookDeliveryAcceptanceDependencies {
   authenticateOidcToken(
     token: string,
     request: Request,
@@ -28,6 +35,14 @@ export const defaultDependencies: AppDependencies = {
   },
   fetch: (input, init) => fetch(input, init),
   now: () => new Date(),
+  pullRequestHaikuFeatureEnabled,
+  pullRequestHaikuRepositoryOptedIn,
   processPullRequestHaikuMessage: (env, message) =>
     defaultProcessPullRequestHaikuMessage(env, message, defaultDependencies),
+  reconcileInstallation: (env, installationId) =>
+    env.GITHUB_INSTALLATION.getByName(String(installationId)).signalInstallationReconciliation({
+      installationId,
+      signalSource: "webhook",
+    }),
+  recordPullRequestHaikuQueued,
 };
