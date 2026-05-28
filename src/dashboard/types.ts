@@ -10,6 +10,7 @@ export interface DashboardSession {
 
 export interface DashboardRepositoryListItem {
   archivedAt: string | null;
+  canAdminister: boolean;
   fullNameDisplay: string;
   installationId: number;
   lastInstallationTokenIssuanceAt: string | null;
@@ -21,6 +22,7 @@ export interface DashboardRepositoryListItem {
 
 export interface DashboardRepository {
   archivedAt: string | null;
+  canAdminister: boolean;
   fullNameDisplay: string;
   fullNameNormalized: string;
   repositoryId: number;

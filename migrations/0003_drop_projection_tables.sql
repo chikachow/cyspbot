@@ -105,46 +105,6 @@ ALTER TABLE installation_reconciliation_states_new RENAME TO installation_reconc
 CREATE INDEX IF NOT EXISTS installation_reconciliation_states_by_state_next_retry
   ON installation_reconciliation_states(reconciliation_state, next_retry_at);
 
-CREATE TABLE IF NOT EXISTS webhook_delivery_log_entries_new (
-  delivery_id TEXT PRIMARY KEY,
-  received_at TEXT NOT NULL,
-  github_event TEXT NOT NULL,
-  installation_id INTEGER,
-  delivery_accepted INTEGER NOT NULL CHECK (delivery_accepted IN (0, 1)),
-  webhook_signature_valid INTEGER NOT NULL CHECK (webhook_signature_valid IN (0, 1)),
-  response_status_code INTEGER NOT NULL,
-  delivery_metadata_json TEXT
-);
-
-INSERT INTO webhook_delivery_log_entries_new (
-  delivery_id,
-  received_at,
-  github_event,
-  installation_id,
-  delivery_accepted,
-  webhook_signature_valid,
-  response_status_code,
-  delivery_metadata_json
-)
-SELECT
-  delivery_id,
-  received_at,
-  github_event,
-  installation_id,
-  delivery_accepted,
-  webhook_signature_valid,
-  response_status_code,
-  delivery_metadata_json
-FROM webhook_delivery_log_entries;
-
-DROP TABLE webhook_delivery_log_entries;
-ALTER TABLE webhook_delivery_log_entries_new RENAME TO webhook_delivery_log_entries;
-
-CREATE INDEX IF NOT EXISTS webhook_delivery_log_entries_by_received_at
-  ON webhook_delivery_log_entries(received_at);
-CREATE INDEX IF NOT EXISTS webhook_delivery_log_entries_by_installation_received_at
-  ON webhook_delivery_log_entries(installation_id, received_at DESC);
-
 DROP TABLE IF EXISTS github_app_installation_repositories;
 DROP TABLE IF EXISTS github_repositories;
 DROP TABLE IF EXISTS github_app_installations;

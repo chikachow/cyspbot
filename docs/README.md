@@ -7,6 +7,9 @@ This directory separates current product facts from design history.
 - [Service contract](service-contract.md) is the primary current-state source. It defines the implemented API, dashboard, security, persistence, and compatibility contract for an indistinguishable implementation.
 - [Repository README](../README.md) is the operational entrypoint for setup, local development, deployment, and direct GitHub Actions usage.
 - [Domain glossary](../CONTEXT.md) defines the project vocabulary used in code reviews, design discussions, and future implementation work.
+- [Deployment guide](deployment.md) describes the current direct deployment path and the later private-deployment-repository option.
+- [Public release checklist](release.md) lists the checks to run before publishing or tagging a release.
+- [Suggested public history](history.md) gives a reviewable blank-history commit sequence.
 
 ## Decision History
 
@@ -24,7 +27,7 @@ Current implementation:
 - claims verification at `POST /github/claims`
 - signed webhook acceptance at `POST /github/webhooks`
 - GitHub App user authorization dashboard at `GET /dashboard`
-- D1-backed Audit Log, Dashboard Sessions, Webhook Delivery Log metadata, and reconciliation signal state
+- D1-backed Audit Log, Dashboard Sessions, reconciliation signal state, and pull request haiku state
 
 Future implementation:
 

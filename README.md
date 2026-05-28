@@ -6,18 +6,18 @@ The current product is intentionally narrow:
 
 - `POST /token` is the primary token exchange endpoint.
 - `POST /github/claims` verifies caller identity and GitHub App installation presence without issuing an Installation Token.
-- `POST /github/webhooks` accepts signed GitHub App webhooks, records metadata, and signals installation reconciliation.
+- `POST /github/webhooks` accepts signed GitHub App webhooks and signals installation reconciliation.
 - Signed `pull_request` webhooks enqueue a pull request haiku comment refresh when the Flagship feature flag is enabled and the repository is opted in.
 - `GET /dashboard` is an operational dashboard for repository visibility, recent Installation Token Issuance audit history, and admin pull request haiku opt-ins.
 
-The primary service contract is [docs/service-contract.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/service-contract.md). The documentation map is [docs/README.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/README.md).
+The primary service contract is [docs/service-contract.md](docs/service-contract.md). The documentation map is [docs/README.md](docs/README.md).
 
 ## Implemented Architecture
 
 - Cloudflare Worker routing for token exchange, claims, webhook, dashboard, login, and setup routes.
 - One `OidcIssuerVerifierObject` Durable Object per trusted OIDC issuer for JWKS coordination, bounded stale serving, and refresh backoff.
 - One `GitHubInstallationObject` Durable Object per GitHub App Installation for reconciliation signal coalescing only.
-- D1-backed Dashboard Sessions, Audit Log, issued-token facts, Webhook Delivery Log metadata, and reconciliation state.
+- D1-backed Dashboard Sessions, Audit Log, issued-token facts, reconciliation state, and pull request haiku state.
 - GitHub App private key in Cloudflare Secrets Store for production; local PKCS#8 PEM fallback for development and tests.
 - Checked-in Token Policy code that allows Installation Token Issuance only for default-branch `schedule` and `workflow_dispatch` contexts.
 
@@ -33,7 +33,7 @@ subject_token=<github-actions-oidc-token>
 subject_token_type=urn:ietf:params:oauth:token-type:id_token
 ```
 
-`subject_token_type` may also be `urn:ietf:params:oauth:token-type:jwt`. `requested_token_type` is optional and may be either `urn:chikachow:github-app-installation-access-token` or `urn:ietf:params:oauth:token-type:access_token`.
+`subject_token_type` may also be `urn:ietf:params:oauth:token-type:jwt`. `requested_token_type` is optional and may be either the cyspbot GitHub App installation token URN or `urn:ietf:params:oauth:token-type:access_token`.
 
 Successful responses use OAuth token response shape and `Cache-Control: no-store`:
 
@@ -61,11 +61,13 @@ Verifies a GitHub Actions OIDC bearer token and confirms the configured GitHub A
 
 ### `POST /github/webhooks`
 
-Accepts signed JSON GitHub App webhook deliveries up to `256 KiB`. Non-`ping` events require a positive integer `installation.id`. Accepted non-`ping` deliveries signal the per-installation coordinator and write metadata to D1. Raw webhook bodies are not retained.
+Accepts signed JSON GitHub App webhook deliveries up to `256 KiB`. Webhook target headers must identify the configured GitHub App. Non-`ping` events require a positive integer `installation.id`. Accepted non-`ping` deliveries signal the per-installation coordinator. Raw webhook bodies are not retained.
 
 When the `pull-request-haiku` Flagship feature flag is enabled, repositories listed in `pull_request_haiku_repository_opt_ins` have accepted `pull_request` deliveries for `opened`, `reopened`, `synchronize`, `edited`, and `ready_for_review` enqueue asynchronous haiku comment work. The worker reads mechanical change facts from the pull request and changed file list, excluding human-authored pull request text such as title and body, then creates or updates one marker-owned pull request comment containing:
 
 - a generated haiku representing the pull request change
+
+The model input includes filenames and aggregate change counts. Filenames can still reveal sensitive project structure in private repositories, so repositories must be explicitly opted in.
 
 ## Dashboard
 
@@ -83,6 +85,8 @@ Implemented dashboard routes:
 - `GET /dashboard/repositories/:owner/:name`
 
 Repository detail URLs use current `owner/name` as a locator. The service resolves that to immutable GitHub repository ID internally after confirming the signed-in user can see the repository through GitHub's user-to-server APIs.
+
+Pull request haiku administration follows GitHub repository permissions. A Dashboard User can view and change haiku opt-in state only for repositories where GitHub reports that user has repository `admin` permission through the GitHub App user-to-server installation repository APIs.
 
 ## Current Token Policy
 
@@ -106,7 +110,7 @@ Planned future work is additive and must preserve the current trust boundary:
 
 - full Installation Reconciliation execution with installation-slice replacement in D1
 - scheduled retry dispatch for pending or failed reconciliation work
-- cleanup jobs for expired Dashboard Sessions, Audit Log retention, reconciliation history, and Webhook Delivery Log metadata
+- cleanup jobs for expired Dashboard Sessions, Audit Log retention, reconciliation history, and pull request haiku run history
 - optional dashboard diagnostics for reconciliation failures
 - optional dashboard filtering or sorting over already-authorized rendered data
 
@@ -126,14 +130,14 @@ Pull request haiku comments require the installed GitHub App to grant `Pull requ
 
 Dashboard setup uses separate GitHub App URLs:
 
-- Setup URL: `https://cyspbot.chikachow.org/github/setup`
-- OAuth callback URL: `https://cyspbot.chikachow.org/auth/github/callback`
+- Setup URL: `https://<your-cyspbot-origin>/github/setup`
+- OAuth callback URL: `https://<your-cyspbot-origin>/auth/github/callback`
 
 `Request user authorization (OAuth) during installation` is disabled so GitHub can use the distinct Setup URL. Setup callbacks are treated as untrusted onboarding entrypoints and redirect into the normal stateful dashboard login flow.
 
 ## Cloudflare Setup
 
-Production is configured for the custom domain `cyspbot.chikachow.org`. The production Worker also enables its `workers.dev` route for operational smoke tests when the custom domain is blocked by local network policy. The custom domain remains the canonical GitHub App setup, OAuth callback, and webhook URL.
+The checked-in `wrangler.jsonc` contains the current production Worker bindings and can deploy cyspbot directly. See [docs/deployment.md](docs/deployment.md).
 
 1. Convert the downloaded GitHub App key to PKCS#8:
 
@@ -159,7 +163,7 @@ Production is configured for the custom domain `cyspbot.chikachow.org`. The prod
    - Durable Object bindings `GITHUB_INSTALLATION` and `OIDC_ISSUER_VERIFIER`
    - Flagship binding `FLAGS` for the `pull-request-haiku` feature flag
 
-4. Apply D1 migrations from [migrations](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/migrations).
+4. Apply D1 migrations from [migrations](migrations).
 
 5. Deploy:
 

@@ -5,9 +5,12 @@ import {
   renderDashboardRepositoryListPage,
 } from "../dashboard/html.ts";
 import { parseDashboardRepositoryRoute } from "../dashboard/paths.ts";
+import type { DashboardSession } from "../dashboard/types.ts";
 import {
   getAccessibleDashboardRepositoryByFullName,
-  listAccessibleDashboardRepositories,
+  listDashboardPullRequestHaikuModel,
+  listDashboardRepositoryListModel,
+  setDashboardPullRequestHaikuOptIn,
 } from "../dashboard/service.ts";
 import {
   dashboardRedirectResponse,
@@ -16,10 +19,6 @@ import {
 } from "../dashboard/user-authorization.ts";
 import { problemResponse } from "../http/problem-details.ts";
 import { listRepositoryAuditEntries } from "../storage/audit-log.ts";
-import {
-  listPullRequestHaikuRepositoryOptIns,
-  setPullRequestHaikuRepositoryOptIn,
-} from "../storage/pull-request-haiku.ts";
 import type { AppDependencies } from "./dependencies.ts";
 
 export async function handleDashboardRepositoryListRequest(
@@ -34,10 +33,10 @@ export async function handleDashboardRepositoryListRequest(
   }
 
   const now = dependencies.now().toISOString();
-  let repositories: Awaited<ReturnType<typeof listAccessibleDashboardRepositories>>;
+  let repositories: Awaited<ReturnType<typeof listDashboardRepositoryListModel>>;
 
   try {
-    repositories = await listAccessibleDashboardRepositories(
+    repositories = await listDashboardRepositoryListModel(
       env,
       dashboardSession.session,
       dependencies,
@@ -62,7 +61,6 @@ export async function handleDashboardRepositoryListRequest(
   return htmlResponse(
     renderDashboardRepositoryListPage({
       githubLogin: dashboardSession.session.githubLoginDisplay,
-      pullRequestHaikuAdmin: pullRequestHaikuAdmin(env, dashboardSession.session.githubUserId),
       repositories,
     }),
   );
@@ -79,15 +77,11 @@ export async function handleDashboardPullRequestHaikuRequest(
     return dashboardSession.response;
   }
 
-  if (!pullRequestHaikuAdmin(env, dashboardSession.session.githubUserId)) {
-    return problemResponse(403);
-  }
-
   const now = dependencies.now().toISOString();
-  let repositories: Awaited<ReturnType<typeof listAccessibleDashboardRepositories>>;
+  let repositories: Awaited<ReturnType<typeof listDashboardPullRequestHaikuModel>>;
 
   try {
-    repositories = await listAccessibleDashboardRepositories(
+    repositories = await listDashboardPullRequestHaikuModel(
       env,
       dashboardSession.session,
       dependencies,
@@ -109,13 +103,18 @@ export async function handleDashboardPullRequestHaikuRequest(
     return problemResponse(503);
   }
 
+  if (repositories === null) {
+    return problemResponse(403);
+  }
+
   if (request.method === "POST") {
     const response = await handlePullRequestHaikuToggleRequest({
       env,
       githubLogin: dashboardSession.session.githubLoginDisplay,
       now,
-      repositories,
+      session: dashboardSession.session,
       request,
+      dependencies,
     });
 
     if (response !== null) {
@@ -125,15 +124,10 @@ export async function handleDashboardPullRequestHaikuRequest(
     return dashboardRedirectResponse("/dashboard/pull-request-haikus");
   }
 
-  const optIns = await listPullRequestHaikuRepositoryOptIns(env);
-
   return htmlResponse(
     renderDashboardPullRequestHaikuPage({
       githubLogin: dashboardSession.session.githubLoginDisplay,
-      repositories: repositories.map((repository) => ({
-        ...repository,
-        pullRequestHaikuEnabled: optIns.has(repository.repositoryId),
-      })),
+      repositories,
     }),
   );
 }
@@ -200,11 +194,12 @@ export async function handleDashboardRepositoryDetailsRequest(
 }
 
 async function handlePullRequestHaikuToggleRequest(input: {
+  dependencies: AppDependencies;
   env: Env;
   githubLogin: string;
   now: string;
-  repositories: Awaited<ReturnType<typeof listAccessibleDashboardRepositories>>;
   request: Request;
+  session: DashboardSession;
 }): Promise<Response | null> {
   if (!sameOrigin(input.request)) {
     return problemResponse(403);
@@ -222,21 +217,21 @@ async function handlePullRequestHaikuToggleRequest(input: {
     return problemResponse(400);
   }
 
-  const repository = input.repositories.find(
-    (candidate) => candidate.repositoryId === repositoryId,
+  const result = await setDashboardPullRequestHaikuOptIn(
+    input.env,
+    {
+      enabled: action === "enable",
+      enabledAt: input.now,
+      enabledBy: input.githubLogin,
+      repositoryId,
+      session: input.session,
+    },
+    input.dependencies,
   );
 
-  if (repository === undefined) {
+  if (result === "not_found") {
     return problemResponse(404);
   }
-
-  await setPullRequestHaikuRepositoryOptIn(input.env, {
-    enabled: action === "enable",
-    enabledAt: input.now,
-    enabledBy: input.githubLogin,
-    repositoryFullName: repository.fullNameDisplay,
-    repositoryId,
-  });
 
   return null;
 }
@@ -272,14 +267,4 @@ function parseRepositoryId(value: string | null): number | null {
   const parsed = Number.parseInt(value, 10);
 
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
-}
-
-function pullRequestHaikuAdmin(env: Env, githubUserId: string): boolean {
-  const configured = env.PULL_REQUEST_HAIKU_ADMIN_GITHUB_USER_IDS ?? "742696";
-
-  return configured
-    .split(",")
-    .map((value) => value.trim())
-    .filter((value) => value.length > 0)
-    .includes(githubUserId);
 }

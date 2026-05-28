@@ -2,7 +2,7 @@
 
 cyspbot is the maintainer's hosted automation application. It lets trusted GitHub Actions workflow runs obtain repository-scoped GitHub App installation access tokens without exposing the GitHub App private key outside Cloudflare.
 
-The primary current service contract is [docs/service-contract.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/service-contract.md). Historical ADRs are supporting material; they do not override the current service contract.
+The primary current service contract is [docs/service-contract.md](docs/service-contract.md). Historical ADRs are supporting material; they do not override the current service contract.
 
 ## Language
 
@@ -53,10 +53,6 @@ _Avoid_: Analytics, metrics, installation-local source of truth
 **Webhook Receiver**:
 A cyspbot endpoint that validates GitHub webhook authenticity and envelope fields, then forwards the delivery to the relevant per-installation Durable Object.
 _Avoid_: Business event processor, schema-normalizer
-
-**Webhook Delivery Log**:
-A bounded cyspbot-held record of webhook delivery metadata for deliveries that reach envelope validation, including rejected deliveries, for short-term operational debugging.
-_Avoid_: Permanent event store, raw-payload archive by default
 
 **Installation Reconciliation**:
 The cyspbot process boundary for future per-installation repair work. The current implementation records reconciliation signals and scheduler state only.
@@ -124,7 +120,7 @@ _Avoid_: Trust configuration, token cache, global verifier state
 - The **Installation Coordinator** coalesces **Installation Reconciliation** signals per installation, but does not become a second durable source of truth
 - The **Webhook Receiver** accepts GitHub webhook deliveries only after signature and envelope validation
 - The **Webhook Receiver** routes each accepted **Installation Reconciliation** signal to the **Installation Coordinator** keyed by **GitHub App Installation**
-- cyspbot keeps a bounded **Webhook Delivery Log** of delivery metadata only. Future current-state repair happens through **Installation Reconciliation**
+- cyspbot does not keep a generic webhook delivery log. Future current-state repair happens through **Installation Reconciliation**, and pull request haiku work records its own queue and run state.
 - The **Webhook Receiver** fails closed with a server-side error when no webhook secret is configured
 - Full **Installation Reconciliation** execution, scheduled retry dispatch, cleanup jobs, and dashboard diagnostics are future implementation work, not current product behavior.
 

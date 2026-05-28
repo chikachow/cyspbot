@@ -21,102 +21,108 @@ import {
 import { handleGitHubWebhookRequest } from "./webhook.ts";
 import { parsePullRequestHaikuQueueMessage } from "../pull-request-haiku/queue.ts";
 
+type RouteHandler = (
+  request: Request,
+  env: Env,
+  dependencies: AppDependencies,
+  url: URL,
+) => Promise<Response> | Response;
+
+interface ExactRoute {
+  handler: RouteHandler;
+  methods: string;
+  path: string;
+}
+
+interface PrefixRoute {
+  handler: RouteHandler;
+  methods: string;
+  prefix: string;
+}
+
+type WorkerRoute = ExactRoute | PrefixRoute;
+
+const workerRoutes: WorkerRoute[] = [
+  {
+    handler: () => dashboardRedirectResponse("/dashboard"),
+    methods: "GET",
+    path: "/",
+  },
+  {
+    handler: (request, env, dependencies) => handleTokenExchangeRequest(request, env, dependencies),
+    methods: "POST",
+    path: "/token",
+  },
+  {
+    handler: (request, env, dependencies) => handleClaimsRequest(request, env, dependencies),
+    methods: "POST",
+    path: "/github/claims",
+  },
+  {
+    handler: (request, env, dependencies) => handleGitHubWebhookRequest(request, env, dependencies),
+    methods: "POST",
+    path: "/github/webhooks",
+  },
+  {
+    handler: (request) => handleGitHubAppSetupRequest(request),
+    methods: "GET",
+    path: "/github/setup",
+  },
+  {
+    handler: (request, env) => handleDashboardLoginRequest(request, env),
+    methods: "GET",
+    path: "/login/github",
+  },
+  {
+    handler: (request, env, dependencies) =>
+      handleDashboardCallbackRequest(request, env, dependencies),
+    methods: "GET",
+    path: "/auth/github/callback",
+  },
+  {
+    handler: (request, env) => handleDashboardLogoutRequest(request, env),
+    methods: "GET",
+    path: "/logout",
+  },
+  {
+    handler: (request, env, dependencies) =>
+      handleDashboardRepositoryListRequest(request, env, dependencies),
+    methods: "GET",
+    path: "/dashboard",
+  },
+  {
+    handler: (request, env, dependencies) =>
+      handleDashboardPullRequestHaikuRequest(request, env, dependencies),
+    methods: "GET, POST",
+    path: "/dashboard/pull-request-haikus",
+  },
+  {
+    handler: (request, env, dependencies, url) =>
+      handleDashboardRepositoryDetailsRequest(request, env, url.pathname, dependencies),
+    methods: "GET",
+    prefix: "/dashboard/repositories/",
+  },
+];
+
 export function createApp(
   dependencies: AppDependencies = defaultDependencies,
 ): ExportedHandler<Env> {
   return {
     async fetch(request, env): Promise<Response> {
       const url = new URL(request.url);
+      const route = workerRoutes.find((candidate) => routeMatches(candidate, url.pathname));
 
-      if (url.pathname === "/") {
-        if (request.method !== "GET") {
-          return problemResponse(405, { allow: "GET" });
-        }
-
-        return dashboardRedirectResponse("/dashboard");
+      if (route === undefined) {
+        return problemResponse(404);
       }
 
-      if (url.pathname === "/token") {
-        if (request.method !== "POST") {
-          return tokenExchangeMethodNotAllowedResponse();
-        }
-
-        return handleTokenExchangeRequest(request, env, dependencies);
+      if (!methodAllowed(route, request.method)) {
+        return url.pathname === "/token"
+          ? tokenExchangeMethodNotAllowedResponse()
+          : problemResponse(405, { allow: route.methods });
       }
 
-      if (url.pathname === "/github/claims") {
-        if (request.method !== "POST") {
-          return problemResponse(405, { allow: "POST" });
-        }
-
-        return handleClaimsRequest(request, env, dependencies);
-      }
-
-      if (url.pathname === "/github/webhooks") {
-        if (request.method !== "POST") {
-          return problemResponse(405, { allow: "POST" });
-        }
-
-        return handleGitHubWebhookRequest(request, env, dependencies);
-      }
-
-      if (url.pathname === "/github/setup") {
-        if (request.method !== "GET") {
-          return problemResponse(405, { allow: "GET" });
-        }
-
-        return handleGitHubAppSetupRequest(request);
-      }
-
-      if (url.pathname === "/login/github") {
-        if (request.method !== "GET") {
-          return problemResponse(405, { allow: "GET" });
-        }
-
-        return handleDashboardLoginRequest(request, env);
-      }
-
-      if (url.pathname === "/auth/github/callback") {
-        if (request.method !== "GET") {
-          return problemResponse(405, { allow: "GET" });
-        }
-
-        return handleDashboardCallbackRequest(request, env, dependencies);
-      }
-
-      if (url.pathname === "/logout") {
-        if (request.method !== "GET") {
-          return problemResponse(405, { allow: "GET" });
-        }
-
-        return handleDashboardLogoutRequest(request, env);
-      }
-
-      if (url.pathname === "/dashboard") {
-        if (request.method !== "GET") {
-          return problemResponse(405, { allow: "GET" });
-        }
-
-        return handleDashboardRepositoryListRequest(request, env, dependencies);
-      }
-
-      if (url.pathname === "/dashboard/pull-request-haikus") {
-        if (request.method !== "GET" && request.method !== "POST") {
-          return problemResponse(405, { allow: "GET, POST" });
-        }
-
-        return handleDashboardPullRequestHaikuRequest(request, env, dependencies);
-      }
-
-      if (url.pathname.startsWith("/dashboard/repositories/")) {
-        if (request.method !== "GET") {
-          return problemResponse(405, { allow: "GET" });
-        }
-
-        return handleDashboardRepositoryDetailsRequest(request, env, url.pathname, dependencies);
-      }
-
-      return problemResponse(404);
+      return route.handler(request, env, dependencies, url);
     },
     async queue(batch, env): Promise<void> {
       for (const message of batch.messages) {
@@ -139,3 +145,14 @@ export function createApp(
 }
 
 export const app = createApp();
+
+function routeMatches(route: WorkerRoute, pathname: string): boolean {
+  return "path" in route ? route.path === pathname : pathname.startsWith(route.prefix);
+}
+
+function methodAllowed(route: WorkerRoute, method: string): boolean {
+  return route.methods
+    .split(",")
+    .map((value) => value.trim())
+    .includes(method);
+}

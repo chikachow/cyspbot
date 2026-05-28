@@ -43,11 +43,18 @@ export interface PullRequestHaikuDependencies extends GitHubApiDependencies {
   ): Promise<PullRequestHaikuTextResult>;
 }
 
+interface PullRequestHaikuRunContext {
+  dependencies: PullRequestHaikuDependencies;
+  env: Env;
+  message: PullRequestHaikuQueueMessage;
+}
+
 export async function processPullRequestHaikuMessage(
   env: Env,
   message: PullRequestHaikuQueueMessage,
   dependencies: PullRequestHaikuDependencies,
 ): Promise<void> {
+  const context = { dependencies, env, message } satisfies PullRequestHaikuRunContext;
   const startedAt = dependencies.now().toISOString();
   await markPullRequestHaikuRunStarted(env, {
     deliveryId: message.deliveryId,
@@ -55,49 +62,16 @@ export async function processPullRequestHaikuMessage(
   });
 
   try {
-    const state = await getPullRequestHaikuCommentState(env, {
-      pullRequestNumber: message.pullRequestNumber,
-      repositoryId: message.repositoryId,
-    });
+    const state = await loadCurrentCommentState(context);
 
-    if (state !== null && state.currentHeadSha !== message.headSha) {
-      await markPullRequestHaikuRunSkipped(env, {
-        deliveryId: message.deliveryId,
-        errorCode: "stale_head_sha",
-        finishedAt: dependencies.now().toISOString(),
-      });
+    if (await skipStaleRunIfNeeded(context, state)) {
       return;
     }
 
-    const token = await createPullRequestHaikuInstallationToken(
-      env,
-      message.installationId,
-      String(message.repositoryId),
-      dependencies,
-    );
-    const pullRequest = await getPullRequestDetails(
-      env,
-      message.repositoryFullName,
-      message.pullRequestNumber,
-      token.token,
-      dependencies,
-    );
-    const files = await listPullRequestChangedFiles(
-      env,
-      message.repositoryFullName,
-      message.pullRequestNumber,
-      token.token,
-      dependencies,
-    );
-    const textResult =
-      dependencies.generatePullRequestHaiku === undefined
-        ? await generatePullRequestHaiku(env, pullRequest, files)
-        : await dependencies.generatePullRequestHaiku(env, pullRequest, files);
-    const body = renderPullRequestHaikuComment({
-      haiku: textResult.haiku,
-      pullRequest,
-      repositoryId: message.repositoryId,
-    });
+    const token = await createRunInstallationToken(context);
+    const facts = await loadPullRequestFacts(context, token.token);
+    const textResult = await generateRunText(context, facts.pullRequest, facts.files);
+    const body = renderRunComment(context, facts.pullRequest, textResult.haiku);
     const commentId =
       state?.commentId ??
       (await findExistingPullRequestHaikuCommentId(env, message, token.token, dependencies));
@@ -115,7 +89,7 @@ export async function processPullRequestHaikuMessage(
       commentId: comment.id,
       deliveryId: message.deliveryId,
       finishedAt: dependencies.now().toISOString(),
-      headSha: pullRequest.headSha,
+      headSha: facts.pullRequest.headSha,
       outputKind: "markdown",
       pullRequestNumber: message.pullRequestNumber,
       repositoryId: message.repositoryId,
@@ -129,6 +103,83 @@ export async function processPullRequestHaikuMessage(
     });
     throw error;
   }
+}
+
+async function loadCurrentCommentState(context: PullRequestHaikuRunContext) {
+  return getPullRequestHaikuCommentState(context.env, {
+    pullRequestNumber: context.message.pullRequestNumber,
+    repositoryId: context.message.repositoryId,
+  });
+}
+
+async function skipStaleRunIfNeeded(
+  context: PullRequestHaikuRunContext,
+  state: Awaited<ReturnType<typeof getPullRequestHaikuCommentState>>,
+): Promise<boolean> {
+  if (state === null || state.currentHeadSha === context.message.headSha) {
+    return false;
+  }
+
+  await markPullRequestHaikuRunSkipped(context.env, {
+    deliveryId: context.message.deliveryId,
+    errorCode: "stale_head_sha",
+    finishedAt: context.dependencies.now().toISOString(),
+  });
+
+  return true;
+}
+
+async function createRunInstallationToken(context: PullRequestHaikuRunContext) {
+  return createPullRequestHaikuInstallationToken(
+    context.env,
+    context.message.installationId,
+    String(context.message.repositoryId),
+    context.dependencies,
+  );
+}
+
+async function loadPullRequestFacts(
+  context: PullRequestHaikuRunContext,
+  installationToken: string,
+) {
+  const pullRequest = await getPullRequestDetails(
+    context.env,
+    context.message.repositoryFullName,
+    context.message.pullRequestNumber,
+    installationToken,
+    context.dependencies,
+  );
+  const files = await listPullRequestChangedFiles(
+    context.env,
+    context.message.repositoryFullName,
+    context.message.pullRequestNumber,
+    installationToken,
+    context.dependencies,
+  );
+
+  return { files, pullRequest };
+}
+
+function generateRunText(
+  context: PullRequestHaikuRunContext,
+  pullRequest: GitHubPullRequestDetails,
+  files: GitHubPullRequestChangedFile[],
+): Promise<PullRequestHaikuTextResult> {
+  return context.dependencies.generatePullRequestHaiku === undefined
+    ? generatePullRequestHaiku(context.env, pullRequest, files)
+    : context.dependencies.generatePullRequestHaiku(context.env, pullRequest, files);
+}
+
+function renderRunComment(
+  context: PullRequestHaikuRunContext,
+  pullRequest: GitHubPullRequestDetails,
+  haiku: PullRequestHaiku,
+): string {
+  return renderPullRequestHaikuComment({
+    haiku,
+    pullRequest,
+    repositoryId: context.message.repositoryId,
+  });
 }
 
 async function generatePullRequestHaiku(

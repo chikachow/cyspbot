@@ -66,7 +66,6 @@
     "GITHUB_API_BASE_URL": "https://api.github.com",
     "GITHUB_APP_ID": "2419473",
     "GITHUB_APP_CLIENT_ID": "Iv23liTtjzogToOIUmVg",
-    "PULL_REQUEST_HAIKU_ADMIN_GITHUB_USER_IDS": "742696",
     "PULL_REQUEST_HAIKU_TEXT_MODEL": "@cf/qwen/qwen3-30b-a3b-fp8",
   },
   "secrets_store_secrets": [
@@ -148,7 +147,6 @@
         "GITHUB_APP_CLIENT_ID": "Iv1.testclientid",
         "GITHUB_APP_CLIENT_SECRET": "test-client-secret",
         "GITHUB_WEBHOOK_SECRET": "test-webhook-secret",
-        "PULL_REQUEST_HAIKU_ADMIN_GITHUB_USER_IDS": "42",
         "PULL_REQUEST_HAIKU_TEXT_MODEL": "@cf/qwen/qwen3-30b-a3b-fp8",
       },
       "secrets_store_secrets": [

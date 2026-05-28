@@ -32,6 +32,9 @@ export interface GitHubUserRepositoryAccess {
   fullName: string;
   githubRepoId: string;
   installationId: number;
+  permissions: {
+    admin: boolean;
+  };
   private: boolean;
 }
 
@@ -59,6 +62,9 @@ interface GitHubUserRepositoryAccessApiResponse {
   archived?: unknown;
   full_name?: unknown;
   id?: number;
+  permissions?: {
+    admin?: unknown;
+  };
   private?: unknown;
 }
 
@@ -175,6 +181,9 @@ export async function listGitHubUserInstallationRepositories(
           fullName: repository.full_name,
           githubRepoId: String(repository.id),
           installationId,
+          permissions: {
+            admin: repository.permissions?.admin === true,
+          },
           private: repository.private,
         });
       }

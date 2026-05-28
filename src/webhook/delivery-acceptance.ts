@@ -6,7 +6,6 @@ import {
   pullRequestHaikuRepositoryOptedIn,
   recordPullRequestHaikuQueued,
 } from "../storage/pull-request-haiku.ts";
-import { recordWebhookDelivery } from "../storage/webhook-delivery-log.ts";
 import { verifyGitHubWebhookSignature } from "./signature.ts";
 
 const maxWebhookBodyBytes = 256 * 1024;
@@ -30,21 +29,11 @@ interface InstallationWebhookPayload {
 
 type WebhookAcceptedBody = { accepted: true; event?: string };
 
-interface AcceptedWebhookDeliveryLogInput {
-  body: WebhookAcceptedBody;
-  installationId: number | null;
-  metadata?: Record<string, string | number | boolean | null>;
-}
-
-interface RejectedWebhookDeliveryLogInput {
-  installationId: number | null;
-  signatureValid: boolean;
-  status: number;
-}
-
-interface WebhookDeliveryLogContext {
+interface AuthenticatedWebhookEnvelope {
+  bodyBytes: Uint8Array;
   deliveryId: string;
   event: string;
+  kind: "authenticated";
   receivedAt: string;
 }
 
@@ -77,6 +66,51 @@ export async function acceptGitHubWebhookDelivery(
     return rejected(500);
   }
 
+  const envelope = await authenticateWebhookEnvelope(request, env, secret, receivedAt);
+
+  if (envelope.kind !== "authenticated") {
+    return envelope;
+  }
+
+  const parsedDelivery = parseWebhookDelivery(envelope);
+
+  if (parsedDelivery.kind !== "parsed") {
+    return parsedDelivery;
+  }
+
+  if (envelope.event === "ping") {
+    return accepted({ accepted: true, event: envelope.event });
+  }
+
+  const stub = env.GITHUB_INSTALLATION.getByName(String(parsedDelivery.installationId));
+  const result = (await stub.signalInstallationReconciliation({
+    installationId: parsedDelivery.installationId,
+    signalSource: "webhook",
+  })) as SignalInstallationReconciliationResult;
+
+  if (!result.ok) {
+    return rejected(result.status);
+  }
+
+  await enqueuePullRequestHaikuIfNeeded({
+    deliveryId: envelope.deliveryId,
+    dependencies,
+    env,
+    event: envelope.event,
+    installationId: parsedDelivery.installationId,
+    payload: parsedDelivery.payload,
+    receivedAt: envelope.receivedAt,
+  });
+
+  return accepted({ accepted: true });
+}
+
+async function authenticateWebhookEnvelope(
+  request: Request,
+  env: Env,
+  secret: string,
+  receivedAt: string,
+): Promise<AuthenticatedWebhookEnvelope | WebhookDeliveryAcceptanceResult> {
   if (!isJsonContentType(request.headers.get("content-type"))) {
     return rejected(415);
   }
@@ -98,6 +132,8 @@ export async function acceptGitHubWebhookDelivery(
   const event = request.headers.get("x-github-event");
   const deliveryId = request.headers.get("x-github-delivery");
   const signatureHeader = request.headers.get("x-hub-signature-256");
+  const targetId = request.headers.get("x-github-hook-installation-target-id");
+  const targetType = request.headers.get("x-github-hook-installation-target-type");
   const bodyBytes = new Uint8Array(await request.arrayBuffer());
 
   if (bodyBytes.byteLength > maxWebhookBodyBytes) {
@@ -108,82 +144,57 @@ export async function acceptGitHubWebhookDelivery(
     return rejected(400);
   }
 
-  const signatureValid = await verifyGitHubWebhookSignature(bodyBytes, signatureHeader, secret);
-  const logContext = {
-    deliveryId,
-    event,
-    receivedAt,
-  };
-
-  if (!signatureValid) {
-    return rejectRecordedWebhookDelivery(env, logContext, {
-      installationId: null,
-      signatureValid: false,
-      status: 401,
-    });
+  if (targetType !== "integration" || targetId !== env.GITHUB_APP_ID) {
+    return rejected(401);
   }
 
+  if (!(await verifyGitHubWebhookSignature(bodyBytes, signatureHeader, secret))) {
+    return rejected(401);
+  }
+
+  return {
+    bodyBytes,
+    deliveryId,
+    event,
+    kind: "authenticated",
+    receivedAt,
+  };
+}
+
+function parseWebhookDelivery(
+  envelope: AuthenticatedWebhookEnvelope,
+):
+  | { installationId: number; kind: "parsed"; payload: InstallationWebhookPayload }
+  | WebhookDeliveryAcceptanceResult {
   let payload: InstallationWebhookPayload;
 
   try {
-    payload = JSON.parse(new TextDecoder().decode(bodyBytes)) as InstallationWebhookPayload;
+    payload = JSON.parse(
+      new TextDecoder().decode(envelope.bodyBytes),
+    ) as InstallationWebhookPayload;
   } catch {
-    return rejectRecordedWebhookDelivery(env, logContext, {
-      installationId: null,
-      signatureValid: true,
-      status: 400,
-    });
+    return rejected(400);
   }
 
-  if (event === "ping") {
-    return acceptRecordedWebhookDelivery(env, logContext, {
-      body: { accepted: true, event },
-      installationId: null,
-    });
+  if (envelope.event === "ping") {
+    return {
+      installationId: 0,
+      kind: "parsed",
+      payload,
+    };
   }
 
   const installationId = payload.installation?.id;
 
   if (!Number.isInteger(installationId) || installationId === undefined || installationId <= 0) {
-    return rejectRecordedWebhookDelivery(env, logContext, {
-      installationId: null,
-      signatureValid: true,
-      status: 400,
-    });
+    return rejected(400);
   }
 
-  const stub = env.GITHUB_INSTALLATION.getByName(String(installationId));
-  const result = (await stub.signalInstallationReconciliation({
+  return {
     installationId,
-    signalSource: "webhook",
-  })) as SignalInstallationReconciliationResult;
-
-  if (!result.ok) {
-    return rejectRecordedWebhookDelivery(env, logContext, {
-      installationId,
-      signatureValid: true,
-      status: result.status,
-    });
-  }
-
-  const pullRequestHaikuResult = await enqueuePullRequestHaikuIfNeeded({
-    deliveryId,
-    dependencies,
-    env,
-    event,
-    installationId,
+    kind: "parsed",
     payload,
-    receivedAt,
-  });
-
-  return acceptRecordedWebhookDelivery(env, logContext, {
-    body: { accepted: true },
-    installationId,
-    metadata: {
-      signal_source: "webhook",
-      ...(pullRequestHaikuResult === null ? {} : { pull_request_haiku: pullRequestHaikuResult }),
-    },
-  });
+  };
 }
 
 async function enqueuePullRequestHaikuIfNeeded(input: {
@@ -274,43 +285,6 @@ function pullRequestHaikuActionSupported(action: string): boolean {
     action === "edited" ||
     action === "ready_for_review"
   );
-}
-
-async function acceptRecordedWebhookDelivery(
-  env: Env,
-  context: WebhookDeliveryLogContext,
-  input: AcceptedWebhookDeliveryLogInput,
-): Promise<WebhookDeliveryAcceptanceResult> {
-  await recordWebhookDelivery(env, {
-    accepted: true,
-    deliveryId: context.deliveryId,
-    event: context.event,
-    installationId: input.installationId,
-    metadata: input.metadata,
-    receivedAt: context.receivedAt,
-    responseStatusCode: 202,
-    signatureValid: true,
-  });
-
-  return accepted(input.body);
-}
-
-async function rejectRecordedWebhookDelivery(
-  env: Env,
-  context: WebhookDeliveryLogContext,
-  input: RejectedWebhookDeliveryLogInput,
-): Promise<WebhookDeliveryAcceptanceResult> {
-  await recordWebhookDelivery(env, {
-    accepted: false,
-    deliveryId: context.deliveryId,
-    event: context.event,
-    installationId: input.installationId,
-    receivedAt: context.receivedAt,
-    responseStatusCode: input.status,
-    signatureValid: input.signatureValid,
-  });
-
-  return rejected(input.status);
 }
 
 function accepted(body: WebhookAcceptedBody): WebhookDeliveryAcceptanceResult {

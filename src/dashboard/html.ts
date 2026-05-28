@@ -6,7 +6,6 @@ import type {
 
 export function renderDashboardRepositoryListPage(input: {
   githubLogin: string;
-  pullRequestHaikuAdmin: boolean;
   repositories: DashboardRepositoryListItem[];
 }): string {
   const activeRepositories = input.repositories.filter(
@@ -15,6 +14,7 @@ export function renderDashboardRepositoryListPage(input: {
   const archivedRepositories = input.repositories.filter(
     (repository) => repository.archivedAt !== null,
   );
+  const canAdministerHaikus = input.repositories.some((repository) => repository.canAdminister);
 
   return renderPage({
     body: `
@@ -26,7 +26,7 @@ export function renderDashboardRepositoryListPage(input: {
         </div>
         <div class="header-actions">
           ${
-            input.pullRequestHaikuAdmin
+            canAdministerHaikus
               ? '<a class="secondary-link" href="/dashboard/pull-request-haikus">Pull request haikus</a>'
               : ""
           }

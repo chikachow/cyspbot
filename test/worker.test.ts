@@ -4,14 +4,13 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   authorizationHeaders,
   cookieHeaderValue,
-  createDashboardSessionCookie,
   dashboardAccessForbiddenApp,
   dashboardLaterInstallationFailsApp,
+  dashboardRepositoryAdminDeniedApp,
   enqueuedPullRequestHaikuMessages,
   fetchWorker,
   fetchWorkerWithApp,
   githubInstallationAccessTokenType,
-  githubWebhookHeaders,
   migrateTestDatabase,
   responseSetCookies,
   testEnv,
@@ -19,6 +18,8 @@ import {
   tokenExchangeRequestBody,
   workerEnv,
 } from "./support/worker.ts";
+import { createDashboardSessionCookie } from "./support/dashboard.ts";
+import { githubWebhookHeaders } from "./support/webhook.ts";
 
 describe("cyspbot worker", () => {
   beforeAll(async () => {
@@ -294,6 +295,34 @@ describe("cyspbot worker", () => {
       repositories_removed: [],
     });
     const headers = githubWebhookHeaders(body, "wrong-secret");
+
+    const response = await fetchWorker("https://example.test/github/webhooks", {
+      body,
+      headers,
+      method: "POST",
+    });
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({
+      status: 401,
+      title: "Unauthorized",
+      type: "about:blank",
+    });
+  });
+
+  it("rejects signed webhook payloads for a different github app", async () => {
+    const body = JSON.stringify({
+      action: "added",
+      installation: {
+        id: 67890,
+      },
+      repositories_added: [],
+      repositories_removed: [],
+    });
+    const headers = {
+      ...githubWebhookHeaders(body, "test-webhook-secret"),
+      "x-github-hook-installation-target-id": "999999",
+    };
 
     const response = await fetchWorker("https://example.test/github/webhooks", {
       body,
@@ -861,6 +890,17 @@ describe("cyspbot worker", () => {
       enabled_by: "sally",
       repository_full_name_display: "cysp/terraform-provider-contentful",
     });
+
+    const deniedHaikuSettingsResponse = await fetchWorkerWithApp(
+      dashboardRepositoryAdminDeniedApp,
+      "https://example.test/dashboard/pull-request-haikus",
+      {
+        headers: {
+          cookie: cookieHeaderValue(sessionCookie),
+        },
+      },
+    );
+    expect(deniedHaikuSettingsResponse.status).toBe(403);
 
     await workerEnv.DB.prepare(
       `

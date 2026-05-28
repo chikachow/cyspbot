@@ -6,11 +6,78 @@ import {
   type GitHubUserRepositoryAccess,
 } from "../github/user.ts";
 import { listRepositoryAuditSummaries } from "../storage/audit-log.ts";
+import {
+  listPullRequestHaikuRepositoryOptIns,
+  setPullRequestHaikuRepositoryOptIn,
+} from "../storage/pull-request-haiku.ts";
 import type {
   DashboardRepository,
   DashboardRepositoryListItem,
   DashboardSession,
 } from "./types.ts";
+
+export async function listDashboardRepositoryListModel(
+  env: Env,
+  session: DashboardSession,
+  dependencies: GitHubApiDependencies,
+  now: string,
+): Promise<DashboardRepositoryListItem[]> {
+  return listAccessibleDashboardRepositories(env, session, dependencies, now);
+}
+
+export async function listDashboardPullRequestHaikuModel(
+  env: Env,
+  session: DashboardSession,
+  dependencies: GitHubApiDependencies,
+  now: string,
+): Promise<DashboardRepositoryListItem[] | null> {
+  const repositories = await listAccessibleDashboardRepositories(env, session, dependencies, now);
+  const administeredRepositories = repositories.filter((repository) => repository.canAdminister);
+
+  if (administeredRepositories.length === 0) {
+    return null;
+  }
+
+  const optIns = await listPullRequestHaikuRepositoryOptIns(env);
+
+  return administeredRepositories.map((repository) => ({
+    ...repository,
+    pullRequestHaikuEnabled: optIns.has(repository.repositoryId),
+  }));
+}
+
+export async function setDashboardPullRequestHaikuOptIn(
+  env: Env,
+  input: {
+    enabled: boolean;
+    enabledAt: string;
+    enabledBy: string;
+    repositoryId: number;
+    session: DashboardSession;
+  },
+  dependencies: GitHubApiDependencies,
+): Promise<"not_found" | "ok"> {
+  const repositories = await listAccessibleRepositoryAccesses(env, input.session, dependencies);
+  const repository = repositories.find(
+    (candidate) =>
+      candidate.permissions.admin &&
+      parseRepositoryId(candidate.githubRepoId) === input.repositoryId,
+  );
+
+  if (repository === undefined) {
+    return "not_found";
+  }
+
+  await setPullRequestHaikuRepositoryOptIn(env, {
+    enabled: input.enabled,
+    enabledAt: input.enabledAt,
+    enabledBy: input.enabledBy,
+    repositoryFullName: repository.fullName,
+    repositoryId: input.repositoryId,
+  });
+
+  return "ok";
+}
 
 export async function listAccessibleDashboardRepositories(
   env: Env,
@@ -32,6 +99,7 @@ export async function listAccessibleDashboardRepositories(
 
       return {
         archivedAt: repository.archived ? now : null,
+        canAdminister: repository.permissions.admin,
         fullNameDisplay: repository.fullName,
         installationId: repository.installationId,
         lastInstallationTokenIssuanceAt: auditSummary?.lastInstallationTokenIssuanceAt ?? null,
@@ -67,6 +135,7 @@ export async function getAccessibleDashboardRepositoryByFullName(
 
   return {
     archivedAt: visibleRepository.archived ? now : null,
+    canAdminister: visibleRepository.permissions.admin,
     fullNameDisplay: visibleRepository.fullName,
     fullNameNormalized,
     repositoryId,

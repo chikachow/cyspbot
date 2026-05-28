@@ -10,7 +10,7 @@ cyspbot is a hosted Security Token Service for GitHub Actions workflows.
 
 It verifies GitHub Actions OIDC tokens from a closed set of trusted issuers, derives the calling repository from verified claims, confirms that the configured GitHub App is installed on that repository, and issues a fresh repository-scoped GitHub App installation access token only when the verified workflow context passes cyspbot policy.
 
-The service also exposes a small dashboard for humans who authorize the same GitHub App through GitHub App user authorization. Dashboard users can see only repositories GitHub returns for that human user through GitHub's user-to-server installation repository APIs. Configured dashboard admins can toggle pull request haiku opt-ins for repositories GitHub returns for them.
+The service also exposes a small dashboard for humans who authorize the same GitHub App through GitHub App user authorization. Dashboard users can see only repositories GitHub returns for that human user through GitHub's user-to-server installation repository APIs. Dashboard users can toggle pull request haiku opt-ins only for repositories where GitHub reports they have repository `admin` permission.
 
 ## 2. Public Route Matrix
 
@@ -366,7 +366,7 @@ GitHub App installation permissions remain the upper bound. cyspbot does not wid
 
 ## 7. `POST /github/webhooks`
 
-Purpose: accept signed GitHub App webhook deliveries, record delivery metadata, and signal installation reconciliation.
+Purpose: accept signed GitHub App webhook deliveries and signal installation reconciliation.
 
 Request requirements:
 
@@ -374,11 +374,19 @@ Request requirements:
 - `Content-Type: application/json`, with parameters allowed
 - `X-GitHub-Event` header
 - `X-GitHub-Delivery` header
+- `X-GitHub-Hook-Installation-Target-Type: integration`
+- `X-GitHub-Hook-Installation-Target-ID` equal to configured `GITHUB_APP_ID`
 - `X-Hub-Signature-256` header
 - JSON body
 - Body size at most `256 KiB`
 
 The service checks that `GITHUB_WEBHOOK_SECRET` is configured before any request validation. If the secret is absent or empty, every webhook request returns `500`.
+
+Target semantics:
+
+- `X-GitHub-Hook-Installation-Target-Type` must be `integration`.
+- `X-GitHub-Hook-Installation-Target-ID` must match the configured GitHub App ID.
+- Target validation runs after required envelope headers are present and before HMAC verification.
 
 Signature semantics:
 
@@ -428,22 +436,13 @@ Failure mapping:
 | Malformed `Content-Length`                                  | `400`                                             |
 | Declared or actual body larger than `256 KiB`               | `413`                                             |
 | Missing required GitHub headers                             | `400`                                             |
+| GitHub App target type or ID mismatch                       | `401`                                             |
 | Invalid signature                                           | `401`                                             |
 | Malformed JSON after valid signature                        | `400`                                             |
 | Non-`ping` event without positive integer `installation.id` | `400`                                             |
 | Installation reconciliation signal failure                  | returned status from the installation coordinator |
 
-Delivery metadata is persisted for deliveries that reach envelope validation:
-
-- invalid signatures after required headers are present
-- malformed JSON after a valid signature
-- non-`ping` events missing valid installation ID after a valid signature
-- accepted `ping` deliveries
-- accepted non-`ping` deliveries
-
-Delivery metadata persistence uses GitHub's delivery ID as an idempotency key. Re-deliveries with the same delivery ID do not create duplicate durable rows.
-
-The idempotency key applies only to the durable delivery log row. A valid duplicate delivery can still be accepted and can still signal installation reconciliation again.
+cyspbot does not persist a generic webhook delivery log. GitHub's app registration remains the ingress delivery log. cyspbot persists domain-specific downstream state only, such as Installation Reconciliation signals and pull request haiku queue/run records.
 
 ### Pull Request Haiku Comment Queueing
 
@@ -456,7 +455,7 @@ Signed `pull_request` webhook deliveries also participate in pull request haiku 
 
 The webhook handler evaluates the feature flag with mechanical identifiers only: installation ID, repository ID, repository full name, and pull request number. It writes queue state in D1 and sends one message to `PULL_REQUEST_HAIKU_QUEUE` only when the feature flag is enabled and the repository is opted in. The queue consumer creates or updates a single marker-owned issue comment on the pull request. The visible comment body is a generated haiku representing the pull request change.
 
-The queue consumer reads mechanical pull request change facts and changed files from GitHub using a repository-scoped installation token with `metadata: read`, `pull_requests: write`, and `issues: write`. It does not send human-authored pull request text, such as the title or body, to the model. It does not read full patches in the first implementation. The consumer skips stale queue messages when the stored current head SHA no longer matches the message head SHA.
+The queue consumer reads mechanical pull request change facts and changed files from GitHub using a repository-scoped installation token with `metadata: read`, `pull_requests: write`, and `issues: write`. It does not send human-authored pull request text, such as the title or body, to the model. It does send changed filenames and aggregate change counts, so repository opt-in is required before processing private or sensitive repositories. It does not read full patches in the first implementation. The consumer skips stale queue messages when the stored current head SHA no longer matches the message head SHA.
 
 The AI output is advisory presentation content only. It is not an authorization input and does not change Installation Token Issuance policy.
 
@@ -650,28 +649,28 @@ If GitHub returns `401` or `403` during dashboard visibility refresh, the servic
 
 ### `GET /dashboard/pull-request-haikus`
 
-Purpose: list repositories currently visible to the signed-in dashboard user and show whether pull request haiku comments are enabled.
+Purpose: list repositories currently administered by the signed-in dashboard user and show whether pull request haiku comments are enabled.
 
-Access is limited to configured dashboard admin GitHub user IDs. Non-admin dashboard users receive `403` problem details. The configured production admin is GitHub user ID `742696`.
+Access is limited to repositories where GitHub reports the dashboard user has repository `admin` permission through the GitHub App user-to-server installation repository APIs. Dashboard users with no administered repositories receive `403` problem details.
 
 Read flow:
 
 1. Validate dashboard session.
-2. Confirm the dashboard user's immutable GitHub user ID is configured as a pull request haiku admin.
-3. Fetch the dashboard user's current GitHub installations and repositories.
-4. Join visible repository IDs to `pull_request_haiku_repository_opt_ins`.
+2. Fetch the dashboard user's current GitHub installations and repositories.
+3. Keep only repositories where GitHub reports repository `admin` permission.
+4. Join administered repository IDs to `pull_request_haiku_repository_opt_ins`.
 5. Render HTML.
 
 ### `POST /dashboard/pull-request-haikus`
 
-Purpose: enable or disable pull request haiku comments for one visible repository.
+Purpose: enable or disable pull request haiku comments for one administered repository.
 
 The route accepts `application/x-www-form-urlencoded` with:
 
 - `repository_id`
 - `action` equal to `enable` or `disable`
 
-The request must have an `Origin` header matching the request URL origin. The service validates the dashboard session, confirms the user is configured as a pull request haiku admin, fetches repositories GitHub currently returns for the user, and applies the requested toggle only when the repository ID is in that visible set.
+The request must have an `Origin` header matching the request URL origin. The service validates the dashboard session, fetches repositories GitHub currently returns for the user, keeps only repositories where GitHub reports repository `admin` permission, and applies the requested toggle only when the repository ID is in that administered set.
 
 Successful toggles redirect to `/dashboard/pull-request-haikus`.
 
@@ -954,21 +953,6 @@ For a successful final token issuance, store the permissions exactly as GitHub r
 
 The permission vocabulary belongs to GitHub. Do not force it through a local enum.
 
-### Webhook Delivery Log Entry
-
-Logical fields:
-
-- GitHub delivery ID as primary idempotency key
-- received timestamp
-- GitHub event name
-- installation ID when available
-- delivery accepted flag
-- webhook signature valid flag
-- public response status code
-- optional small redacted metadata JSON
-
-The log stores metadata only. It does not store raw payloads, signatures, secrets, or OAuth/session/token material.
-
 ### Pull Request Haiku Repository Opt-In
 
 Logical fields:
@@ -1101,14 +1085,15 @@ A compatible implementation should satisfy these observable checks:
 6. Unsupported `requested_token_type` returns `400 {"error":"invalid_request"}`.
 7. Disallowed workflow contexts return `400 {"error":"invalid_target"}` from `/token`.
 8. A default-branch `workflow_dispatch` or `schedule` run can receive a token with `contents: write` and `pull_requests: write`.
-9. Invalid webhook signatures return `401` problem details and create a rejected metadata row when delivery headers are present.
-10. Signed `ping` webhooks with valid JSON return `202 {"accepted":true,"event":"ping"}` without `installation.id`.
-11. Non-JSON webhook content type returns `415`.
-12. Webhook payloads larger than `256 KiB` return `413`.
-13. Signed non-`ping` webhooks with positive integer `installation.id` return `202 {"accepted":true}` and signal reconciliation.
-14. `/github/setup` with recognized install/update parameters clears stale OAuth state and redirects to `/login/github?return_to=%2Fdashboard`.
-15. Malformed `/github/setup` callbacks return `400` and clear stale OAuth state.
-16. Unauthenticated `/dashboard` redirects to `/login/github?return_to=%2Fdashboard`.
-17. Dashboard login creates signed state, validates callback state, stores a server-side session, and sets an HTTP-only secure `__Host-cyspbot_dashboard_session` cookie.
-18. Dashboard list and detail pages render only repositories GitHub currently returns for the signed-in dashboard user.
-19. Repository detail pages show at most the last 5 issuance attempts and never show token values.
+9. Invalid webhook signatures return `401` problem details.
+10. Webhooks whose target headers do not match the configured GitHub App return `401` problem details.
+11. Signed `ping` webhooks with matching GitHub App target headers and valid JSON return `202 {"accepted":true,"event":"ping"}` without `installation.id`.
+12. Non-JSON webhook content type returns `415`.
+13. Webhook payloads larger than `256 KiB` return `413`.
+14. Signed non-`ping` webhooks with matching GitHub App target headers and positive integer `installation.id` return `202 {"accepted":true}` and signal reconciliation.
+15. `/github/setup` with recognized install/update parameters clears stale OAuth state and redirects to `/login/github?return_to=%2Fdashboard`.
+16. Malformed `/github/setup` callbacks return `400` and clear stale OAuth state.
+17. Unauthenticated `/dashboard` redirects to `/login/github?return_to=%2Fdashboard`.
+18. Dashboard login creates signed state, validates callback state, stores a server-side session, and sets an HTTP-only secure `__Host-cyspbot_dashboard_session` cookie.
+19. Dashboard list and detail pages render only repositories GitHub currently returns for the signed-in dashboard user.
+20. Repository detail pages show at most the last 5 issuance attempts and never show token values.

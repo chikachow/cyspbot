@@ -1,7 +1,11 @@
 .dev.vars
+.env
 .wrangler
 .local-secrets/
 coverage
 node_modules
+*.key
+*.p8
+*.p12
 *.private-key.pem
 *.private-key.pkcs8.pem

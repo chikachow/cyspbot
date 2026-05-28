@@ -18,10 +18,10 @@ cyspbot has a small dashboard for humans. It authenticates Dashboard Users throu
   - Dashboard Sessions
   - Dashboard Users
   - Installation Reconciliation state and run history
-  - Webhook Delivery Log metadata
+  - pull request haiku state
 - `GitHubInstallationObject` no longer owns the Audit Log; it only coalesces Installation Reconciliation signals in the current implementation. Serialized Installation Reconciliation execution is future implementation.
 - Installation Token Issuance continues to resolve installation and repository metadata live from GitHub and fails closed if final Audit Log persistence to D1 fails.
 - The dashboard uses user-facing repository URLs based on current `owner/name`, but resolves authorization and audit by immutable `repository_id` internally.
 - GitHub App installation setup redirects are treated as onboarding entrypoints, not as dashboard OAuth login completions. The target GitHub App configuration sends setup redirects to `/github/setup`; cyspbot clears stale OAuth state and restarts `/login/github` from there.
 
-The concrete current service contract, durable data model, and dashboard behaviour are documented in [docs/service-contract.md](/Users/STalbot@Scentregroup.com/src/cysp/cyspbot/docs/service-contract.md).
+The concrete current service contract, durable data model, and dashboard behaviour are documented in [../service-contract.md](../service-contract.md).

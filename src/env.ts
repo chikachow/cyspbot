@@ -32,7 +32,6 @@ export interface Env {
   GITHUB_INSTALLATION: DurableObjectNamespace<GitHubInstallationObject>;
   GITHUB_WEBHOOK_SECRET?: string;
   OIDC_ISSUER_VERIFIER: DurableObjectNamespace<OidcIssuerVerifierObject>;
-  PULL_REQUEST_HAIKU_ADMIN_GITHUB_USER_IDS?: string;
   PULL_REQUEST_HAIKU_QUEUE: Queue<PullRequestHaikuQueueMessage>;
   PULL_REQUEST_HAIKU_TEXT_MODEL?: string;
 }

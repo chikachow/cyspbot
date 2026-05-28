@@ -127,19 +127,3 @@ CREATE TABLE IF NOT EXISTS installation_reconciliation_states (
 
 CREATE INDEX IF NOT EXISTS installation_reconciliation_states_by_state_next_retry
   ON installation_reconciliation_states(reconciliation_state, next_retry_at);
-
-CREATE TABLE IF NOT EXISTS webhook_delivery_log_entries (
-  delivery_id TEXT PRIMARY KEY,
-  received_at TEXT NOT NULL,
-  github_event TEXT NOT NULL,
-  installation_id INTEGER,
-  delivery_accepted INTEGER NOT NULL CHECK (delivery_accepted IN (0, 1)),
-  webhook_signature_valid INTEGER NOT NULL CHECK (webhook_signature_valid IN (0, 1)),
-  response_status_code INTEGER NOT NULL,
-  delivery_metadata_json TEXT
-);
-
-CREATE INDEX IF NOT EXISTS webhook_delivery_log_entries_by_received_at
-  ON webhook_delivery_log_entries(received_at);
-CREATE INDEX IF NOT EXISTS webhook_delivery_log_entries_by_installation_received_at
-  ON webhook_delivery_log_entries(installation_id, received_at DESC);

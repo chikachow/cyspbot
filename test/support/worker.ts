@@ -1,4 +1,4 @@
-import { createHmac, createPrivateKey } from "node:crypto";
+import { createPrivateKey } from "node:crypto";
 
 import d1SchemaSql from "../../migrations/0001_dashboard_d1_recut.sql?raw";
 import pullRequestHaikuSchemaSql from "../../migrations/0004_pull_request_haiku.sql?raw";
@@ -11,7 +11,6 @@ import { authenticateOidcToken, authenticateRequest } from "../../src/worker/aut
 import { createApp } from "../../src/worker/app.ts";
 import { env } from "cloudflare:workers";
 import { decodeJwt, SignJWT } from "jose";
-import { expect } from "vitest";
 
 export const workerEnv = env as unknown as Env;
 
@@ -56,7 +55,6 @@ export const testEnv: Env = {
   GITHUB_APP_PRIVATE_KEY_PEM: testPrivateKeyPem,
   GITHUB_WEBHOOK_SECRET: "test-webhook-secret",
   OIDC_ISSUER_VERIFIER: fakeOidcIssuerVerifierNamespace(),
-  PULL_REQUEST_HAIKU_ADMIN_GITHUB_USER_IDS: "42",
   PULL_REQUEST_HAIKU_TEXT_MODEL: "@cf/qwen/qwen3-30b-a3b-fp8",
 };
 const tokenExchangeGrantType = "urn:ietf:params:oauth:grant-type:token-exchange";
@@ -116,6 +114,15 @@ export const dashboardLaterInstallationFailsApp = createApp({
   processPullRequestHaikuMessage: async () => undefined,
 });
 
+export const dashboardRepositoryAdminDeniedApp = createApp({
+  authenticateOidcToken,
+  authenticateRequest,
+  enqueuePullRequestHaikuMessage: async () => undefined,
+  fetch: fetchGitHubDashboardRepositoryAdminDeniedTestDouble,
+  now: () => testNow,
+  processPullRequestHaikuMessage: async () => undefined,
+});
+
 export async function migrateTestDatabase(): Promise<void> {
   for (const statement of `${d1SchemaSql}\n${pullRequestHaikuSchemaSql}`.split(/;\s*(?:\n|$)/u)) {
     if (statement.trim().length > 0) {
@@ -148,69 +155,12 @@ export function fetchWorkerWithApp(
   );
 }
 
-export async function createDashboardSessionCookie(): Promise<string> {
-  await workerEnv.DB.prepare(
-    `
-      UPDATE dashboard_users
-      SET session_revoked_after = NULL
-      WHERE github_user_id = ?
-    `,
-  )
-    .bind("42")
-    .run();
-
-  const loginResponse = await fetchWorker("https://example.test/login/github", {
-    redirect: "manual",
-  });
-  expect(loginResponse.status).toBe(302);
-  const stateCookie = responseSetCookies(loginResponse)[0];
-  expect(stateCookie).toBeDefined();
-  expect(stateCookie).toContain("__Host-cyspbot_oauth_state=");
-  const authorizeUrl = new URL(loginResponse.headers.get("location") ?? "https://example.test");
-  const state = authorizeUrl.searchParams.get("state");
-  expect(state).not.toBeNull();
-
-  const callbackResponse = await fetchWorker(
-    `https://example.test/auth/github/callback?code=test-dashboard-code&state=${encodeURIComponent(state ?? "")}`,
-    {
-      headers: {
-        cookie: cookieHeaderValue(stateCookie!),
-      },
-      redirect: "manual",
-    },
-  );
-  expect(callbackResponse.status).toBe(302);
-  expect(callbackResponse.headers.get("location")).toBe("/dashboard");
-  const sessionCookie = responseSetCookies(callbackResponse).find((cookie) =>
-    cookie.startsWith("__Host-cyspbot_dashboard_session="),
-  );
-  expect(sessionCookie).toBeDefined();
-
-  return sessionCookie!;
-}
-
 export function authorizationHeaders(
   overrides?: Partial<Record<string, string>>,
 ): Promise<Record<string, string>> {
   return createOidcToken(overrides).then((token) => ({
     authorization: `Bearer ${token}`,
   }));
-}
-
-export function githubWebhookHeaders(
-  body: string,
-  secret: string,
-  event = "installation_repositories",
-  deliveryId = "delivery-123",
-): Record<string, string> {
-  const signature = createHmac("sha256", secret).update(body).digest("hex");
-
-  return {
-    "content-type": "application/json",
-    "x-github-delivery": deliveryId,
-    "x-github-event": event,
-    "x-hub-signature-256": `sha256=${signature}`,
-  };
 }
 
 export async function tokenExchangeRequestBody(
@@ -540,6 +490,36 @@ async function fetchGitHubDashboardLaterInstallationFailsTestDouble(
     apiPath === `/user/installations/${laterInstallationId}/repositories`
   ) {
     return new Response(null, { status: 500 });
+  }
+
+  return fetchGitHubTestDouble(request);
+}
+
+async function fetchGitHubDashboardRepositoryAdminDeniedTestDouble(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  const request = new Request(input, init);
+  const apiPath = gitHubApiPathForTestDouble(request);
+
+  if (
+    request.method === "GET" &&
+    apiPath === `/user/installations/${testInstallationId}/repositories`
+  ) {
+    return Response.json({
+      repositories: [
+        {
+          full_name: testRepository,
+          id: Number.parseInt(testRepositoryId, 10),
+          permissions: {
+            admin: false,
+            pull: true,
+            push: true,
+          },
+          private: true,
+        },
+      ],
+    });
   }
 
   return fetchGitHubTestDouble(request);
