@@ -209,7 +209,7 @@ async function generatePullRequestHaiku(
       max_tokens: 100,
       messages: [
         {
-          content: haikuSystemPrompt(input),
+          content: commentarySystemPrompt(input),
           role: "system",
         },
         {
@@ -245,7 +245,7 @@ async function generatePullRequestHaiku(
   }
 }
 
-function haikuSystemPrompt(input: PullRequestHaikuInput): string {
+function commentarySystemPrompt(input: PullRequestHaikuInput): string {
   return `You write one short pull request commentary item from code-related pull request facts.
 Choose exactly one style from this enum: ${commentaryStyles.join(", ")}.
 Use the style that best fits the change, but stay grounded in the provided code facts and diff context.
@@ -253,7 +253,7 @@ The facts intentionally exclude human-authored pull request text such as titles,
 ${inputContextInstruction(input)}
 Do not spend tokens on reasoning. Return the JSON object directly. /no_think
 
-Return only compact JSON with this exact shape: {"style":"haiku","text":"..."}.
+Return only compact JSON with this exact shape: {"style":"<one enum value>","text":"<commentary text>"}.
 Style rules:
 - haiku: exactly three short lines separated by newline characters, haiku-like imagery over strict syllable counting.
 - sarcastic_summary: one mildly sarcastic sentence about the change, never cruel, personal, profane, or hostile.

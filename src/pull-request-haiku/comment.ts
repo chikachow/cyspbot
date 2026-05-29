@@ -50,8 +50,9 @@ export function renderPullRequestHaikuComment(input: PullRequestCommentInput): s
     input.costEstimate === undefined
       ? ""
       : `\n<!-- cyspbot:pull-request-haiku-cost ${JSON.stringify(input.costEstimate)} -->`;
+  const styleMarker = `\n<!-- cyspbot:pull-request-commentary-style ${input.haiku.style} -->`;
 
-  return `${marker}${costMarker}
+  return `${marker}${costMarker}${styleMarker}
 <p align="center">
   <em>${haikuHtml(input.haiku.text)}</em>
 </p>`;

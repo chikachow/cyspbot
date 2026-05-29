@@ -84,7 +84,7 @@ The facts intentionally exclude human-authored pull request text such as titles,
 The input includes changed-file facts and a local summary only. Do not imply you inspected patch contents.
 Do not spend tokens on reasoning. Return the JSON object directly. /no_think
 
-Return only compact JSON with this exact shape: {"style":"haiku","text":"..."}.
+Return only compact JSON with this exact shape: {"style":"<one enum value>","text":"<commentary text>"}.
 Style rules:
 - haiku: exactly three short lines separated by newline characters, haiku-like imagery over strict syllable counting.
 - sarcastic_summary: one mildly sarcastic sentence about the change, never cruel, personal, profane, or hostile.
