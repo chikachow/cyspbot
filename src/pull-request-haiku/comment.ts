@@ -1,6 +1,7 @@
 import type { GitHubPullRequestDetails } from "../github/pull-request.ts";
 
 export interface PullRequestCommentInput {
+  costEstimate?: PullRequestHaikuCostEstimate;
   haiku: PullRequestHaiku;
   pullRequest: GitHubPullRequestDetails;
   repositoryId: number;
@@ -8,6 +9,19 @@ export interface PullRequestCommentInput {
 
 export interface PullRequestHaiku {
   text: string;
+}
+
+export interface PullRequestHaikuCostEstimate {
+  cachedInputTokens: number | null;
+  estimatedCostUsd: number;
+  estimatedNeurons: number;
+  inputTokens: number;
+  inputUsdPerMillionTokens: number;
+  model: string;
+  outputTokens: number;
+  outputUsdPerMillionTokens: number;
+  scope: "prompt";
+  totalTokens: number | null;
 }
 
 export function pullRequestHaikuCommentMarker(input: {
@@ -22,8 +36,12 @@ export function renderPullRequestHaikuComment(input: PullRequestCommentInput): s
     pullRequestNumber: input.pullRequest.number,
     repositoryId: input.repositoryId,
   });
+  const costMarker =
+    input.costEstimate === undefined
+      ? ""
+      : `\n<!-- cyspbot:pull-request-haiku-cost ${JSON.stringify(input.costEstimate)} -->`;
 
-  return `${marker}
+  return `${marker}${costMarker}
 <p align="center">
   <em>${haikuHtml(input.haiku.text)}</em>
 </p>`;

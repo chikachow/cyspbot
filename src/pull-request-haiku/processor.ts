@@ -3,6 +3,7 @@ import { GitHubApiError } from "../github/http.ts";
 import {
   fallbackPullRequestHaiku,
   pullRequestHaikuCommentMarker,
+  type PullRequestHaikuCostEstimate,
   renderPullRequestHaikuComment,
 } from "./comment.ts";
 import { buildPullRequestHaikuInput, type PullRequestHaikuInput } from "./input.ts";
@@ -22,6 +23,20 @@ export type {
   PullRequestHaikuStore,
   PullRequestHaikuTextResult,
 } from "./services.ts";
+
+interface TextGenerationTokenUsage {
+  cachedInputTokens: number | null;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number | null;
+}
+
+interface TextModelPricing {
+  inputNeuronsPerMillionTokens: number;
+  inputUsdPerMillionTokens: number;
+  outputNeuronsPerMillionTokens: number;
+  outputUsdPerMillionTokens: number;
+}
 
 const defaultTextModel: PullRequestHaikuTextModel = "@cf/qwen/qwen3-30b-a3b-fp8";
 
@@ -109,6 +124,7 @@ async function executePullRequestHaikuRun(
       ? await generatePullRequestHaiku(env, input)
       : await services.generatePullRequestHaiku(env, input);
   const body = renderPullRequestHaikuComment({
+    costEstimate: textResult.costEstimate,
     haiku: textResult.haiku,
     pullRequest,
     repositoryId: message.repositoryId,
@@ -212,6 +228,7 @@ Prefer haiku-like imagery over strict syllable counting. Do not include a title,
     }
 
     return {
+      costEstimate: costEstimateForTextGeneration(model, result),
       haiku: { text: haikuString(response, fallback.text) },
       model,
     };
@@ -231,6 +248,53 @@ function textModelForEnv(env: Env): PullRequestHaikuTextModel {
     : defaultTextModel;
 }
 
+function pricingForTextModel(model: PullRequestHaikuTextModel): TextModelPricing {
+  switch (model) {
+    case "@cf/meta/llama-3.2-3b-instruct":
+    case "@cf/qwen/qwen3-30b-a3b-fp8":
+      return {
+        inputNeuronsPerMillionTokens: 4625,
+        inputUsdPerMillionTokens: 0.051,
+        outputNeuronsPerMillionTokens: 30475,
+        outputUsdPerMillionTokens: 0.335,
+      };
+  }
+}
+
+function costEstimateForTextGeneration(
+  model: PullRequestHaikuTextModel,
+  result: unknown,
+): PullRequestHaikuCostEstimate | undefined {
+  const usage = textGenerationTokenUsage(result);
+
+  if (usage === null) {
+    return undefined;
+  }
+
+  const pricing = pricingForTextModel(model);
+  const estimatedCostUsd =
+    (usage.inputTokens * pricing.inputUsdPerMillionTokens +
+      usage.outputTokens * pricing.outputUsdPerMillionTokens) /
+    1_000_000;
+  const estimatedNeurons =
+    (usage.inputTokens * pricing.inputNeuronsPerMillionTokens +
+      usage.outputTokens * pricing.outputNeuronsPerMillionTokens) /
+    1_000_000;
+
+  return {
+    cachedInputTokens: usage.cachedInputTokens,
+    estimatedCostUsd: roundDecimal(estimatedCostUsd, 10),
+    estimatedNeurons: roundDecimal(estimatedNeurons, 6),
+    inputTokens: usage.inputTokens,
+    inputUsdPerMillionTokens: pricing.inputUsdPerMillionTokens,
+    model,
+    outputTokens: usage.outputTokens,
+    outputUsdPerMillionTokens: pricing.outputUsdPerMillionTokens,
+    scope: "prompt",
+    totalTokens: usage.totalTokens,
+  };
+}
+
 function runTextGeneration(
   env: Env,
   model: PullRequestHaikuTextModel,
@@ -246,6 +310,56 @@ function runTextGeneration(
     case "@cf/qwen/qwen3-30b-a3b-fp8":
       return env.AI.run("@cf/qwen/qwen3-30b-a3b-fp8", input);
   }
+}
+
+function textGenerationTokenUsage(result: unknown): TextGenerationTokenUsage | null {
+  if (!isRecord(result)) {
+    return null;
+  }
+
+  const usage = result["usage"];
+
+  if (!isRecord(usage)) {
+    return null;
+  }
+
+  const inputTokens = integerValue(usage["prompt_tokens"] ?? usage["input_tokens"]);
+  const outputTokens = integerValue(usage["completion_tokens"] ?? usage["output_tokens"]);
+
+  if (inputTokens === null || outputTokens === null) {
+    return null;
+  }
+
+  return {
+    cachedInputTokens: cachedInputTokens(usage),
+    inputTokens,
+    outputTokens,
+    totalTokens: integerValue(usage["total_tokens"]),
+  };
+}
+
+function cachedInputTokens(usage: Record<string, unknown>): number | null {
+  const direct = integerValue(usage["cached_tokens"] ?? usage["cached_input_tokens"]);
+
+  if (direct !== null) {
+    return direct;
+  }
+
+  for (const key of ["prompt_tokens_details", "input_tokens_details"]) {
+    const details = usage[key];
+
+    if (!isRecord(details)) {
+      continue;
+    }
+
+    const cachedTokens = integerValue(details["cached_tokens"]);
+
+    if (cachedTokens !== null) {
+      return cachedTokens;
+    }
+  }
+
+  return null;
 }
 
 function textGenerationResponsePayload(result: unknown): string | null {
@@ -384,6 +498,16 @@ function stripThinkingBlocks(value: string): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function integerValue(value: unknown): number | null {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null;
+}
+
+function roundDecimal(value: number, places: number): number {
+  const multiplier = 10 ** places;
+
+  return Math.round(value * multiplier) / multiplier;
 }
 
 function truncate(value: string, maxLength: number): string {
