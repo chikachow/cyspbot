@@ -18,7 +18,11 @@ import {
   markPullRequestHaikuRunStarted,
   markPullRequestHaikuRunSucceeded,
 } from "../storage/pull-request-haiku.ts";
-import type { PullRequestHaiku, PullRequestHaikuCostEstimate } from "./comment.ts";
+import type {
+  PullRequestCommentaryStyle,
+  PullRequestHaiku,
+  PullRequestHaikuCostEstimate,
+} from "./comment.ts";
 import type { PullRequestHaikuInput } from "./input.ts";
 
 export type PullRequestHaikuTextModel =
@@ -30,6 +34,8 @@ export interface PullRequestHaikuTextResult {
   haiku: PullRequestHaiku;
   model: PullRequestHaikuTextModel | null;
 }
+
+export type { PullRequestCommentaryStyle };
 
 export interface PullRequestHaikuDependencies extends GitHubApiDependencies {
   generatePullRequestHaiku?(

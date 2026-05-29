@@ -77,15 +77,23 @@ const input = {
   max_tokens: 100,
   messages: [
     {
-      content: `You write one short haiku for a GitHub pull request from code-related pull request facts.
-Be inventive, but stay grounded in the provided code facts and diff context.
+      content: `You write one short pull request commentary item from code-related pull request facts.
+Choose exactly one style from this enum: code_joke, commit_fortune, dry_release_note, haiku, original_song_line, sarcastic_summary, tiny_changelog.
+Use the style that best fits the change, but stay grounded in the provided code facts and diff context.
 The facts intentionally exclude human-authored pull request text such as titles, descriptions, branch names, and commit messages.
 The input includes changed-file facts and a local summary only. Do not imply you inspected patch contents.
-Do not spend tokens on reasoning. Return the haiku directly. /no_think
+Do not spend tokens on reasoning. Return the JSON object directly. /no_think
 
-Return only the haiku: three short lines separated by newline characters.
-The haiku should represent the change, its scale, and its likely area of the codebase.
-Prefer haiku-like imagery over strict syllable counting. Do not include a title, label, explanation, markdown fence, or any mention that you are an AI model.`,
+Return only compact JSON with this exact shape: {"style":"haiku","text":"..."}.
+Style rules:
+- haiku: exactly three short lines separated by newline characters, haiku-like imagery over strict syllable counting.
+- sarcastic_summary: one mildly sarcastic sentence about the change, never cruel, personal, profane, or hostile.
+- dry_release_note: one dry professional sentence.
+- tiny_changelog: one or two compact lines, no markdown bullets.
+- commit_fortune: one short fortune-cookie sentence about the change.
+- original_song_line: one original song-like line, no real song lyrics, no artist names, no quoted or recognizable lyrics.
+- code_joke: one short original joke based on the code facts, no insults, no profanity, no real song lyrics.
+Do not include a title, label, explanation, markdown fence, or any mention that you are an AI model.`,
       role: "system",
     },
     {

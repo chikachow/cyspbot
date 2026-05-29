@@ -7,6 +7,7 @@ describe("pull request haiku comments", () => {
     expect(
       renderPullRequestHaikuComment({
         haiku: {
+          style: "haiku",
           text: 'Queue <winds> softly\nBranches & tests bloom\nReview waits "calm"',
         },
         pullRequest: {
@@ -42,6 +43,7 @@ describe("pull request haiku comments", () => {
           totalTokens: 1020,
         },
         haiku: {
+          style: "dry_release_note",
           text: "Queue winds softly",
         },
         pullRequest: {

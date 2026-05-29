@@ -3,6 +3,7 @@ import { GitHubApiError } from "../github/http.ts";
 import {
   fallbackPullRequestHaiku,
   pullRequestHaikuCommentMarker,
+  type PullRequestHaiku,
   type PullRequestHaikuCostEstimate,
   renderPullRequestHaikuComment,
 } from "./comment.ts";
@@ -10,6 +11,7 @@ import { buildPullRequestHaikuInput, type PullRequestHaikuInput } from "./input.
 import type { PullRequestHaikuQueueMessage } from "./queue.ts";
 import {
   pullRequestHaikuServices,
+  type PullRequestCommentaryStyle,
   type PullRequestHaikuDependencies,
   type PullRequestHaikuGitHubClient,
   type PullRequestHaikuServices,
@@ -39,6 +41,15 @@ interface TextModelPricing {
 }
 
 const defaultTextModel: PullRequestHaikuTextModel = "@cf/qwen/qwen3-30b-a3b-fp8";
+const commentaryStyles = [
+  "code_joke",
+  "commit_fortune",
+  "dry_release_note",
+  "haiku",
+  "original_song_line",
+  "sarcastic_summary",
+  "tiny_changelog",
+] satisfies PullRequestCommentaryStyle[];
 
 type PullRequestHaikuRunOutcome =
   | {
@@ -222,7 +233,7 @@ async function generatePullRequestHaiku(
 
     return {
       costEstimate: costEstimateForTextGeneration(model, result),
-      haiku: { text: normalizedHaikuString(response, fallback.text) },
+      haiku: normalizedCommentary(response, fallback),
       model,
     };
   } catch (error) {
@@ -235,15 +246,23 @@ async function generatePullRequestHaiku(
 }
 
 function haikuSystemPrompt(input: PullRequestHaikuInput): string {
-  return `You write one short haiku for a GitHub pull request from code-related pull request facts.
-Be inventive, but stay grounded in the provided code facts and diff context.
+  return `You write one short pull request commentary item from code-related pull request facts.
+Choose exactly one style from this enum: ${commentaryStyles.join(", ")}.
+Use the style that best fits the change, but stay grounded in the provided code facts and diff context.
 The facts intentionally exclude human-authored pull request text such as titles, descriptions, branch names, and commit messages.
 ${inputContextInstruction(input)}
-Do not spend tokens on reasoning. Return the haiku directly. /no_think
+Do not spend tokens on reasoning. Return the JSON object directly. /no_think
 
-Return only the haiku: three short lines separated by newline characters.
-The haiku should represent the change, its scale, and its likely area of the codebase.
-Prefer haiku-like imagery over strict syllable counting. Do not include a title, label, explanation, markdown fence, or any mention that you are an AI model.`;
+Return only compact JSON with this exact shape: {"style":"haiku","text":"..."}.
+Style rules:
+- haiku: exactly three short lines separated by newline characters, haiku-like imagery over strict syllable counting.
+- sarcastic_summary: one mildly sarcastic sentence about the change, never cruel, personal, profane, or hostile.
+- dry_release_note: one dry professional sentence.
+- tiny_changelog: one or two compact lines, no markdown bullets.
+- commit_fortune: one short fortune-cookie sentence about the change.
+- original_song_line: one original song-like line, no real song lyrics, no artist names, no quoted or recognizable lyrics.
+- code_joke: one short original joke based on the code facts, no insults, no profanity, no real song lyrics.
+Do not include a title, label, explanation, markdown fence, or any mention that you are an AI model.`;
 }
 
 function inputContextInstruction(input: PullRequestHaikuInput): string {
@@ -494,6 +513,16 @@ function responseShape(result: unknown): string {
   return Object.keys(result).sort().join(",");
 }
 
+export function normalizedCommentary(value: string, fallback: PullRequestHaiku): PullRequestHaiku {
+  const payload = commentaryPayload(value);
+
+  if (payload === null || !validCommentary(payload)) {
+    return fallback;
+  }
+
+  return payload;
+}
+
 export function normalizedHaikuString(value: string, fallback: string): string {
   const lines = stripThinkingBlocks(value)
     .replaceAll(/\r\n?/gu, "\n")
@@ -506,6 +535,57 @@ export function normalizedHaikuString(value: string, fallback: string): string {
   }
 
   return lines.join("\n");
+}
+
+function commentaryPayload(value: string): PullRequestHaiku | null {
+  const normalized = stripThinkingBlocks(value).trim();
+  const parsed = parseJsonObject(normalized);
+
+  if (parsed === null) {
+    return {
+      style: "haiku",
+      text: normalizedHaikuString(normalized, ""),
+    };
+  }
+
+  const style = commentaryStyle(parsed["style"]);
+  const text = parsed["text"];
+
+  return style !== null && typeof text === "string" ? { style, text } : null;
+}
+
+function parseJsonObject(value: string): Record<string, unknown> | null {
+  try {
+    const parsed: unknown = JSON.parse(value);
+
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function commentaryStyle(value: unknown): PullRequestCommentaryStyle | null {
+  return typeof value === "string" && isCommentaryStyle(value) ? value : null;
+}
+
+function isCommentaryStyle(value: string): value is PullRequestCommentaryStyle {
+  return commentaryStyles.some((style) => style === value);
+}
+
+function validCommentary(commentary: PullRequestHaiku): boolean {
+  switch (commentary.style) {
+    case "haiku":
+      return normalizedHaikuString(commentary.text, "") === commentary.text;
+    case "sarcastic_summary":
+    case "code_joke":
+      return validSingleLineCommentary(commentary.text, 180);
+    case "commit_fortune":
+    case "dry_release_note":
+    case "original_song_line":
+      return validSingleLineCommentary(commentary.text, 160);
+    case "tiny_changelog":
+      return validTinyChangelog(commentary.text);
+  }
 }
 
 function stripThinkingBlocks(value: string): string {
@@ -521,6 +601,36 @@ function validHaikuLine(line: string): boolean {
     !/^\s*(haiku|title|poem)\s*:/iu.test(line) &&
     !/\b(ai|model|prompt|language model)\b/iu.test(line)
   );
+}
+
+function validSingleLineCommentary(value: string, maxLength: number): boolean {
+  const line = normalizedSingleLine(value);
+
+  return (
+    line === value &&
+    line.length > 0 &&
+    line.length <= maxLength &&
+    !/```/u.test(line) &&
+    !line.includes("\n")
+  );
+}
+
+function validTinyChangelog(value: string): boolean {
+  const lines = value
+    .replaceAll(/\r\n?/gu, "\n")
+    .split("\n")
+    .map((line) => line.replaceAll(/\s+/gu, " ").trim())
+    .filter((line) => line.length > 0);
+
+  return (
+    lines.length >= 1 &&
+    lines.length <= 2 &&
+    lines.every((line) => line.length <= 120 && !/```/u.test(line) && !/^\s*[-*]\s+/u.test(line))
+  );
+}
+
+function normalizedSingleLine(value: string): string {
+  return value.replaceAll(/\s+/gu, " ").trim();
 }
 
 function integerValue(value: unknown): number | null {

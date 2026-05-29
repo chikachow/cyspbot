@@ -107,6 +107,7 @@ const baseTestDependencies = {
           totalTokens: 1020,
         },
         haiku: {
+          style: "haiku",
           text: "Queue winds softly\nComments bloom on branch changes\nReview dawns again",
         },
         model: "@cf/qwen/qwen3-30b-a3b-fp8",

@@ -7,7 +7,17 @@ export interface PullRequestCommentInput {
   repositoryId: number;
 }
 
+export type PullRequestCommentaryStyle =
+  | "code_joke"
+  | "commit_fortune"
+  | "dry_release_note"
+  | "haiku"
+  | "original_song_line"
+  | "sarcastic_summary"
+  | "tiny_changelog";
+
 export interface PullRequestHaiku {
+  style: PullRequestCommentaryStyle;
   text: string;
 }
 
@@ -49,6 +59,7 @@ export function renderPullRequestHaikuComment(input: PullRequestCommentInput): s
 
 export function fallbackPullRequestHaiku(): PullRequestHaiku {
   return {
+    style: "haiku",
     text: "Quiet changes wait\nBranches lean toward review\nMorning tests awake",
   };
 }
