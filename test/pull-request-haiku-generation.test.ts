@@ -8,6 +8,36 @@ import {
 
 describe("pull request haiku generation output", () => {
   const fallback = "Quiet changes wait\nBranches lean toward review\nMorning tests awake";
+  const generatedItems = [
+    {
+      style: "code_joke",
+      text: "The diff asked for a timeout, so the tests gave it one.",
+    },
+    {
+      style: "commit_fortune",
+      text: "A small branch bends before review, and the build bends with it.",
+    },
+    {
+      style: "dry_release_note",
+      text: "Updates pull request commentary generation and validation.",
+    },
+    {
+      style: "haiku",
+      text: "Tests gather softly\nWorker paths bend into shape\nReview dawns clean",
+    },
+    {
+      style: "original_song_line",
+      text: "The queue hums softly while the branch waits for morning.",
+    },
+    {
+      style: "sarcastic_summary",
+      text: "Another heroic journey through config, now with fewer ways to surprise review.",
+    },
+    {
+      style: "tiny_changelog",
+      text: "Changed: commentary generation\nKept: bounded pull request facts",
+    },
+  ] as const;
 
   it("normalizes valid three-line haikus", () => {
     expect(
@@ -39,60 +69,44 @@ describe("pull request haiku generation output", () => {
     ).toBe(fallback);
   });
 
-  it("accepts model-selected sarcastic summaries from structured JSON", () => {
+  it("accepts one generated item for every commentary style", () => {
     expect(
       normalizedCommentary(
         JSON.stringify({
-          style: "sarcastic_summary",
-          text: "Another heroic journey through config, now with fewer ways to surprise review.",
+          items: generatedItems,
         }),
         fallbackPullRequestHaiku(),
       ),
     ).toEqual({
-      style: "sarcastic_summary",
-      text: "Another heroic journey through config, now with fewer ways to surprise review.",
+      items: generatedItems,
     });
   });
 
-  it("accepts short code jokes from structured JSON", () => {
+  it("falls back when a generated style is missing", () => {
     expect(
       normalizedCommentary(
         JSON.stringify({
-          style: "code_joke",
-          text: "The diff asked for a timeout, so the tests gave it one.",
-        }),
-        fallbackPullRequestHaiku(),
-      ),
-    ).toEqual({
-      style: "code_joke",
-      text: "The diff asked for a timeout, so the tests gave it one.",
-    });
-  });
-
-  it("falls back when the model invents a style", () => {
-    expect(
-      normalizedCommentary(
-        JSON.stringify({
-          style: "limerick",
-          text: "There once was a branch from Nantucket.",
+          items: generatedItems.filter((item) => item.style !== "code_joke"),
         }),
         fallbackPullRequestHaiku(),
       ),
     ).toEqual(fallbackPullRequestHaiku());
   });
 
-  it("accepts original song-like lines from structured JSON", () => {
+  it("falls back when the model invents a style", () => {
     expect(
       normalizedCommentary(
         JSON.stringify({
-          style: "original_song_line",
-          text: "The queue hums softly while the branch waits for morning.",
+          items: [
+            ...generatedItems,
+            {
+              style: "limerick",
+              text: "There once was a branch from Nantucket.",
+            },
+          ],
         }),
         fallbackPullRequestHaiku(),
       ),
-    ).toEqual({
-      style: "original_song_line",
-      text: "The queue hums softly while the branch waits for morning.",
-    });
+    ).toEqual(fallbackPullRequestHaiku());
   });
 });

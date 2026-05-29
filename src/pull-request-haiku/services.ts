@@ -20,6 +20,7 @@ import {
 } from "../storage/pull-request-haiku.ts";
 import type {
   PullRequestCommentaryStyle,
+  PullRequestCommentaryItem,
   PullRequestHaiku,
   PullRequestHaikuCostEstimate,
 } from "./comment.ts";
@@ -35,7 +36,7 @@ export interface PullRequestHaikuTextResult {
   model: PullRequestHaikuTextModel | null;
 }
 
-export type { PullRequestCommentaryStyle };
+export type { PullRequestCommentaryItem, PullRequestCommentaryStyle };
 
 export interface PullRequestHaikuDependencies extends GitHubApiDependencies {
   generatePullRequestHaiku?(

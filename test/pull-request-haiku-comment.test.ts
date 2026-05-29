@@ -7,8 +7,16 @@ describe("pull request haiku comments", () => {
     expect(
       renderPullRequestHaikuComment({
         haiku: {
-          style: "haiku",
-          text: 'Queue <winds> softly\nBranches & tests bloom\nReview waits "calm"',
+          items: [
+            {
+              style: "haiku",
+              text: 'Queue <winds> softly\nBranches & tests bloom\nReview waits "calm"',
+            },
+            {
+              style: "code_joke",
+              text: "The queue promised to be brief, then brought tests.",
+            },
+          ],
         },
         pullRequest: {
           additions: 10,
@@ -20,11 +28,17 @@ describe("pull request haiku comments", () => {
         repositoryId: 123456789,
       }),
     ).toBe(`<!-- cyspbot:pull-request-haiku repository_id=123456789 pull_request=2 -->
-<!-- cyspbot:pull-request-commentary-style haiku -->
+<!-- cyspbot:pull-request-commentary-styles haiku,code_joke -->
 <p align="center">
+  <strong>Haiku</strong><br>
   <em>Queue &lt;winds&gt; softly<br>
   Branches &amp; tests bloom<br>
   Review waits &quot;calm&quot;</em>
+</p>
+
+<p align="center">
+  <strong>Code joke</strong><br>
+  <em>The queue promised to be brief, then brought tests.</em>
 </p>`);
   });
 
@@ -44,8 +58,12 @@ describe("pull request haiku comments", () => {
           totalTokens: 1020,
         },
         haiku: {
-          style: "dry_release_note",
-          text: "Queue winds softly",
+          items: [
+            {
+              style: "dry_release_note",
+              text: "Queue winds softly",
+            },
+          ],
         },
         pullRequest: {
           additions: 10,
@@ -62,8 +80,12 @@ describe("pull request haiku comments", () => {
     expect(
       renderPullRequestHaikuComment({
         haiku: {
-          style: "dry_release_note",
-          text: "Queue winds softly",
+          items: [
+            {
+              style: "dry_release_note",
+              text: "Queue winds softly",
+            },
+          ],
         },
         pullRequest: {
           additions: 10,
@@ -74,6 +96,6 @@ describe("pull request haiku comments", () => {
         },
         repositoryId: 123456789,
       }),
-    ).toContain("<!-- cyspbot:pull-request-commentary-style dry_release_note -->");
+    ).toContain("<!-- cyspbot:pull-request-commentary-styles dry_release_note -->");
   });
 });

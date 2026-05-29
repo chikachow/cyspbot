@@ -79,8 +79,12 @@ describe("pull request haiku processor", () => {
         calls.push(`generate:${input.kind}`);
         return {
           haiku: {
-            style: "haiku",
-            text: "Injected spring rain\nDiffs gather into one song\nReview wakes gently",
+            items: [
+              {
+                style: "haiku",
+                text: "Injected spring rain\nDiffs gather into one song\nReview wakes gently",
+              },
+            ],
           },
           model: "@cf/qwen/qwen3-30b-a3b-fp8",
         };

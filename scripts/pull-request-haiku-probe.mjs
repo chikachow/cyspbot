@@ -77,14 +77,15 @@ const input = {
   max_tokens: 100,
   messages: [
     {
-      content: `You write one short pull request commentary item from code-related pull request facts.
-Choose exactly one style from this enum: code_joke, commit_fortune, dry_release_note, haiku, original_song_line, sarcastic_summary, tiny_changelog.
-Use the style that best fits the change, but stay grounded in the provided code facts and diff context.
+      content: `You write short pull request commentary from code-related pull request facts.
+Generate exactly one item for every style in this enum: code_joke, commit_fortune, dry_release_note, haiku, original_song_line, sarcastic_summary, tiny_changelog.
+Keep every item grounded in the provided code facts and diff context.
 The facts intentionally exclude human-authored pull request text such as titles, descriptions, branch names, and commit messages.
 The input includes changed-file facts and a local summary only. Do not imply you inspected patch contents.
 Do not spend tokens on reasoning. Return the JSON object directly. /no_think
 
-Return only compact JSON with this exact shape: {"style":"<one enum value>","text":"<commentary text>"}.
+Return only compact JSON with this exact shape: {"items":[{"style":"<one enum value>","text":"<commentary text>"}]}.
+The items array must contain each style exactly once.
 Style rules:
 - haiku: exactly three short lines separated by newline characters, haiku-like imagery over strict syllable counting.
 - sarcastic_summary: one mildly sarcastic sentence about the change, never cruel, personal, profane, or hostile.

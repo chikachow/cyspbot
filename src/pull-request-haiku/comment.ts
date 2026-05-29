@@ -16,9 +16,13 @@ export type PullRequestCommentaryStyle =
   | "sarcastic_summary"
   | "tiny_changelog";
 
-export interface PullRequestHaiku {
+export interface PullRequestCommentaryItem {
   style: PullRequestCommentaryStyle;
   text: string;
+}
+
+export interface PullRequestHaiku {
+  items: PullRequestCommentaryItem[];
 }
 
 export interface PullRequestHaikuCostEstimate {
@@ -50,27 +54,55 @@ export function renderPullRequestHaikuComment(input: PullRequestCommentInput): s
     input.costEstimate === undefined
       ? ""
       : `\n<!-- cyspbot:pull-request-haiku-cost ${JSON.stringify(input.costEstimate)} -->`;
-  const styleMarker = `\n<!-- cyspbot:pull-request-commentary-style ${input.haiku.style} -->`;
+  const styleMarker = `\n<!-- cyspbot:pull-request-commentary-styles ${input.haiku.items.map((item) => item.style).join(",")} -->`;
 
   return `${marker}${costMarker}${styleMarker}
-<p align="center">
-  <em>${haikuHtml(input.haiku.text)}</em>
-</p>`;
+${input.haiku.items.map(commentaryItemHtml).join("\n\n")}`;
 }
 
 export function fallbackPullRequestHaiku(): PullRequestHaiku {
   return {
-    style: "haiku",
-    text: "Quiet changes wait\nBranches lean toward review\nMorning tests awake",
+    items: [
+      {
+        style: "haiku",
+        text: "Quiet changes wait\nBranches lean toward review\nMorning tests awake",
+      },
+    ],
   };
 }
 
-function haikuHtml(haiku: string): string {
-  return haiku
+function commentaryItemHtml(item: PullRequestCommentaryItem): string {
+  return `<p align="center">
+  <strong>${escapeHtml(commentaryStyleLabel(item.style))}</strong><br>
+  <em>${commentaryTextHtml(item.text)}</em>
+</p>`;
+}
+
+function commentaryTextHtml(text: string): string {
+  return text
     .split("\n")
     .map((line) => escapeHtml(line.trim()))
     .filter((line) => line.length > 0)
     .join("<br>\n  ");
+}
+
+function commentaryStyleLabel(style: PullRequestCommentaryStyle): string {
+  switch (style) {
+    case "code_joke":
+      return "Code joke";
+    case "commit_fortune":
+      return "Commit fortune";
+    case "dry_release_note":
+      return "Dry release note";
+    case "haiku":
+      return "Haiku";
+    case "original_song_line":
+      return "Original song line";
+    case "sarcastic_summary":
+      return "Sarcastic summary";
+    case "tiny_changelog":
+      return "Tiny changelog";
+  }
 }
 
 function escapeHtml(value: string): string {

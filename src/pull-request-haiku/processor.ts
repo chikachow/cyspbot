@@ -4,6 +4,7 @@ import {
   fallbackPullRequestHaiku,
   pullRequestHaikuCommentMarker,
   type PullRequestHaiku,
+  type PullRequestCommentaryItem,
   type PullRequestHaikuCostEstimate,
   renderPullRequestHaikuComment,
 } from "./comment.ts";
@@ -206,7 +207,7 @@ async function generatePullRequestHaiku(
 
   try {
     const result = await runTextGeneration(env, model, {
-      max_tokens: 100,
+      max_tokens: 600,
       messages: [
         {
           content: commentarySystemPrompt(input),
@@ -246,14 +247,15 @@ async function generatePullRequestHaiku(
 }
 
 function commentarySystemPrompt(input: PullRequestHaikuInput): string {
-  return `You write one short pull request commentary item from code-related pull request facts.
-Choose exactly one style from this enum: ${commentaryStyles.join(", ")}.
-Use the style that best fits the change, but stay grounded in the provided code facts and diff context.
+  return `You write short pull request commentary from code-related pull request facts.
+Generate exactly one item for every style in this enum: ${commentaryStyles.join(", ")}.
+Keep every item grounded in the provided code facts and diff context.
 The facts intentionally exclude human-authored pull request text such as titles, descriptions, branch names, and commit messages.
 ${inputContextInstruction(input)}
 Do not spend tokens on reasoning. Return the JSON object directly. /no_think
 
-Return only compact JSON with this exact shape: {"style":"<one enum value>","text":"<commentary text>"}.
+Return only compact JSON with this exact shape: {"items":[{"style":"<one enum value>","text":"<commentary text>"}]}.
+The items array must contain each style exactly once.
 Style rules:
 - haiku: exactly three short lines separated by newline characters, haiku-like imagery over strict syllable counting.
 - sarcastic_summary: one mildly sarcastic sentence about the change, never cruel, personal, profane, or hostile.
@@ -543,15 +545,18 @@ function commentaryPayload(value: string): PullRequestHaiku | null {
 
   if (parsed === null) {
     return {
-      style: "haiku",
-      text: normalizedHaikuString(normalized, ""),
+      items: [
+        {
+          style: "haiku",
+          text: normalizedHaikuString(normalized, ""),
+        },
+      ],
     };
   }
 
-  const style = commentaryStyle(parsed["style"]);
-  const text = parsed["text"];
+  const items = commentaryItems(parsed["items"]);
 
-  return style !== null && typeof text === "string" ? { style, text } : null;
+  return items === null ? null : { items };
 }
 
 function parseJsonObject(value: string): Record<string, unknown> | null {
@@ -568,23 +573,64 @@ function commentaryStyle(value: unknown): PullRequestCommentaryStyle | null {
   return typeof value === "string" && isCommentaryStyle(value) ? value : null;
 }
 
+function commentaryItems(value: unknown): PullRequestCommentaryItem[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const items: PullRequestCommentaryItem[] = [];
+
+  for (const item of value) {
+    if (!isRecord(item)) {
+      return null;
+    }
+
+    const style = commentaryStyle(item["style"]);
+    const text = item["text"];
+
+    if (style === null || typeof text !== "string") {
+      return null;
+    }
+
+    items.push({ style, text });
+  }
+
+  return items;
+}
+
 function isCommentaryStyle(value: string): value is PullRequestCommentaryStyle {
   return commentaryStyles.some((style) => style === value);
 }
 
 function validCommentary(commentary: PullRequestHaiku): boolean {
-  switch (commentary.style) {
+  return (
+    hasEveryCommentaryStyleOnce(commentary.items) && commentary.items.every(validCommentaryItem)
+  );
+}
+
+function hasEveryCommentaryStyleOnce(items: PullRequestCommentaryItem[]): boolean {
+  if (items.length !== commentaryStyles.length) {
+    return false;
+  }
+
+  const styles = new Set(items.map((item) => item.style));
+
+  return commentaryStyles.every((style) => styles.has(style));
+}
+
+function validCommentaryItem(item: PullRequestCommentaryItem): boolean {
+  switch (item.style) {
     case "haiku":
-      return normalizedHaikuString(commentary.text, "") === commentary.text;
+      return normalizedHaikuString(item.text, "") === item.text;
     case "sarcastic_summary":
     case "code_joke":
-      return validSingleLineCommentary(commentary.text, 180);
+      return validSingleLineCommentary(item.text, 180);
     case "commit_fortune":
     case "dry_release_note":
     case "original_song_line":
-      return validSingleLineCommentary(commentary.text, 160);
+      return validSingleLineCommentary(item.text, 160);
     case "tiny_changelog":
-      return validTinyChangelog(commentary.text);
+      return validTinyChangelog(item.text);
   }
 }
 
