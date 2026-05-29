@@ -74,12 +74,14 @@ const inputPayload = {
 };
 
 const input = {
-  max_tokens: 100,
+  max_tokens: 600,
   messages: [
     {
       content: `You write short pull request commentary from code-related pull request facts.
 Generate exactly one item for every style in this enum: code_joke, commit_fortune, dry_release_note, haiku, original_song_line, sarcastic_summary, tiny_changelog.
 Keep every item grounded in the provided code facts and diff context.
+Make the seven items meaningfully different from each other: vary the angle, imagery, and wording.
+Prefer concrete cues from filenames, dominant area, change shape, tests, config, storage, or docs over generic words like "code", "change", "diff", or "review".
 The facts intentionally exclude human-authored pull request text such as titles, descriptions, branch names, and commit messages.
 The input includes changed-file facts and a local summary only. Do not imply you inspected patch contents.
 Do not spend tokens on reasoning. Return the JSON object directly. /no_think
@@ -87,13 +89,13 @@ Do not spend tokens on reasoning. Return the JSON object directly. /no_think
 Return only compact JSON with this exact shape: {"items":[{"style":"<one enum value>","text":"<commentary text>"}]}.
 The items array must contain each style exactly once.
 Style rules:
-- haiku: exactly three short lines separated by newline characters, haiku-like imagery over strict syllable counting.
-- sarcastic_summary: one mildly sarcastic sentence about the change, never cruel, personal, profane, or hostile.
-- dry_release_note: one dry professional sentence.
-- tiny_changelog: one or two compact lines, no markdown bullets.
+- haiku: exactly three short lines separated by newline characters; use concrete imagery from the changed area.
+- sarcastic_summary: one mildly sarcastic sentence about the work, not the author.
+- dry_release_note: one plain professional sentence that could appear in release notes.
+- tiny_changelog: one or two compact lines, no markdown bullets, focused on what changed.
 - commit_fortune: one short fortune-cookie sentence about the change.
-- original_song_line: one original song-like line, no real song lyrics, no artist names, no quoted or recognizable lyrics.
-- code_joke: one short original joke based on the code facts, no insults, no profanity, no real song lyrics.
+- original_song_line: one original song-like line, not a quote and not an artist reference.
+- code_joke: one short original joke based on the code facts.
 Do not include a title, label, explanation, markdown fence, or any mention that you are an AI model.`,
       role: "system",
     },

@@ -64,8 +64,32 @@ export function fallbackPullRequestHaiku(): PullRequestHaiku {
   return {
     items: [
       {
+        style: "code_joke",
+        text: "The diff walked into review and brought its test suite as a witness.",
+      },
+      {
+        style: "commit_fortune",
+        text: "Small changes, watched closely, become quiet confidence.",
+      },
+      {
+        style: "dry_release_note",
+        text: "Updates the pull request with bounded implementation changes.",
+      },
+      {
         style: "haiku",
         text: "Quiet changes wait\nBranches lean toward review\nMorning tests awake",
+      },
+      {
+        style: "original_song_line",
+        text: "The branch hums low while the checks find their rhythm.",
+      },
+      {
+        style: "sarcastic_summary",
+        text: "Another modest diff bravely asks the test suite to have opinions.",
+      },
+      {
+        style: "tiny_changelog",
+        text: "Changed: pull request implementation\nKept: review moving",
       },
     ],
   };

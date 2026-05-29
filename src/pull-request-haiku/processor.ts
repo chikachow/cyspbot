@@ -250,6 +250,8 @@ function commentarySystemPrompt(input: PullRequestHaikuInput): string {
   return `You write short pull request commentary from code-related pull request facts.
 Generate exactly one item for every style in this enum: ${commentaryStyles.join(", ")}.
 Keep every item grounded in the provided code facts and diff context.
+Make the seven items meaningfully different from each other: vary the angle, imagery, and wording.
+Prefer concrete cues from filenames, dominant area, change shape, tests, config, storage, or docs over generic words like "code", "change", "diff", or "review".
 The facts intentionally exclude human-authored pull request text such as titles, descriptions, branch names, and commit messages.
 ${inputContextInstruction(input)}
 Do not spend tokens on reasoning. Return the JSON object directly. /no_think
@@ -257,13 +259,13 @@ Do not spend tokens on reasoning. Return the JSON object directly. /no_think
 Return only compact JSON with this exact shape: {"items":[{"style":"<one enum value>","text":"<commentary text>"}]}.
 The items array must contain each style exactly once.
 Style rules:
-- haiku: exactly three short lines separated by newline characters, haiku-like imagery over strict syllable counting.
-- sarcastic_summary: one mildly sarcastic sentence about the change, never cruel, personal, profane, or hostile.
-- dry_release_note: one dry professional sentence.
-- tiny_changelog: one or two compact lines, no markdown bullets.
+- haiku: exactly three short lines separated by newline characters; use concrete imagery from the changed area.
+- sarcastic_summary: one mildly sarcastic sentence about the work, not the author.
+- dry_release_note: one plain professional sentence that could appear in release notes.
+- tiny_changelog: one or two compact lines, no markdown bullets, focused on what changed.
 - commit_fortune: one short fortune-cookie sentence about the change.
-- original_song_line: one original song-like line, no real song lyrics, no artist names, no quoted or recognizable lyrics.
-- code_joke: one short original joke based on the code facts, no insults, no profanity, no real song lyrics.
+- original_song_line: one original song-like line, not a quote and not an artist reference.
+- code_joke: one short original joke based on the code facts.
 Do not include a title, label, explanation, markdown fence, or any mention that you are an AI model.`;
 }
 
@@ -518,11 +520,11 @@ function responseShape(result: unknown): string {
 export function normalizedCommentary(value: string, fallback: PullRequestHaiku): PullRequestHaiku {
   const payload = commentaryPayload(value);
 
-  if (payload === null || !validCommentary(payload)) {
+  if (payload === null) {
     return fallback;
   }
 
-  return payload;
+  return completeCommentary(payload, fallback);
 }
 
 export function normalizedHaikuString(value: string, fallback: string): string {
@@ -582,40 +584,65 @@ function commentaryItems(value: unknown): PullRequestCommentaryItem[] | null {
 
   for (const item of value) {
     if (!isRecord(item)) {
-      return null;
+      continue;
     }
 
     const style = commentaryStyle(item["style"]);
     const text = item["text"];
 
     if (style === null || typeof text !== "string") {
-      return null;
+      continue;
     }
 
     items.push({ style, text });
   }
 
-  return items;
+  return items.length === 0 ? null : items;
 }
 
 function isCommentaryStyle(value: string): value is PullRequestCommentaryStyle {
   return commentaryStyles.some((style) => style === value);
 }
 
-function validCommentary(commentary: PullRequestHaiku): boolean {
-  return (
-    hasEveryCommentaryStyleOnce(commentary.items) && commentary.items.every(validCommentaryItem)
-  );
-}
+function completeCommentary(
+  commentary: PullRequestHaiku,
+  fallback: PullRequestHaiku,
+): PullRequestHaiku {
+  const validItems = new Map<PullRequestCommentaryStyle, PullRequestCommentaryItem>();
 
-function hasEveryCommentaryStyleOnce(items: PullRequestCommentaryItem[]): boolean {
-  if (items.length !== commentaryStyles.length) {
-    return false;
+  for (const item of commentary.items) {
+    if (!validItems.has(item.style) && validCommentaryItem(item)) {
+      validItems.set(item.style, normalizedCommentaryItem(item));
+    }
   }
 
-  const styles = new Set(items.map((item) => item.style));
+  const fallbackItems = new Map(fallback.items.map((item) => [item.style, item]));
 
-  return commentaryStyles.every((style) => styles.has(style));
+  return {
+    items: commentaryStyles
+      .map((style) => validItems.get(style) ?? fallbackItems.get(style))
+      .filter((item): item is PullRequestCommentaryItem => item !== undefined),
+  };
+}
+
+function normalizedCommentaryItem(item: PullRequestCommentaryItem): PullRequestCommentaryItem {
+  switch (item.style) {
+    case "haiku":
+    case "tiny_changelog":
+      return {
+        ...item,
+        text: normalizedMultilineText(item.text),
+      };
+    case "code_joke":
+    case "commit_fortune":
+    case "dry_release_note":
+    case "original_song_line":
+    case "sarcastic_summary":
+      return {
+        ...item,
+        text: normalizedSingleLine(item.text),
+      };
+  }
 }
 
 function validCommentaryItem(item: PullRequestCommentaryItem): boolean {
@@ -673,6 +700,15 @@ function validTinyChangelog(value: string): boolean {
     lines.length <= 2 &&
     lines.every((line) => line.length <= 120 && !/```/u.test(line) && !/^\s*[-*]\s+/u.test(line))
   );
+}
+
+function normalizedMultilineText(value: string): string {
+  return value
+    .replaceAll(/\r\n?/gu, "\n")
+    .split("\n")
+    .map((line) => line.replaceAll(/\s+/gu, " ").trim())
+    .filter((line) => line.length > 0)
+    .join("\n");
 }
 
 function normalizedSingleLine(value: string): string {

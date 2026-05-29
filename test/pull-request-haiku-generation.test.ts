@@ -82,18 +82,25 @@ describe("pull request haiku generation output", () => {
     });
   });
 
-  it("falls back when a generated style is missing", () => {
-    expect(
-      normalizedCommentary(
-        JSON.stringify({
-          items: generatedItems.filter((item) => item.style !== "code_joke"),
-        }),
-        fallbackPullRequestHaiku(),
-      ),
-    ).toEqual(fallbackPullRequestHaiku());
+  it("fills missing generated styles from fallback items", () => {
+    const output = normalizedCommentary(
+      JSON.stringify({
+        items: generatedItems.filter((item) => item.style !== "code_joke"),
+      }),
+      fallbackPullRequestHaiku(),
+    );
+
+    expect(output.items).toHaveLength(7);
+    expect(output.items.find((item) => item.style === "code_joke")).toEqual(
+      fallbackPullRequestHaiku().items.find((item) => item.style === "code_joke"),
+    );
+    expect(output.items.find((item) => item.style === "haiku")).toEqual({
+      style: "haiku",
+      text: "Tests gather softly\nWorker paths bend into shape\nReview dawns clean",
+    });
   });
 
-  it("falls back when the model invents a style", () => {
+  it("ignores invented styles when all required styles are present", () => {
     expect(
       normalizedCommentary(
         JSON.stringify({
@@ -104,6 +111,19 @@ describe("pull request haiku generation output", () => {
               text: "There once was a branch from Nantucket.",
             },
           ],
+        }),
+        fallbackPullRequestHaiku(),
+      ),
+    ).toEqual({
+      items: generatedItems,
+    });
+  });
+
+  it("falls back when no structured commentary items are available", () => {
+    expect(
+      normalizedCommentary(
+        JSON.stringify({
+          text: "There once was a branch from Nantucket.",
         }),
         fallbackPullRequestHaiku(),
       ),
