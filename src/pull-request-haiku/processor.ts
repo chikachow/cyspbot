@@ -195,17 +195,10 @@ async function generatePullRequestHaiku(
 
   try {
     const result = await runTextGeneration(env, model, {
-      max_tokens: 180,
+      max_tokens: 100,
       messages: [
         {
-          content: `You write one short haiku for a GitHub pull request from code-related pull request facts and bounded diff hunks.
-Be inventive, but stay grounded in the provided code facts and diff context.
-The facts intentionally exclude human-authored pull request text such as titles, descriptions, branch names, and commit messages.
-Do not spend tokens on reasoning. Return the haiku directly. /no_think
-
-Return only the haiku: three short lines separated by newline characters.
-The haiku should represent the change, its scale, and its likely area of the codebase.
-Prefer haiku-like imagery over strict syllable counting. Do not include a title, label, explanation, markdown fence, or any mention that you are an AI model.`,
+          content: haikuSystemPrompt(input),
           role: "system",
         },
         {
@@ -213,7 +206,7 @@ Prefer haiku-like imagery over strict syllable counting. Do not include a title,
           role: "user",
         },
       ],
-      temperature: 0.85,
+      temperature: 0.75,
       top_p: 0.9,
     });
 
@@ -229,7 +222,7 @@ Prefer haiku-like imagery over strict syllable counting. Do not include a title,
 
     return {
       costEstimate: costEstimateForTextGeneration(model, result),
-      haiku: { text: haikuString(response, fallback.text) },
+      haiku: { text: normalizedHaikuString(response, fallback.text) },
       model,
     };
   } catch (error) {
@@ -238,6 +231,29 @@ Prefer haiku-like imagery over strict syllable counting. Do not include a title,
       input_kind: input.kind,
     });
     return fallbackResult;
+  }
+}
+
+function haikuSystemPrompt(input: PullRequestHaikuInput): string {
+  return `You write one short haiku for a GitHub pull request from code-related pull request facts.
+Be inventive, but stay grounded in the provided code facts and diff context.
+The facts intentionally exclude human-authored pull request text such as titles, descriptions, branch names, and commit messages.
+${inputContextInstruction(input)}
+Do not spend tokens on reasoning. Return the haiku directly. /no_think
+
+Return only the haiku: three short lines separated by newline characters.
+The haiku should represent the change, its scale, and its likely area of the codebase.
+Prefer haiku-like imagery over strict syllable counting. Do not include a title, label, explanation, markdown fence, or any mention that you are an AI model.`;
+}
+
+function inputContextInstruction(input: PullRequestHaikuInput): string {
+  switch (input.kind) {
+    case "diff_full":
+      return "The input includes all available bounded diff hunks selected for this pull request.";
+    case "diff_truncated":
+      return "The input includes selected bounded diff hunks, but some file hunks were omitted for size. Avoid claims that require omitted context.";
+    case "facts_only":
+      return "The input includes changed-file facts and a local summary only. Do not imply you inspected patch contents.";
   }
 }
 
@@ -478,26 +494,33 @@ function responseShape(result: unknown): string {
   return Object.keys(result).sort().join(",");
 }
 
-function haikuString(value: string, fallback: string): string {
+export function normalizedHaikuString(value: string, fallback: string): string {
   const lines = stripThinkingBlocks(value)
     .replaceAll(/\r\n?/gu, "\n")
     .split("\n")
     .map((line) => line.replaceAll(/\s+/gu, " ").trim())
     .filter((line) => line.length > 0);
 
-  if (lines.length === 0) {
+  if (lines.length !== 3 || lines.some((line) => !validHaikuLine(line))) {
     return fallback;
   }
 
-  return truncate(lines.slice(0, 3).join("\n"), 240);
+  return lines.join("\n");
 }
 
 function stripThinkingBlocks(value: string): string {
   return value.replaceAll(/<think>[\s\S]*?<\/think>/giu, "").trim();
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+function validHaikuLine(line: string): boolean {
+  return (
+    line.length > 0 &&
+    line.length <= 80 &&
+    !/```/u.test(line) &&
+    !/^\s*[-*]\s+/u.test(line) &&
+    !/^\s*(haiku|title|poem)\s*:/iu.test(line) &&
+    !/\b(ai|model|prompt|language model)\b/iu.test(line)
+  );
 }
 
 function integerValue(value: unknown): number | null {
@@ -510,8 +533,8 @@ function roundDecimal(value: number, places: number): number {
   return Math.round(value * multiplier) / multiplier;
 }
 
-function truncate(value: string, maxLength: number): string {
-  return value.length <= maxLength ? value : `${value.slice(0, maxLength - 3)}...`;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 async function upsertPullRequestHaikuComment(

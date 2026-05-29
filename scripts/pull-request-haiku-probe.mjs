@@ -43,13 +43,44 @@ const facts = {
   },
 };
 
+const inputPayload = {
+  facts,
+  kind: "facts_only",
+  summary: {
+    change_shape: "mostly_deletion",
+    dominant_area: "src/pull-request-haiku",
+    file_groups: [
+      {
+        additions: 130,
+        area: "src/pull-request-haiku",
+        deletions: 510,
+        files: 2,
+      },
+      {
+        additions: 24,
+        area: "test/worker.test.ts",
+        deletions: 58,
+        files: 1,
+      },
+      {
+        additions: 8,
+        area: "wrangler.jsonc",
+        deletions: 36,
+        files: 1,
+      },
+    ],
+    notable_statuses: ["modified"],
+  },
+};
+
 const input = {
-  max_tokens: 180,
+  max_tokens: 100,
   messages: [
     {
-      content: `You write one short haiku for a GitHub pull request from mechanical changed-file facts only.
-Be inventive, but stay grounded in the provided facts and do not claim to have read patches.
+      content: `You write one short haiku for a GitHub pull request from code-related pull request facts.
+Be inventive, but stay grounded in the provided code facts and diff context.
 The facts intentionally exclude human-authored pull request text such as titles, descriptions, branch names, and commit messages.
+The input includes changed-file facts and a local summary only. Do not imply you inspected patch contents.
 Do not spend tokens on reasoning. Return the haiku directly. /no_think
 
 Return only the haiku: three short lines separated by newline characters.
@@ -58,11 +89,11 @@ Prefer haiku-like imagery over strict syllable counting. Do not include a title,
       role: "system",
     },
     {
-      content: `/no_think\n${JSON.stringify(facts)}`,
+      content: `/no_think\n${JSON.stringify(inputPayload)}`,
       role: "user",
     },
   ],
-  temperature: 0.85,
+  temperature: 0.75,
   top_p: 0.9,
 };
 
