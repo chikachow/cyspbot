@@ -42,19 +42,14 @@ describe("pull request haiku comments", () => {
 </p>`);
   });
 
-  it("renders cost estimates as hidden comment metadata", () => {
+  it("renders generation metadata as hidden comment metadata", () => {
     expect(
       renderPullRequestHaikuComment({
-        costEstimate: {
+        generationMetadata: {
           cachedInputTokens: null,
-          estimatedCostUsd: 0.0000577,
-          estimatedNeurons: 5.2345,
           inputTokens: 1000,
-          inputUsdPerMillionTokens: 0.051,
-          model: "@cf/qwen/qwen3-30b-a3b-fp8",
+          model: "google/gemini-2.5-flash",
           outputTokens: 20,
-          outputUsdPerMillionTokens: 0.335,
-          scope: "prompt",
           totalTokens: 1020,
         },
         haiku: {
@@ -75,7 +70,7 @@ describe("pull request haiku comments", () => {
         repositoryId: 123456789,
       }),
     ).toContain(
-      '<!-- cyspbot:pull-request-haiku-cost {"cachedInputTokens":null,"estimatedCostUsd":0.0000577,"estimatedNeurons":5.2345,"inputTokens":1000,"inputUsdPerMillionTokens":0.051,"model":"@cf/qwen/qwen3-30b-a3b-fp8","outputTokens":20,"outputUsdPerMillionTokens":0.335,"scope":"prompt","totalTokens":1020} -->',
+      '<!-- cyspbot:pull-request-haiku-generation {"cachedInputTokens":null,"inputTokens":1000,"model":"google/gemini-2.5-flash","outputTokens":20,"totalTokens":1020} -->',
     );
     expect(
       renderPullRequestHaikuComment({

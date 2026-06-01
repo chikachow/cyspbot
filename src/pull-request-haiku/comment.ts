@@ -1,8 +1,8 @@
 import type { GitHubPullRequestDetails } from "../github/pull-request.ts";
 
 export interface PullRequestCommentInput {
-  costEstimate?: PullRequestHaikuCostEstimate;
   haiku: PullRequestHaiku;
+  generationMetadata?: PullRequestHaikuGenerationMetadata;
   pullRequest: GitHubPullRequestDetails;
   repositoryId: number;
 }
@@ -25,16 +25,11 @@ export interface PullRequestHaiku {
   items: PullRequestCommentaryItem[];
 }
 
-export interface PullRequestHaikuCostEstimate {
+export interface PullRequestHaikuGenerationMetadata {
   cachedInputTokens: number | null;
-  estimatedCostUsd: number;
-  estimatedNeurons: number;
-  inputTokens: number;
-  inputUsdPerMillionTokens: number;
+  inputTokens: number | null;
   model: string;
-  outputTokens: number;
-  outputUsdPerMillionTokens: number;
-  scope: "prompt";
+  outputTokens: number | null;
   totalTokens: number | null;
 }
 
@@ -50,13 +45,13 @@ export function renderPullRequestHaikuComment(input: PullRequestCommentInput): s
     pullRequestNumber: input.pullRequest.number,
     repositoryId: input.repositoryId,
   });
-  const costMarker =
-    input.costEstimate === undefined
+  const generationMarker =
+    input.generationMetadata === undefined
       ? ""
-      : `\n<!-- cyspbot:pull-request-haiku-cost ${JSON.stringify(input.costEstimate)} -->`;
+      : `\n<!-- cyspbot:pull-request-haiku-generation ${JSON.stringify(input.generationMetadata)} -->`;
   const styleMarker = `\n<!-- cyspbot:pull-request-commentary-styles ${input.haiku.items.map((item) => item.style).join(",")} -->`;
 
-  return `${marker}${costMarker}${styleMarker}
+  return `${marker}${generationMarker}${styleMarker}
 ${input.haiku.items.map(commentaryItemHtml).join("\n\n")}`;
 }
 

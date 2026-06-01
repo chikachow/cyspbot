@@ -22,16 +22,14 @@ import type {
   PullRequestCommentaryStyle,
   PullRequestCommentaryItem,
   PullRequestHaiku,
-  PullRequestHaikuCostEstimate,
+  PullRequestHaikuGenerationMetadata,
 } from "./comment.ts";
 import type { PullRequestHaikuInput } from "./input.ts";
 
-export type PullRequestHaikuTextModel =
-  | "@cf/meta/llama-3.2-3b-instruct"
-  | "@cf/qwen/qwen3-30b-a3b-fp8";
+export type PullRequestHaikuTextModel = string;
 
 export interface PullRequestHaikuTextResult {
-  costEstimate?: PullRequestHaikuCostEstimate;
+  generationMetadata?: PullRequestHaikuGenerationMetadata;
   haiku: PullRequestHaiku;
   model: PullRequestHaikuTextModel | null;
 }
@@ -132,6 +130,7 @@ export interface PullRequestHaikuStore {
 }
 
 export interface PullRequestHaikuServices {
+  fetch: typeof fetch;
   generatePullRequestHaiku?(
     this: void,
     env: Env,
@@ -145,6 +144,7 @@ export function pullRequestHaikuServices(
   dependencies: PullRequestHaikuDependencies,
 ): PullRequestHaikuServices {
   return {
+    fetch: dependencies.fetch,
     generatePullRequestHaiku: dependencies.generatePullRequestHaiku,
     github: dependencies.github ?? defaultPullRequestHaikuGitHubClient(dependencies),
     store: dependencies.store ?? defaultPullRequestHaikuStore,

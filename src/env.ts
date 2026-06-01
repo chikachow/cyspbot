@@ -17,6 +17,7 @@ export interface FeatureFlagBinding {
 export interface Env {
   AUDIT_LOG_MAX_ENTRIES?: string;
   AUDIT_LOG_RETENTION_DAYS?: string;
+  CF_AIG_TOKEN?: string;
   DASHBOARD_SESSION_LOOKUP_SECRET?: string;
   DASHBOARD_TOKEN_ENCRYPTION_SECRET?: string;
   GITHUB_API_BASE_URL?: string;
@@ -33,5 +34,6 @@ export interface Env {
   GITHUB_WEBHOOK_SECRET?: string;
   OIDC_ISSUER_VERIFIER: DurableObjectNamespace<OidcIssuerVerifierObject>;
   PULL_REQUEST_HAIKU_QUEUE: Queue<PullRequestHaikuQueueMessage>;
-  PULL_REQUEST_HAIKU_TEXT_MODEL?: string;
+  PULL_REQUEST_HAIKU_AI_GATEWAY_ID?: string;
+  PULL_REQUEST_HAIKU_TEXT_MODELS?: string;
 }

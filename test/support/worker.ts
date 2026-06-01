@@ -62,7 +62,8 @@ export const testEnv: Env = {
   GITHUB_APP_PRIVATE_KEY_PEM: testPrivateKeyPem,
   GITHUB_WEBHOOK_SECRET: "test-webhook-secret",
   OIDC_ISSUER_VERIFIER: fakeOidcIssuerVerifierNamespace(),
-  PULL_REQUEST_HAIKU_TEXT_MODEL: "@cf/qwen/qwen3-30b-a3b-fp8",
+  PULL_REQUEST_HAIKU_AI_GATEWAY_ID: "chikachow",
+  PULL_REQUEST_HAIKU_TEXT_MODELS: "google/gemini-2.5-flash,openai/gpt-5.4-mini",
 };
 const tokenExchangeGrantType = "urn:ietf:params:oauth:grant-type:token-exchange";
 export const githubInstallationAccessTokenType =
@@ -94,16 +95,11 @@ const baseTestDependencies = {
 
     await processPullRequestHaikuMessage(env, message, {
       generatePullRequestHaiku: async () => ({
-        costEstimate: {
+        generationMetadata: {
           cachedInputTokens: null,
-          estimatedCostUsd: 0.0000577,
-          estimatedNeurons: 5.2345,
           inputTokens: 1000,
-          inputUsdPerMillionTokens: 0.051,
-          model: "@cf/qwen/qwen3-30b-a3b-fp8",
+          model: "google/gemini-2.5-flash",
           outputTokens: 20,
-          outputUsdPerMillionTokens: 0.335,
-          scope: "prompt",
           totalTokens: 1020,
         },
         haiku: {
@@ -114,7 +110,7 @@ const baseTestDependencies = {
             },
           ],
         },
-        model: "@cf/qwen/qwen3-30b-a3b-fp8",
+        model: "google/gemini-2.5-flash",
       }),
       fetch: fetchGitHubTestDouble,
       now: () => testNow,
@@ -432,8 +428,8 @@ async function fetchGitHubTestDouble(
     if (
       typeof body["body"] !== "string" ||
       !body["body"].includes("cyspbot:pull-request-haiku") ||
-      !body["body"].includes("cyspbot:pull-request-haiku-cost") ||
-      !body["body"].includes('"estimatedCostUsd":0.0000577') ||
+      !body["body"].includes("cyspbot:pull-request-haiku-generation") ||
+      !body["body"].includes('"model":"google/gemini-2.5-flash"') ||
       !body["body"].includes('<p align="center">') ||
       !body["body"].includes("<em>Queue winds softly<br>") ||
       !body["body"].includes("Comments bloom on branch changes<br>") ||

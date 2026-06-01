@@ -1,11 +1,15 @@
 #!/usr/bin/env node
 
 const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
-const apiToken = process.env.CLOUDFLARE_API_TOKEN;
-const model = process.env.PULL_REQUEST_HAIKU_TEXT_MODEL ?? "@cf/qwen/qwen3-30b-a3b-fp8";
+const aiGatewayToken = process.env.CF_AIG_TOKEN;
+const gatewayId = process.env.PULL_REQUEST_HAIKU_AI_GATEWAY_ID ?? "chikachow";
+const model =
+  process.env.PULL_REQUEST_HAIKU_TEXT_MODELS?.split(",")
+    .map((value) => value.trim())
+    .find((value) => value.length > 0) ?? "google/gemini-2.5-flash";
 
-if (!accountId || !apiToken) {
-  console.error("Set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN before running this probe.");
+if (!accountId) {
+  console.error("Set CLOUDFLARE_ACCOUNT_ID before running this probe.");
   process.exit(1);
 }
 
@@ -104,18 +108,23 @@ Do not include a title, label, explanation, markdown fence, or any mention that 
       role: "user",
     },
   ],
+  model,
+  response_format: { type: "json_object" },
   temperature: 0.75,
   top_p: 0.9,
 };
 
+const headers = new Headers({ "Content-Type": "application/json" });
+
+if (aiGatewayToken) {
+  headers.set("cf-aig-authorization", `Bearer ${aiGatewayToken}`);
+}
+
 const response = await fetch(
-  `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${model}`,
+  `https://gateway.ai.cloudflare.com/v1/${accountId}/${gatewayId}/openrouter/v1/chat/completions`,
   {
     body: JSON.stringify(input),
-    headers: {
-      Authorization: `Bearer ${apiToken}`,
-      "Content-Type": "application/json",
-    },
+    headers,
     method: "POST",
   },
 );

@@ -21,7 +21,7 @@ If this codebase is republished with a blank history, split it into reviewable c
 9. `feat(dashboard): render repository audit views`
    - GitHub user-to-server repository visibility, dashboard list and detail pages, and authorization tests
 10. `feat(pull-request-haiku): add opt-in webhook comment worker`
-    - feature flag, admin opt-in UI, queue, Workers AI generation, and comment create/update flow
+    - feature flag, admin opt-in UI, queue, AI Gateway generation, and comment create/update flow
 11. `docs: document service contract and decisions`
     - README, service contract, glossary, and ADRs aligned to implemented behaviour
 12. `chore(release): prepare public repository`

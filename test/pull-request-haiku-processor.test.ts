@@ -86,7 +86,7 @@ describe("pull request haiku processor", () => {
               },
             ],
           },
-          model: "@cf/qwen/qwen3-30b-a3b-fp8",
+          model: "google/gemini-2.5-flash",
         };
       },
       github,
@@ -113,7 +113,7 @@ describe("pull request haiku processor", () => {
       "started:delivery-pr-queue:2026-05-24T00:00:00.000Z",
       "generate:diff_full",
       "create-comment",
-      "succeeded:delivery-pr-queue:987654:@cf/qwen/qwen3-30b-a3b-fp8",
+      "succeeded:delivery-pr-queue:987654:google/gemini-2.5-flash",
     ]);
   });
 });

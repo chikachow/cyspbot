@@ -65,9 +65,9 @@ Accepts signed JSON GitHub App webhook deliveries up to `256 KiB`. Webhook targe
 
 When the `pull-request-haiku` Flagship feature flag is enabled, repositories listed in `pull_request_haiku_repository_opt_ins` have accepted `pull_request` deliveries for `opened`, `reopened`, `synchronize`, `edited`, and `ready_for_review` enqueue asynchronous haiku comment work. The worker reads code-related change facts from the pull request and changed file list, excluding human-authored pull request text such as title, body, branch names, and commit messages, then creates or updates one marker-owned pull request comment containing:
 
-- a generated haiku representing the pull request change
+- generated commentary representing the pull request change
 
-The model input includes filenames, aggregate change counts, and changed-file patch hunks up to a conservative prompt budget. Oversized input is truncated at file boundaries. Filenames and patch hunks can reveal sensitive project structure or code in private repositories, so repositories must be explicitly opted in before pull request haiku processing runs.
+The model input includes filenames, aggregate change counts, and changed-file patch hunks up to a conservative prompt budget. Oversized input is truncated at file boundaries. Generation runs through the configured Cloudflare AI Gateway, using the first successful model from `PULL_REQUEST_HAIKU_TEXT_MODELS`. Filenames and patch hunks can reveal sensitive project structure or code in private repositories, so repositories must be explicitly opted in before pull request haiku processing runs.
 
 ## Dashboard
 
