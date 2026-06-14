@@ -1,0 +1,59 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    uses: ./.github/workflows/ci-format.yml
+
+  lint:
+    uses: ./.github/workflows/ci-lint.yml
+
+  worker-types:
+    uses: ./.github/workflows/ci-worker-types.yml
+
+  typecheck:
+    uses: ./.github/workflows/ci-typecheck.yml
+
+  knip:
+    uses: ./.github/workflows/ci-knip.yml
+
+  test:
+    uses: ./.github/workflows/ci-test.yml
+
+  wrangler-check:
+    uses: ./.github/workflows/ci-wrangler-check.yml
+
+  ci:
+    name: ci
+    runs-on: ubuntu-latest
+    needs:
+      - format
+      - lint
+      - worker-types
+      - typecheck
+      - knip
+      - test
+      - wrangler-check
+    if: ${{ always() }}
+    steps:
+      - name: Require all CI jobs to pass
+        run: |
+          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" ]]; then
+            exit 1
+          fi
+
+          if [[ "${{ contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+            exit 1
+          fi
+
+          if [[ "${{ contains(needs.*.result, 'skipped') }}" == "true" ]]; then
+            exit 1
+          fi

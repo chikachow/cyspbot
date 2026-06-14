@@ -1,0 +1,59 @@
+{
+  "name": "cyspbot",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "bindings:check": "node --run bindings:check:token-exchange && node --run bindings:check:github-webhook-receiver",
+    "bindings:check:github-webhook-receiver": "WRANGLER_LOG=none WRANGLER_LOG_PATH=.wrangler/logs WRANGLER_REGISTRY_PATH=.wrangler/registry wrangler types workers/cyspbot-github-webhook-receiver/src/bindings.generated.d.ts --config workers/cyspbot-github-webhook-receiver/wrangler.jsonc --env-interface GitHubWebhookReceiverBindings --include-runtime false --check",
+    "bindings:check:token-exchange": "WRANGLER_LOG=none WRANGLER_LOG_PATH=.wrangler/logs WRANGLER_REGISTRY_PATH=.wrangler/registry wrangler types workers/cyspbot-token-exchange/src/bindings.generated.d.ts --config workers/cyspbot-token-exchange/wrangler.jsonc --env-interface TokenExchangeBindings --include-runtime false --check",
+    "bindings:generate": "node --run bindings:generate:token-exchange && node --run bindings:generate:github-webhook-receiver",
+    "bindings:generate:github-webhook-receiver": "WRANGLER_LOG=none WRANGLER_LOG_PATH=.wrangler/logs WRANGLER_REGISTRY_PATH=.wrangler/registry wrangler types workers/cyspbot-github-webhook-receiver/src/bindings.generated.d.ts --config workers/cyspbot-github-webhook-receiver/wrangler.jsonc --env-interface GitHubWebhookReceiverBindings --include-runtime false",
+    "bindings:generate:token-exchange": "WRANGLER_LOG=none WRANGLER_LOG_PATH=.wrangler/logs WRANGLER_REGISTRY_PATH=.wrangler/registry wrangler types workers/cyspbot-token-exchange/src/bindings.generated.d.ts --config workers/cyspbot-token-exchange/wrangler.jsonc --env-interface TokenExchangeBindings --include-runtime false",
+    "check": "node --run lockfile:check && node --run format:check && node --run bindings:check && node --run lint && node --run typecheck && node --run knip && node --run test && node --run wrangler:check",
+    "dev": "WRANGLER_LOG=none WRANGLER_LOG_PATH=.wrangler/logs WRANGLER_REGISTRY_PATH=.wrangler/registry wrangler dev --config workers/cyspbot-token-exchange/wrangler.jsonc --config workers/cyspbot-github-webhook-receiver/wrangler.jsonc --env-file .dev.vars",
+    "format": "oxfmt . '!workers/**/src/bindings.generated.d.ts'",
+    "format:check": "oxfmt --check . '!workers/**/src/bindings.generated.d.ts'",
+    "lint": "oxlint --type-aware --report-unused-disable-directives --deny-warnings --ignore-pattern 'workers/**/src/bindings.generated.d.ts' .",
+    "lint:fix": "oxlint --type-aware --fix --ignore-pattern 'workers/**/src/bindings.generated.d.ts' .",
+    "lockfile:check": "pnpm install --lockfile-only --frozen-lockfile",
+    "knip": "knip --no-progress",
+    "test": "WRANGLER_LOG=none WRANGLER_LOG_PATH=.wrangler/logs WRANGLER_REGISTRY_PATH=.wrangler/registry vitest run",
+    "typecheck": "tsc --noEmit",
+    "wrangler:check": "node --run wrangler:check:token-exchange && node --run wrangler:check:github-webhook-receiver",
+    "wrangler:check:github-webhook-receiver": "pnpm --filter @cyspbot/github-webhook-receiver run wrangler:check",
+    "wrangler:check:token-exchange": "pnpm --filter @cyspbot/token-exchange run wrangler:check",
+    "wrangler:whoami": "WRANGLER_LOG=none WRANGLER_LOG_PATH=.wrangler/logs WRANGLER_REGISTRY_PATH=.wrangler/registry wrangler whoami"
+  },
+  "dependencies": {
+    "jose": "6.2.3"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "0.16.15",
+    "@cloudflare/workers-types": "4.20260613.1",
+    "@cyspbot/github-actions-oidc": "workspace:*",
+    "@cyspbot/github-webhook-receiver": "workspace:*",
+    "@cyspbot/http": "workspace:*",
+    "@cyspbot/oidc": "workspace:*",
+    "@cyspbot/token-exchange": "workspace:*",
+    "@tsconfig/recommended": "1.0.13",
+    "@tsconfig/strictest": "2.0.8",
+    "@types/node": "24.12.2",
+    "knip": "6.16.1",
+    "oxfmt": "0.47.0",
+    "oxlint": "1.62.0",
+    "oxlint-tsgolint": "0.23.0",
+    "typescript": "6.0.3",
+    "vitest": "4.1.7",
+    "wrangler": "4.100.0"
+  },
+  "engines": {
+    "node": "24"
+  },
+  "packageManager": "pnpm@10.33.0",
+  "pnpm": {
+    "overrides": {
+      "esbuild@>=0.17.0 <0.28.1": "0.28.1"
+    }
+  }
+}

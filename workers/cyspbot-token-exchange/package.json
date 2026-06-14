@@ -1,0 +1,24 @@
+{
+  "name": "@cyspbot/token-exchange",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./authentication": "./src/authentication.ts",
+    "./dependencies": "./src/dependencies.ts",
+    "./policy/token-policy": "./src/policy/token-policy.ts",
+    "./worker": "./src/worker.ts"
+  },
+  "scripts": {
+    "check": "node --run wrangler:check",
+    "dev": "WRANGLER_LOG=none WRANGLER_LOG_PATH=../../.wrangler/logs WRANGLER_REGISTRY_PATH=../../.wrangler/registry wrangler dev --config wrangler.jsonc --env-file ../../.dev.vars",
+    "wrangler:check": "WRANGLER_LOG=none WRANGLER_LOG_PATH=../../.wrangler/logs WRANGLER_REGISTRY_PATH=../../.wrangler/registry wrangler deploy --dry-run --config wrangler.jsonc"
+  },
+  "dependencies": {
+    "@cyspbot/github": "workspace:*",
+    "@cyspbot/github-actions-oidc": "workspace:*",
+    "@cyspbot/http": "workspace:*",
+    "@cyspbot/oidc": "workspace:*"
+  }
+}

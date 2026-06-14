@@ -1,0 +1,27 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "cyspbot-token-exchange",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-05-07",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+  },
+  "ratelimits": [
+    {
+      "name": "TOKEN_EXCHANGE_RATE_LIMIT",
+      "namespace_id": "00000000000000000000000000000000",
+      "simple": {
+        "limit": 30,
+        "period": 60,
+      },
+    },
+  ],
+  "secrets": {
+    "required": ["GITHUB_APP_PRIVATE_KEY"],
+  },
+  "vars": {
+    "GITHUB_API_BASE_URL": "https://api.github.com",
+    "GITHUB_APP_ID": "000000",
+  },
+}

@@ -1,0 +1,16 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "cyspbot-github-webhook-receiver",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-05-07",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+  },
+  "secrets": {
+    "required": ["GITHUB_WEBHOOK_SECRET"],
+  },
+  "vars": {
+    "GITHUB_APP_ID": "000000",
+  },
+}

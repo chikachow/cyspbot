@@ -1,0 +1,10 @@
+{
+  "name": "@cyspbot/http",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./problem-details": "./src/problem-details.ts",
+    "./request-body": "./src/request-body.ts"
+  }
+}

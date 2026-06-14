@@ -1,0 +1,16 @@
+{
+  "name": "@cyspbot/github-actions-oidc",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/github-actions-principal.ts",
+    "./github-actions-principal": "./src/github-actions-principal.ts",
+    "./issuer": "./src/issuer.ts",
+    "./principals": "./src/principals.ts"
+  },
+  "dependencies": {
+    "@cyspbot/oidc": "workspace:*",
+    "zod": "4.4.3"
+  }
+}

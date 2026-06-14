@@ -1,0 +1,14 @@
+{
+  "name": "@cyspbot/github",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./app": "./src/app.ts",
+    "./http": "./src/http.ts",
+    "./secrets": "./src/secrets.ts"
+  },
+  "dependencies": {
+    "jose": "6.2.3"
+  }
+}
