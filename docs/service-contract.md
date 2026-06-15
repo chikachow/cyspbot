@@ -18,7 +18,7 @@ Unknown routes return `404` problem details. Unsupported methods on `/github/web
 - `grant_type=urn:ietf:params:oauth:grant-type:token-exchange`
 - `subject_token=<github-actions-oidc-token>`
 - `subject_token_type=urn:ietf:params:oauth:token-type:id_token` or `urn:ietf:params:oauth:token-type:jwt`
-- optional `requested_token_type` of `urn:chikachow:github-app-installation-access-token` or `urn:ietf:params:oauth:token-type:access_token`
+- `requested_token_type=urn:chikachow:github-app-installation-access-token`
 
 Request bodies are bounded to `64 KiB`.
 
@@ -38,6 +38,7 @@ Successful responses are JSON with `Cache-Control: no-store` and `Pragma: no-cac
 OAuth error responses use JSON with the same no-store headers:
 
 - malformed request: `400 {"error":"invalid_request"}`
+- missing or unsupported requested token type: `400 {"error":"invalid_request"}`
 - unsupported grant type: `400 {"error":"unsupported_grant_type"}`
 - rate limit exceeded: `429 {"error":"temporarily_unavailable"}`
 - body too large: `413 {"error":"invalid_request"}`

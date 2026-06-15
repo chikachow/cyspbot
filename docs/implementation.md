@@ -35,13 +35,14 @@ The Worker factory is `createTokenExchangeWorker` in `workers/cyspbot-token-exch
 2. Require `application/x-www-form-urlencoded`.
 3. Read at most `64 KiB`.
 4. Require exactly one value for each token-exchange form parameter that cyspbot consumes.
-5. Verify the GitHub Actions OIDC subject token with the configured issuer, audience, signing algorithm, JWKS URI, and authorized-party rule.
-6. Derive a GitHub Actions Principal from validated GitHub OIDC claims.
-7. Evaluate token policy before GitHub API calls.
-8. Resolve the GitHub App installation for the calling repository.
-9. Create a metadata-only installation token and read live GitHub repository metadata.
-10. Re-evaluate token policy against live repository metadata.
-11. Issue a GitHub App installation access token for the calling repository id.
+5. Require `requested_token_type=urn:chikachow:github-app-installation-access-token`.
+6. Verify the GitHub Actions OIDC subject token with the configured issuer, audience, signing algorithm, JWKS URI, and authorized-party rule.
+7. Derive a GitHub Actions Principal from validated GitHub OIDC claims.
+8. Evaluate token policy before GitHub API calls.
+9. Resolve the GitHub App installation for the calling repository.
+10. Create a metadata-only installation token and read live GitHub repository metadata.
+11. Re-evaluate token policy against live repository metadata.
+12. Issue a GitHub App installation access token for the calling repository id.
 
 The token policy in `workers/cyspbot-token-exchange/src/policy/token-policy.ts` allows only `schedule` and `workflow_dispatch` runs where the verified subject and ref both identify the repository default branch. It requests these installation token permissions:
 

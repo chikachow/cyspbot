@@ -26,11 +26,12 @@ Primary endpoint for Installation Token Issuance. It accepts `application/x-www-
 
 ```http
 grant_type=urn:ietf:params:oauth:grant-type:token-exchange
+requested_token_type=urn:chikachow:github-app-installation-access-token
 subject_token=<github-actions-oidc-token>
 subject_token_type=urn:ietf:params:oauth:token-type:id_token
 ```
 
-`subject_token_type` may also be `urn:ietf:params:oauth:token-type:jwt`. `requested_token_type` is optional and may be either the cyspbot GitHub App installation token URN or `urn:ietf:params:oauth:token-type:access_token`.
+`subject_token_type` may also be `urn:ietf:params:oauth:token-type:jwt`. `requested_token_type` is required and must be the cyspbot GitHub App installation token URN.
 
 Successful responses use OAuth token response shape with `Cache-Control: no-store` and `Pragma: no-cache`:
 
