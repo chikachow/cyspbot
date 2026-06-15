@@ -63,7 +63,7 @@ describe("cyspbot-token-exchange", () => {
     expect(body.expires_in).toBeGreaterThan(0);
   });
 
-  it("accepts the generic oauth access token type as a requested token hint", async () => {
+  it("rejects the generic oauth access token type as a requested token hint", async () => {
     const response = await fetchTokenExchange("https://example.test/token", {
       body: await tokenExchangeRequestBody(
         undefined,
@@ -75,11 +75,25 @@ describe("cyspbot-token-exchange", () => {
       method: "POST",
     });
 
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      access_token: "ghs_test_token",
-      issued_token_type: githubInstallationAccessTokenType,
-      token_type: "Bearer",
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_request",
+    });
+  });
+
+  it("rejects token exchange requests without a requested token type", async () => {
+    const response = await fetchTokenExchange("https://example.test/token", {
+      body: await tokenExchangeRequestBody(undefined, null),
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_request",
     });
   });
 

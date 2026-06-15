@@ -8,7 +8,6 @@ const tokenExchangeGrantType = "urn:ietf:params:oauth:grant-type:token-exchange"
 const githubInstallationAccessTokenType = "urn:chikachow:github-app-installation-access-token";
 const oidcIdTokenType = "urn:ietf:params:oauth:token-type:id_token";
 const jwtTokenType = "urn:ietf:params:oauth:token-type:jwt";
-const oauthAccessTokenType = "urn:ietf:params:oauth:token-type:access_token";
 const unknownRateLimitKey = "unknown";
 
 export function tokenExchangeMethodNotAllowedResponse(): Response {
@@ -56,11 +55,7 @@ export async function handleTokenExchangeRequest(
     return oauthErrorResponse(400, "invalid_request");
   }
 
-  if (
-    requestedTokenType !== null &&
-    requestedTokenType !== githubInstallationAccessTokenType &&
-    requestedTokenType !== oauthAccessTokenType
-  ) {
+  if (requestedTokenType !== githubInstallationAccessTokenType) {
     return oauthErrorResponse(400, "invalid_request");
   }
 

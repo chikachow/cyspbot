@@ -36,17 +36,21 @@ export function authorizationHeaders(
 
 export async function tokenExchangeRequestBody(
   overrides?: Partial<Record<string, unknown>>,
-  requestedTokenType = githubInstallationAccessTokenType,
+  requestedTokenType: string | null = githubInstallationAccessTokenType,
   tokenOptions?: CreateOidcTokenOptions,
 ): Promise<string> {
   const subjectToken = await createOidcToken(overrides, tokenOptions);
-
-  return new URLSearchParams({
+  const form = new URLSearchParams({
     grant_type: tokenExchangeGrantType,
-    requested_token_type: requestedTokenType,
     subject_token: subjectToken,
     subject_token_type: oidcIdTokenType,
-  }).toString();
+  });
+
+  if (requestedTokenType !== null) {
+    form.set("requested_token_type", requestedTokenType);
+  }
+
+  return form.toString();
 }
 
 export async function createOidcToken(
