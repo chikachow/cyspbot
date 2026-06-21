@@ -20,7 +20,6 @@ export type GitHubActionsSubject =
 export interface GitHubActionsPrincipal {
   actor: string | null;
   eventName: string;
-  jobWorkflowRef: string | null;
   rawSubject: string;
   ref: string | null;
   refType: string;

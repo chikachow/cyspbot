@@ -34,17 +34,22 @@ The Worker factory is `createTokenExchangeWorker` in `workers/cyspbot-token-exch
 1. Apply `TOKEN_EXCHANGE_RATE_LIMIT` before parsing the request body.
 2. Require `application/x-www-form-urlencoded`.
 3. Read at most `64 KiB`.
-4. Require exactly one value for each token-exchange form parameter that cyspbot consumes.
+4. Require exactly one non-empty value for each required token-exchange form parameter that cyspbot consumes; value-less instances are treated as omitted, and duplicated non-empty consumed parameters are malformed.
 5. Require `requested_token_type=urn:chikachow:github-app-installation-access-token`.
-6. Verify the GitHub Actions OIDC subject token with the configured issuer, audience, signing algorithm, JWKS URI, and authorized-party rule.
-7. Derive a GitHub Actions Principal from validated GitHub OIDC claims.
-8. Evaluate token policy before GitHub API calls.
-9. Resolve the GitHub App installation for the calling repository.
-10. Create a metadata-only installation token and read live GitHub repository metadata.
-11. Re-evaluate token policy against live repository metadata.
-12. Issue a GitHub App installation access token for the calling repository id.
+6. Reject unsupported or ambiguous RFC 8693 fields, including `audience`, `actor_token`, `actor_token_type`, duplicate consumed fields, malformed `scope` or `resource`, and multi-resource forms. `audience` maps to `invalid_target`; actor-token parameters map to `invalid_request`.
+7. Treat exactly empty optional `scope` and `resource` form values as omitted, and preserve non-empty values for normalization after authentication.
+8. Verify the GitHub Actions OIDC subject token with the configured issuer, audience, signing algorithm, JWKS URI, and authorized-party rule.
+9. Derive a GitHub Actions Principal from validated GitHub OIDC claims.
+10. Normalize an `InstallationAccessTokenRequest` from the verified principal plus `scope` and `resource`.
+11. Evaluate static Token Policy over `{ principal, tokenRequest }`.
+12. Resolve the target GitHub App installation from the normalized repository resource.
+13. Issue a GitHub App installation access token for `repositories: [<repo>]` and the normalized permissions.
 
-The token policy in `workers/cyspbot-token-exchange/src/policy/token-policy.ts` allows only `schedule` and `workflow_dispatch` runs where the verified subject and ref both identify the repository default branch. It requests these installation token permissions:
+The token policy in `workers/cyspbot-token-exchange/src/policy/token-policy.ts` authorizes a normalized token request. Policy does not select a profile or mutate the requested token shape. The current policy data lives in `workers/cyspbot-token-exchange/src/policy/token-policy-rules.ts`, but exact entries are service-owned authorization data rather than implementation documentation.
+
+The token-exchange `audience` form parameter is rejected as `invalid_target` before OIDC authentication because cyspbot has no audience-to-GitHub-token mapping. RFC 8693 treats `audience` as a logical target service selector and permits multiple `audience` or `resource` parameters. cyspbot instead supports one canonical GitHub repository API `resource` and one normalized permission set. The signed GitHub Actions OIDC token's JWT `aud` claim is still required and is verified separately against the configured `cyspbot` audience in `packages/oidc/src/verifier.ts`.
+
+Omitted `scope` and `resource` normalize to a same-repository PR-authoring token request:
 
 ```json
 {
@@ -53,7 +58,15 @@ The token policy in `workers/cyspbot-token-exchange/src/policy/token-policy.ts` 
 }
 ```
 
-`issueInstallationTokenForContext` in `workers/cyspbot-token-exchange/src/policy/installation-token-issuance.ts` uses a metadata-only installation token to read live repository metadata before requesting the final installation token. The final request passes `repository_ids: [<calling repository id>]` and the checked-in permission request.
+That token request is allowed only when an explicit rule matches the GitHub Actions principal repository, event, `ref`, parsed subject ref, exact `workflow_ref`, canonical resource URI, and permissions. Principal derivation rejects GitHub OIDC subjects whose parsed repository name is inconsistent with the signed `repository` claim. When GitHub emits the immutable subject form containing owner and repository IDs, principal derivation also rejects subjects whose parsed repository ID is inconsistent with the signed `repository_id` claim, and rejects inconsistent owner IDs when GitHub supplies `repository_owner_id`. Rule order is not semantically meaningful; authorization is `allow` if any rule matches and `deny` otherwise. Exact policy entries are intentionally not documented here because they may move to live configuration.
+
+Repository identity in Token Policy is intentionally name-based. GitHub Actions OIDC exposes `repository_id` and `repository_owner_id` as signed claims, immutable subject formats can include those IDs in `sub`, and GitHub's installation-token API supports `repository_ids`; cyspbot still chooses owner/repository names as the policy identifier because they are the maintained external resource names and because token issuance still requires the configured GitHub App installation to cover that repository name. The ID checks prevent malformed or internally inconsistent immutable subjects from becoming trusted principal facts, but they do not make policy matching ID-bound. If a repository is deleted and recreated under the same owner/name, matching existing policy for that name is accepted behavior rather than a bypass.
+
+`issueInstallationTokenForContext` in `workers/cyspbot-token-exchange/src/policy/installation-token-issuance.ts` does not fetch source repository metadata. It parses the normalized token resource as `https://api.github.com/repos/{owner}/{repo}`, resolves the target installation with `GET /repos/{owner}/{repo}/installation`, then passes `repositories: ["<repo>"]` and the normalized permissions to GitHub's installation-token endpoint.
+
+cyspbot treats exactly empty optional `scope` and `resource` form values as omitted to follow OAuth token endpoint parameter handling for those fields. It does not translate `scope=` into `permissions: {}`. GitHub documents that omitting `permissions` defaults to the app installation's granted permissions, and live testing showed that a present empty `permissions: {}` object receives the same default permission set. Minimal-permission token shapes must be expressed as explicit non-empty scopes such as `metadata:read` if cyspbot later supports them. Scope values are parsed as OAuth scope tokens separated by a single ASCII space; order is not significant, but leading whitespace, trailing whitespace, repeated spaces, tabs, and newlines are rejected. The normalized token request retains a canonical scope string, and `/token` success responses always include that issued scope so clients can observe defaults and normalized ordering.
+
+cyspbot does not support OAuth client authentication at `/token`. Non-empty `client_id`, `client_secret`, `client_assertion`, and `client_assertion_type` form parameters are rejected with `invalid_request` so callers cannot mistakenly believe client credentials affected token issuance. Value-less form parameters are treated as omitted. An `Authorization` header is rejected with `invalid_client` and `401` before body parsing. Non-empty `authorization_details` is also rejected because this profile expresses the token shape only through `resource` and `scope`.
 
 ## OIDC Verification
 

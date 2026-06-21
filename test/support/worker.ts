@@ -7,6 +7,7 @@ import type { TokenExchangeDependencies } from "@cyspbot/token-exchange/dependen
 import { testNow } from "./constants.ts";
 import { fetchGitHubTestDouble } from "./github-api.ts";
 import { testOidcVerifier } from "./oidc.ts";
+import { testTokenPolicyRules } from "./token-policy.ts";
 import { testEnv } from "./worker-env.ts";
 
 export {
@@ -26,6 +27,7 @@ const baseTestDependencies = {
     authenticateOidcToken(token, request, testOidcVerifier),
   fetch: fetchGitHubTestDouble,
   now: () => testNow,
+  tokenPolicyRules: testTokenPolicyRules,
 } satisfies TestDependencies;
 
 const tokenExchangeApp = createTokenExchangeWorker(baseTestDependencies);

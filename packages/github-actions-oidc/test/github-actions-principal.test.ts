@@ -8,21 +8,19 @@ import {
 const claims = {
   actor: "dependabot[bot]",
   event_name: "workflow_dispatch",
-  job_workflow_ref:
-    "cysp/terraform-provider-contentful/.github/workflows/update-indirect-dependencies.yml@refs/heads/main",
-  ref: "refs/heads/main",
+  ref: "refs/heads/fixture-base-branch",
   ref_type: "branch",
-  repository: "cysp/terraform-provider-contentful",
+  repository: "fixture-owner/fixture-source-repository",
   repository_id: "123456789",
   repository_owner_id: "555555",
   repository_visibility: "private",
   run_attempt: "1",
   run_id: "987654321",
   sha: "0123456789abcdef0123456789abcdef01234567",
-  sub: "repo:cysp/terraform-provider-contentful:ref:refs/heads/main",
-  workflow: "update indirect dependencies",
+  sub: "repo:fixture-owner/fixture-source-repository:ref:refs/heads/fixture-base-branch",
+  workflow: "fixture token request",
   workflow_ref:
-    "cysp/terraform-provider-contentful/.github/workflows/update-indirect-dependencies.yml@refs/heads/main",
+    "fixture-owner/fixture-source-repository/.github/workflows/fixture-token-request.yml@refs/heads/fixture-base-branch",
 };
 
 describe("GitHub Actions OIDC principal derivation", () => {
@@ -35,12 +33,10 @@ describe("GitHub Actions OIDC principal derivation", () => {
     expect(principal).toEqual({
       actor: "dependabot[bot]",
       eventName: "workflow_dispatch",
-      jobWorkflowRef:
-        "cysp/terraform-provider-contentful/.github/workflows/update-indirect-dependencies.yml@refs/heads/main",
-      rawSubject: "repo:cysp/terraform-provider-contentful:ref:refs/heads/main",
-      ref: "refs/heads/main",
+      rawSubject: "repo:fixture-owner/fixture-source-repository:ref:refs/heads/fixture-base-branch",
+      ref: "refs/heads/fixture-base-branch",
       refType: "branch",
-      repository: "cysp/terraform-provider-contentful",
+      repository: "fixture-owner/fixture-source-repository",
       repositoryId: "123456789",
       repositoryOwnerId: "555555",
       repositoryVisibility: "private",
@@ -49,29 +45,29 @@ describe("GitHub Actions OIDC principal derivation", () => {
       sha: "0123456789abcdef0123456789abcdef01234567",
       subject: {
         kind: "ref",
-        raw: "repo:cysp/terraform-provider-contentful:ref:refs/heads/main",
-        ref: "refs/heads/main",
-        repositorySubject: "cysp/terraform-provider-contentful",
+        raw: "repo:fixture-owner/fixture-source-repository:ref:refs/heads/fixture-base-branch",
+        ref: "refs/heads/fixture-base-branch",
+        repositorySubject: "fixture-owner/fixture-source-repository",
       },
-      workflow: "update indirect dependencies",
+      workflow: "fixture token request",
       workflowRef:
-        "cysp/terraform-provider-contentful/.github/workflows/update-indirect-dependencies.yml@refs/heads/main",
+        "fixture-owner/fixture-source-repository/.github/workflows/fixture-token-request.yml@refs/heads/fixture-base-branch",
     });
   });
 
   it("derives a principal from immutable branch subjects", () => {
     const parsedClaims = parseGitHubActionsClaims({
       ...claims,
-      sub: "repo:cysp@555555/terraform-provider-contentful@123456789:ref:refs/heads/main",
+      sub: "repo:fixture-owner@555555/fixture-source-repository@123456789:ref:refs/heads/fixture-base-branch",
     });
 
     const principal = parsedClaims === null ? null : deriveGitHubActionsPrincipal(parsedClaims);
 
     expect(principal?.subject).toEqual({
       kind: "ref",
-      raw: "repo:cysp@555555/terraform-provider-contentful@123456789:ref:refs/heads/main",
-      ref: "refs/heads/main",
-      repositorySubject: "cysp@555555/terraform-provider-contentful@123456789",
+      raw: "repo:fixture-owner@555555/fixture-source-repository@123456789:ref:refs/heads/fixture-base-branch",
+      ref: "refs/heads/fixture-base-branch",
+      repositorySubject: "fixture-owner@555555/fixture-source-repository@123456789",
     });
   });
 
@@ -94,7 +90,48 @@ describe("GitHub Actions OIDC principal derivation", () => {
   it("rejects malformed subject encoding", () => {
     const parsedClaims = parseGitHubActionsClaims({
       ...claims,
-      sub: "repo:cysp%ZZ/terraform-provider-contentful:ref:refs/heads/main",
+      sub: "repo:fixture-owner%ZZ/fixture-source-repository:ref:refs/heads/fixture-base-branch",
+    });
+
+    const principal = parsedClaims === null ? null : deriveGitHubActionsPrincipal(parsedClaims);
+
+    expect(principal).toBeNull();
+  });
+
+  it("rejects legacy subjects whose repository does not match the repository claim", () => {
+    const parsedClaims = parseGitHubActionsClaims({
+      ...claims,
+      sub: "repo:fixture-owner/fixture-other-repository:ref:refs/heads/fixture-base-branch",
+    });
+
+    const principal = parsedClaims === null ? null : deriveGitHubActionsPrincipal(parsedClaims);
+
+    expect(principal).toBeNull();
+  });
+
+  it.each([
+    [
+      "repository name",
+      {
+        sub: "repo:fixture-owner@555555/fixture-other-repository@123456789:ref:refs/heads/fixture-base-branch",
+      },
+    ],
+    [
+      "repository id",
+      {
+        sub: "repo:fixture-owner@555555/fixture-source-repository@987654321:ref:refs/heads/fixture-base-branch",
+      },
+    ],
+    [
+      "owner id",
+      {
+        sub: "repo:fixture-owner@999999/fixture-source-repository@123456789:ref:refs/heads/fixture-base-branch",
+      },
+    ],
+  ])("rejects immutable subjects whose %s does not match claims", (_caseName, patch) => {
+    const parsedClaims = parseGitHubActionsClaims({
+      ...claims,
+      ...patch,
     });
 
     const principal = parsedClaims === null ? null : deriveGitHubActionsPrincipal(parsedClaims);
@@ -105,27 +142,27 @@ describe("GitHub Actions OIDC principal derivation", () => {
   it("parses pull request and environment subjects for policy denial", () => {
     const pullRequestClaims = parseGitHubActionsClaims({
       ...claims,
-      sub: "repo:cysp/terraform-provider-contentful:pull_request",
+      sub: "repo:fixture-owner/fixture-source-repository:pull_request",
     });
     const environmentClaims = parseGitHubActionsClaims({
       ...claims,
-      sub: "repo:cysp/terraform-provider-contentful:environment:Production%3AV1",
+      sub: "repo:fixture-owner/fixture-source-repository:environment:Production%3AV1",
     });
 
     expect(
       pullRequestClaims === null ? null : deriveGitHubActionsPrincipal(pullRequestClaims)?.subject,
     ).toEqual({
       kind: "pull_request",
-      raw: "repo:cysp/terraform-provider-contentful:pull_request",
-      repositorySubject: "cysp/terraform-provider-contentful",
+      raw: "repo:fixture-owner/fixture-source-repository:pull_request",
+      repositorySubject: "fixture-owner/fixture-source-repository",
     });
     expect(
       environmentClaims === null ? null : deriveGitHubActionsPrincipal(environmentClaims)?.subject,
     ).toEqual({
       environment: "Production:V1",
       kind: "environment",
-      raw: "repo:cysp/terraform-provider-contentful:environment:Production%3AV1",
-      repositorySubject: "cysp/terraform-provider-contentful",
+      raw: "repo:fixture-owner/fixture-source-repository:environment:Production%3AV1",
+      repositorySubject: "fixture-owner/fixture-source-repository",
     });
   });
 });

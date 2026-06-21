@@ -31,27 +31,10 @@ export interface InstallationToken {
   token: string;
 }
 
-export interface GitHubRepository {
-  defaultBranch: string;
-  repository: string;
-  repositoryId: string;
-  repositoryOwnerId: string;
-  repositoryVisibility: string;
-}
-
 export type GitHubAppEnv = GitHubApiEnv & {
   GITHUB_APP_ID: string;
   GITHUB_APP_PRIVATE_KEY: SecretTextBinding;
 };
-
-interface GitHubRepositoryApiResponse {
-  default_branch: string;
-  id?: number;
-  owner?: {
-    id?: number;
-  };
-  visibility?: unknown;
-}
 
 interface GitHubInstallationResponse {
   id: number;
@@ -97,8 +80,52 @@ export async function createInstallationToken(
     throw new GitHubApiError(400, "invalid repository id");
   }
 
-  const requestBody: { permissions?: Record<string, string>; repository_ids: number[] } = {
-    repository_ids: [parsedRepositoryId],
+  return createInstallationTokenWithBody(
+    env,
+    installationId,
+    {
+      repository_ids: [parsedRepositoryId],
+    },
+    permissions,
+    dependencies,
+  );
+}
+
+export async function createInstallationTokenForRepository(
+  env: GitHubAppEnv,
+  installationId: number,
+  repository: string,
+  permissions: Record<string, string> | undefined,
+  dependencies: GitHubApiDependencies,
+): Promise<InstallationToken> {
+  const repositoryName = parseRepositoryName(repository);
+
+  if (repositoryName === null) {
+    throw new GitHubApiError(400, "invalid repository");
+  }
+
+  return createInstallationTokenWithBody(
+    env,
+    installationId,
+    {
+      repositories: [repositoryName],
+    },
+    permissions,
+    dependencies,
+  );
+}
+
+async function createInstallationTokenWithBody(
+  env: GitHubAppEnv,
+  installationId: number,
+  repositorySelection: { repositories: string[] } | { repository_ids: number[] },
+  permissions: Record<string, string> | undefined,
+  dependencies: GitHubApiDependencies,
+): Promise<InstallationToken> {
+  const requestBody:
+    | { permissions?: Record<string, string>; repositories: string[] }
+    | { permissions?: Record<string, string>; repository_ids: number[] } = {
+    ...repositorySelection,
   };
 
   if (permissions !== undefined) {
@@ -137,43 +164,19 @@ export async function createInstallationToken(
   };
 }
 
-export async function getRepository(
-  env: GitHubAppEnv,
-  repository: string,
-  installationToken: string,
-  dependencies: GitHubApiDependencies,
-): Promise<GitHubRepository> {
-  const response = await fetchGitHubApi(
-    env,
-    `/repos/${repository}`,
-    installationAuthenticationHeaders(installationToken),
-    dependencies,
-  );
+/*
+ * Installation token requests support either repository IDs or repository names.
+ * cyspbot's token exchange flow uses repository names after resolving the target
+ * installation from the same owner/repository resource.
+ */
+function parseRepositoryName(repository: string): string | null {
+  const parts = repository.split("/");
 
-  const body = (await response.json()) as GitHubRepositoryApiResponse;
-  const defaultBranch = body.default_branch;
-  const repositoryId = body.id;
-  const ownerId = body.owner?.id;
-  const visibility = body.visibility;
-
-  if (
-    typeof defaultBranch !== "string" ||
-    defaultBranch.length === 0 ||
-    typeof repositoryId !== "number" ||
-    typeof ownerId !== "number" ||
-    typeof visibility !== "string" ||
-    visibility.length === 0
-  ) {
-    throw new GitHubApiError(502, "invalid repository response");
+  if (parts.length !== 2 || parts.some((part) => part.length === 0)) {
+    return null;
   }
 
-  return {
-    defaultBranch,
-    repository,
-    repositoryId: String(repositoryId),
-    repositoryOwnerId: String(ownerId),
-    repositoryVisibility: visibility,
-  };
+  return parts[1] ?? null;
 }
 
 async function appAuthenticationHeaders(env: GitHubAppEnv): Promise<HeadersInit> {
@@ -182,15 +185,6 @@ async function appAuthenticationHeaders(env: GitHubAppEnv): Promise<HeadersInit>
   return {
     accept: githubAcceptHeader,
     authorization: `Bearer ${jwt}`,
-    "user-agent": "cyspbot",
-    "x-github-api-version": githubApiVersion,
-  };
-}
-
-function installationAuthenticationHeaders(token: string): HeadersInit {
-  return {
-    accept: githubAcceptHeader,
-    authorization: `Bearer ${token}`,
     "user-agent": "cyspbot",
     "x-github-api-version": githubApiVersion,
   };

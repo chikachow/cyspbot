@@ -20,6 +20,13 @@ export interface CreateOidcTokenOptions {
   kid?: string;
 }
 
+export interface TokenExchangeRequestBodyOptions {
+  claims?: Partial<Record<string, unknown>>;
+  form?: Partial<Record<string, string | null>>;
+  requestedTokenType?: string | null;
+  tokenOptions?: CreateOidcTokenOptions;
+}
+
 export const testOidcVerifier = new OidcTokenVerifier({
   fetchJwks: fetchOidcJwksTestDouble,
   issuer: githubActionsTrustedIssuer,
@@ -34,12 +41,13 @@ export function authorizationHeaders(
   }));
 }
 
-export async function tokenExchangeRequestBody(
-  overrides?: Partial<Record<string, unknown>>,
-  requestedTokenType: string | null = githubInstallationAccessTokenType,
-  tokenOptions?: CreateOidcTokenOptions,
-): Promise<string> {
-  const subjectToken = await createOidcToken(overrides, tokenOptions);
+export async function tokenExchangeRequestBody({
+  claims,
+  form: formOptions,
+  requestedTokenType = githubInstallationAccessTokenType,
+  tokenOptions,
+}: TokenExchangeRequestBodyOptions = {}): Promise<string> {
+  const subjectToken = await createOidcToken(claims, tokenOptions);
   const form = new URLSearchParams({
     grant_type: tokenExchangeGrantType,
     subject_token: subjectToken,
@@ -48,6 +56,12 @@ export async function tokenExchangeRequestBody(
 
   if (requestedTokenType !== null) {
     form.set("requested_token_type", requestedTokenType);
+  }
+
+  for (const [key, value] of Object.entries(formOptions ?? {})) {
+    if (value !== undefined && value !== null) {
+      form.set(key, value);
+    }
   }
 
   return form.toString();
@@ -66,20 +80,18 @@ export async function createOidcToken(
     base_ref: "",
     event_name: "workflow_dispatch",
     head_ref: "",
-    job_workflow_ref:
-      "cysp/terraform-provider-contentful/.github/workflows/update-indirect-dependencies.yml@refs/heads/main",
-    ref: "refs/heads/main",
+    ref: "refs/heads/fixture-base-branch",
     ref_type: "branch",
-    repository: "cysp/terraform-provider-contentful",
+    repository: "fixture-owner/fixture-source-repository",
     repository_id: "123456789",
     repository_owner_id: "555555",
     repository_visibility: "private",
     run_attempt: "1",
     run_id: "987654321",
     sha: "0123456789abcdef0123456789abcdef01234567",
-    workflow: "update indirect dependencies",
+    workflow: "fixture token request",
     workflow_ref:
-      "cysp/terraform-provider-contentful/.github/workflows/update-indirect-dependencies.yml@refs/heads/main",
+      "fixture-owner/fixture-source-repository/.github/workflows/fixture-token-request.yml@refs/heads/fixture-base-branch",
     ...payloadOverrides,
   })
     .setProtectedHeader({ alg: "RS256", kid: options?.kid ?? "test-key-1" })
@@ -89,7 +101,9 @@ export async function createOidcToken(
     .setNotBefore(now - 10)
     .setExpirationTime(now + 300)
     .setSubject(
-      typeof sub === "string" ? sub : "repo:cysp/terraform-provider-contentful:ref:refs/heads/main",
+      typeof sub === "string"
+        ? sub
+        : "repo:fixture-owner/fixture-source-repository:ref:refs/heads/fixture-base-branch",
     )
     .sign(privateKey);
 }

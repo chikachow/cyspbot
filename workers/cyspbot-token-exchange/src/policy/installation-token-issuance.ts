@@ -1,130 +1,115 @@
 import {
-  createInstallationToken,
-  getRepository,
-  type GitHubRepository,
+  createInstallationTokenForRepository,
   resolveInstallationForRepository,
 } from "@cyspbot/github/app";
 import { GitHubApiError, type GitHubApiDependencies } from "@cyspbot/github/http";
-import type { GitHubActionsPrincipal } from "@cyspbot/github-actions-oidc/principals";
 import type { AuthenticatedContext } from "../authentication.ts";
 import {
-  evaluateTokenPolicyPreflight,
-  evaluateTokenPolicy,
-  type TokenPolicyAllowDecision,
+  evaluateConfiguredTokenPolicy,
+  parseGitHubRepositoryResource,
+  type InstallationAccessTokenRequest,
   type TokenPolicyDecision,
+  type TokenPolicyRule,
 } from "./token-policy.ts";
+import { tokenPolicyRules as defaultTokenPolicyRules } from "./token-policy-rules.ts";
 
-export type InstallationTokenIssuanceDependencies = GitHubApiDependencies;
+export interface InstallationTokenIssuanceDependencies extends GitHubApiDependencies {
+  tokenPolicyRules?: readonly TokenPolicyRule[];
+}
 
 type InstallationTokenIssuanceResult =
   | { expiresAt: string; ok: true; token: string }
   | { ok: false; status: number };
 
 class TokenPolicyDeniedError extends Error {
-  public readonly policyDecision: TokenPolicyDecision | undefined;
-  public readonly repository: GitHubRepository | undefined;
+  public readonly policyDecision: TokenPolicyDecision;
 
-  public constructor(
-    message: string,
-    policyDecision?: TokenPolicyDecision,
-    repository?: GitHubRepository,
-  ) {
-    super(message);
+  public constructor(policyDecision: TokenPolicyDecision) {
+    super("Token Policy denied Installation Token Issuance");
     this.policyDecision = policyDecision;
-    this.repository = repository;
   }
-}
-
-async function authorizeInstallationTokenIssuance(
-  env: TokenExchangeBindings,
-  installationId: number,
-  caller: GitHubActionsPrincipal,
-  dependencies: GitHubApiDependencies,
-): Promise<{ policyDecision: TokenPolicyAllowDecision; repository: GitHubRepository }> {
-  const metadataToken = await createInstallationToken(
-    env,
-    installationId,
-    caller.repositoryId,
-    { metadata: "read" },
-    dependencies,
-  );
-  const repository = await getRepository(env, caller.repository, metadataToken.token, dependencies);
-  const policyDecision = evaluateTokenPolicy(caller, repository);
-
-  if (policyDecision.decision !== "allow") {
-    throw new TokenPolicyDeniedError(
-      "Token Policy denied Installation Token Issuance",
-      policyDecision,
-      repository,
-    );
-  }
-
-  return { policyDecision, repository };
 }
 
 export async function issueInstallationTokenForContext(
   env: TokenExchangeBindings,
   authenticationContext: AuthenticatedContext,
+  tokenRequest: InstallationAccessTokenRequest,
   dependencies: InstallationTokenIssuanceDependencies,
 ): Promise<InstallationTokenIssuanceResult> {
   const { principal } = authenticationContext;
-  let installationId: number | undefined;
+  let policyDecision: TokenPolicyDecision | undefined;
+  let targetInstallationId: number | undefined;
 
   try {
-    const preflightDecision = evaluateTokenPolicyPreflight(principal);
+    policyDecision = evaluateConfiguredTokenPolicy(
+      {
+        principal,
+        tokenRequest,
+      },
+      dependencies.tokenPolicyRules ?? defaultTokenPolicyRules,
+    );
 
-    if (preflightDecision.decision !== "allow") {
-      throw new TokenPolicyDeniedError(
-        "Token Policy denied Installation Token Issuance before GitHub API calls",
-        preflightDecision,
-      );
+    if (policyDecision.decision !== "allow") {
+      throw new TokenPolicyDeniedError(policyDecision);
     }
 
-    const installation = await resolveInstallationForRepository(
-      env,
-      principal.repository,
-      dependencies,
-    );
-    installationId = installation.id;
+    const requestedResource = parseGitHubRepositoryResource(tokenRequest.resource.href);
 
-    const authorization = await authorizeInstallationTokenIssuance(
+    if (requestedResource === null) {
+      throw new GitHubApiError(400, "invalid token request resource");
+    }
+
+    const requestedResourceName = `${requestedResource.owner}/${requestedResource.repository}`;
+    const targetInstallation = await resolveInstallationForRepository(
       env,
-      installation.id,
-      principal,
+      requestedResourceName,
       dependencies,
     );
-    const token = await createInstallationToken(
+    targetInstallationId = targetInstallation.id;
+    const installationToken = await createInstallationTokenForRepository(
       env,
-      installation.id,
-      principal.repositoryId,
-      authorization.policyDecision.permissions,
+      targetInstallation.id,
+      requestedResourceName,
+      tokenRequest.permissions,
       dependencies,
     );
 
-    console.info("Installation Token Issuance succeeded", {
-      ...authenticatedContextLogFields(authenticationContext),
-      expires_at: token.expiresAt,
-      installation_id: installation.id,
-      permissions: authorization.policyDecision.permissions,
-      policy_reasons: authorization.policyDecision.reasons,
+    console.info({
+      event: "installation_token_issuance_succeeded",
+      expires_at: installationToken.expiresAt,
+      principal: principalLogFields(authenticationContext),
+      target_installation: {
+        id: targetInstallation.id,
+        repository: requestedResourceName,
+      },
+      token_policy: {
+        matched: true,
+        rule: policyDecision.matchedRule,
+      },
+      token_request: tokenRequestLogFields(tokenRequest),
     });
 
     return {
-      expiresAt: token.expiresAt,
+      expiresAt: installationToken.expiresAt,
       ok: true,
-      token: token.token,
+      token: installationToken.token,
     };
   } catch (error) {
     const status = statusForInstallationTokenIssuanceError(error);
 
-    console.error("Installation Token Issuance failed", {
-      ...authenticatedContextLogFields(authenticationContext),
-      error_message: logMessageForInstallationTokenIssuanceError(error),
-      error_name: error instanceof Error ? error.name : typeof error,
-      error_status: error instanceof GitHubApiError ? error.status : undefined,
-      installation_id: installationId,
-      policy_reasons:
-        error instanceof TokenPolicyDeniedError ? error.policyDecision?.reasons : undefined,
+    console.error({
+      error: {
+        message: logMessageForInstallationTokenIssuanceError(error),
+        name: error instanceof Error ? error.name : typeof error,
+        status: error instanceof GitHubApiError ? error.status : undefined,
+      },
+      event: "installation_token_issuance_failed",
+      principal: principalLogFields(authenticationContext),
+      target_installation: {
+        id: targetInstallationId,
+      },
+      token_policy: tokenPolicyLogFields(error, policyDecision),
+      token_request: tokenRequestLogFields(tokenRequest),
     });
 
     return { ok: false, status };
@@ -165,16 +150,13 @@ function logMessageForInstallationTokenIssuanceError(error: unknown): string {
   return "unexpected Installation Token Issuance error";
 }
 
-function authenticatedContextLogFields(
-  authenticationContext: AuthenticatedContext,
-): Record<string, unknown> {
+function principalLogFields(authenticationContext: AuthenticatedContext): Record<string, unknown> {
   const { principal } = authenticationContext;
 
   return {
     actor: principal.actor,
     event_name: principal.eventName,
     issuer: authenticationContext.issuer,
-    job_workflow_ref: principal.jobWorkflowRef,
     ref: principal.ref,
     ref_type: principal.refType,
     repository: principal.repository,
@@ -189,5 +171,39 @@ function authenticatedContextLogFields(
     subject_kind: principal.subject.kind,
     workflow: principal.workflow,
     workflow_ref: principal.workflowRef,
+  };
+}
+
+function tokenRequestLogFields(
+  tokenRequest: InstallationAccessTokenRequest,
+): Record<string, unknown> {
+  return {
+    permissions: tokenRequest.permissions,
+    resource: tokenRequest.resource.href,
+    scope: tokenRequest.scope,
+  };
+}
+
+function tokenPolicyLogFields(
+  error: unknown,
+  policyDecision: TokenPolicyDecision | undefined,
+): Record<string, unknown> {
+  if (error instanceof TokenPolicyDeniedError) {
+    return {
+      deny_reasons:
+        error.policyDecision.decision === "deny" ? error.policyDecision.reasons : undefined,
+      matched: false,
+    };
+  }
+
+  if (policyDecision?.decision === "allow") {
+    return {
+      matched: true,
+      rule: policyDecision.matchedRule,
+    };
+  }
+
+  return {
+    matched: false,
   };
 }

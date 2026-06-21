@@ -30,7 +30,7 @@ describe("OidcTokenVerifier", () => {
       ok: true,
       token: {
         claims: {
-          repository: "cysp/terraform-provider-contentful",
+          repository: "fixture-owner/fixture-source-repository",
         },
         issuer: githubActionsTrustedIssuer.issuer,
       },
@@ -39,7 +39,7 @@ describe("OidcTokenVerifier", () => {
       ok: true,
       token: {
         claims: {
-          repository: "cysp/terraform-provider-contentful",
+          repository: "fixture-owner/fixture-source-repository",
         },
         issuer: githubActionsTrustedIssuer.issuer,
       },
@@ -50,11 +50,11 @@ describe("OidcTokenVerifier", () => {
   it("rejects tokens whose signing algorithm is not allowed", async () => {
     const token = await new SignJWT({
       event_name: "workflow_dispatch",
-      ref: "refs/heads/main",
+      ref: "refs/heads/fixture-base-branch",
       ref_type: "branch",
-      repository: "cysp/terraform-provider-contentful",
+      repository: "fixture-owner/fixture-source-repository",
       repository_id: "123456789",
-      sub: "repo:cysp/terraform-provider-contentful:ref:refs/heads/main",
+      sub: "repo:fixture-owner/fixture-source-repository:ref:refs/heads/fixture-base-branch",
     })
       .setProtectedHeader({ alg: "HS256" })
       .setAudience("cyspbot")

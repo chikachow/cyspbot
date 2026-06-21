@@ -11,8 +11,10 @@ If private vulnerability reporting is unavailable, contact the repository mainta
 cyspbot exchanges verified GitHub Actions OIDC tokens for repository-scoped GitHub App installation access tokens. The important security properties are:
 
 - issuer trust is configured, not discovered from caller-controlled tokens
-- the calling repository is derived from verified OIDC claims
-- callers cannot choose repositories or permission profiles
+- the caller identity is derived from verified GitHub Actions OIDC claims
+- callers may request one canonical repository resource and an exact GitHub App permission scope
+- Token Policy must explicitly allow the normalized caller, resource, and permission combination before a token is issued
+- the GitHub App installation remains the upper-bound authority for repositories and permissions
 - the GitHub App private key remains inside the deployment secret boundary
 - webhook processing requires GitHub signature validation before state changes
 - webhook deliveries must identify the configured GitHub App before they are accepted
