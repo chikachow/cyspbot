@@ -8,6 +8,7 @@
     "./authentication": "./src/authentication.ts",
     "./dependencies": "./src/dependencies.ts",
     "./policy/token-policy": "./src/policy/token-policy.ts",
+    "./policy/token-policy-rules": "./src/policy/token-policy-rules.ts",
     "./worker": "./src/worker.ts"
   },
   "scripts": {

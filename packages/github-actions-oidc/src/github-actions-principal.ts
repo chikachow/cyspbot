@@ -12,7 +12,6 @@ const githubActionsClaimsSchema = z.object({
   environment: optionalStringClaim,
   event_name: requiredStringClaim,
   head_ref: optionalStringClaim,
-  job_workflow_ref: optionalStringClaim,
   ref: optionalStringClaim,
   ref_type: requiredStringClaim,
   repository: requiredStringClaim,
@@ -49,10 +48,13 @@ export function deriveGitHubActionsPrincipal(
     return null;
   }
 
+  if (!subjectRepositoryMatchesClaims(parsedSubject.repositorySubject, claims)) {
+    return null;
+  }
+
   return {
     actor: claims.actor ?? null,
     eventName: claims.event_name,
-    jobWorkflowRef: claims.job_workflow_ref ?? null,
     rawSubject: claims.sub,
     ref: claims.ref ?? null,
     refType: claims.ref_type,
@@ -140,4 +142,30 @@ function decodeRequiredSubjectComponent(value: string | undefined): string | nul
   const decoded = decodeSubjectComponent(value);
 
   return decoded === null || decoded.length === 0 ? null : decoded;
+}
+
+function subjectRepositoryMatchesClaims(
+  subjectRepository: string,
+  claims: GitHubActionsClaims,
+): boolean {
+  if (subjectRepository === claims.repository) {
+    return true;
+  }
+
+  const match = /^([^/@]+)@([^/@]+)\/([^/@]+)@([^/@]+)$/u.exec(subjectRepository);
+  if (match === null) {
+    return false;
+  }
+
+  const [, owner, ownerId, repository, repositoryId] = match;
+
+  if (`${owner}/${repository}` !== claims.repository || repositoryId !== claims.repository_id) {
+    return false;
+  }
+
+  return (
+    claims.repository_owner_id === undefined ||
+    claims.repository_owner_id === null ||
+    ownerId === claims.repository_owner_id
+  );
 }

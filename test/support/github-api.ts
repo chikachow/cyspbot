@@ -4,6 +4,9 @@ import {
   testRepositoryId,
   testRepositoryOwnerId,
   testRepositoryVisibility,
+  testWorkflowDispatchInstallationId,
+  testWorkflowDispatchRepository,
+  testWorkflowDispatchRepositoryId,
 } from "./constants.ts";
 
 export async function fetchGitHubTestDouble(
@@ -27,10 +30,28 @@ export async function fetchGitHubTestDouble(
     return Response.json({ id: testInstallationId });
   }
 
+  if (
+    request.method === "GET" &&
+    apiPath === `/repos/${testWorkflowDispatchRepository}/installation`
+  ) {
+    return Response.json({ id: testWorkflowDispatchInstallationId });
+  }
+
   if (request.method === "GET" && apiPath === `/repos/${testRepository}`) {
     return Response.json({
-      default_branch: "main",
+      default_branch: "fixture-base-branch",
       id: Number.parseInt(testRepositoryId, 10),
+      owner: {
+        id: Number.parseInt(testRepositoryOwnerId, 10),
+      },
+      visibility: testRepositoryVisibility,
+    });
+  }
+
+  if (request.method === "GET" && apiPath === `/repos/${testWorkflowDispatchRepository}`) {
+    return Response.json({
+      default_branch: "fixture-base-branch",
+      id: Number.parseInt(testWorkflowDispatchRepositoryId, 10),
       owner: {
         id: Number.parseInt(testRepositoryOwnerId, 10),
       },
@@ -48,8 +69,7 @@ export async function fetchGitHubTestDouble(
     if (
       request.headers.get("content-type") !== "application/json" ||
       request.headers.get("x-github-stateless-s2s-token") !== "enabled" ||
-      !Array.isArray(body["repository_ids"]) ||
-      body["repository_ids"][0] !== Number.parseInt(testRepositoryId, 10) ||
+      !hasSelectedRepository(body, testRepository) ||
       permissions === null ||
       typeof permissions !== "object" ||
       Array.isArray(permissions)
@@ -58,22 +78,6 @@ export async function fetchGitHubTestDouble(
     }
 
     const requestedPermissions = permissions as Record<string, unknown>;
-
-    if (
-      Object.keys(requestedPermissions).length === 1 &&
-      requestedPermissions["metadata"] === "read"
-    ) {
-      return Response.json(
-        {
-          expires_at: "2030-01-01T00:00:00Z",
-          permissions: {
-            metadata: "read",
-          },
-          token: "ghs_test_metadata_token",
-        },
-        { status: 201 },
-      );
-    }
 
     if (
       Object.keys(requestedPermissions).length !== 2 ||
@@ -96,7 +100,65 @@ export async function fetchGitHubTestDouble(
     );
   }
 
+  if (
+    request.method === "POST" &&
+    apiPath === `/app/installations/${testWorkflowDispatchInstallationId}/access_tokens`
+  ) {
+    const body = (await request.json()) as Record<string, unknown>;
+    const permissions = body["permissions"];
+
+    if (
+      request.headers.get("content-type") !== "application/json" ||
+      request.headers.get("x-github-stateless-s2s-token") !== "enabled" ||
+      !hasSelectedRepository(body, testWorkflowDispatchRepository) ||
+      permissions === null ||
+      typeof permissions !== "object" ||
+      Array.isArray(permissions)
+    ) {
+      return new Response(null, { status: 500 });
+    }
+
+    const requestedPermissions = permissions as Record<string, unknown>;
+
+    if (
+      Object.keys(requestedPermissions).length !== 1 ||
+      requestedPermissions["actions"] !== "write"
+    ) {
+      return new Response(null, { status: 500 });
+    }
+
+    return Response.json(
+      {
+        expires_at: "2030-01-01T00:00:00Z",
+        permissions: {
+          actions: "write",
+        },
+        token: "ghs_test_workflow_dispatch_token",
+      },
+      { status: 201 },
+    );
+  }
+
   return new Response(`No test GitHub response for ${request.method} ${path}`, { status: 404 });
+}
+
+function hasSelectedRepository(body: Record<string, unknown>, repository: string): boolean {
+  const repositoryIds = body["repository_ids"];
+  const repositories = body["repositories"];
+
+  if (repositoryIds !== undefined) {
+    return false;
+  }
+
+  return (
+    Array.isArray(repositories) &&
+    repositories.length === 1 &&
+    repositories[0] === repositoryName(repository)
+  );
+}
+
+function repositoryName(repository: string): string {
+  return repository.split("/")[1] ?? repository;
 }
 
 function gitHubApiPathForTestDouble(request: Request): string | null {

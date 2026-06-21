@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   authorizationHeaders,
   fetchTokenExchange,
+  fetchTokenExchangeWithDependencies,
   fetchTokenExchangeWithEnv,
   githubInstallationAccessTokenType,
   testEnv,
@@ -54,21 +55,86 @@ describe("cyspbot-token-exchange", () => {
       access_token: string;
       expires_in: number;
       issued_token_type: string;
+      scope: string;
       token_type: string;
     };
     expect(body.access_token).toBe("ghs_test_token");
     expect(body.issued_token_type).toBe(githubInstallationAccessTokenType);
+    expect(body.scope).toBe("contents:write pull_requests:write");
     expect(body.token_type).toBe("Bearer");
     expect(body.expires_in).toEqual(expect.any(Number));
     expect(body.expires_in).toBeGreaterThan(0);
   });
 
+  it("exchanges an actions-write grant request for a token scoped to the target repository", async () => {
+    const response = await fetchTokenExchange("https://example.test/token", {
+      body: await tokenExchangeRequestBody({
+        form: {
+          resource: "https://api.github.com/repos/fixture-target-owner/fixture-target-repository",
+          scope: "actions:write",
+        },
+      }),
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      access_token: "ghs_test_workflow_dispatch_token",
+      issued_token_type: githubInstallationAccessTokenType,
+      scope: "actions:write",
+      token_type: "Bearer",
+    });
+  });
+
+  it("accepts reordered scope tokens for the same permission set", async () => {
+    const response = await fetchTokenExchange("https://example.test/token", {
+      body: await tokenExchangeRequestBody({
+        form: {
+          resource: "https://api.github.com/repos/fixture-owner/fixture-source-repository",
+          scope: "pull_requests:write contents:write",
+        },
+      }),
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      access_token: "ghs_test_token",
+      scope: "contents:write pull_requests:write",
+    });
+  });
+
+  it("rejects actions-write grant requests for unconfigured target repositories", async () => {
+    const response = await fetchTokenExchange("https://example.test/token", {
+      body: await tokenExchangeRequestBody({
+        form: {
+          resource: "https://api.github.com/repos/fixture-target-owner/fixture-unconfigured-target",
+          scope: "actions:write",
+        },
+      }),
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_target",
+    });
+  });
+
   it("rejects the generic oauth access token type as a requested token hint", async () => {
     const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody(
-        undefined,
-        "urn:ietf:params:oauth:token-type:access_token",
-      ),
+      body: await tokenExchangeRequestBody({
+        requestedTokenType: "urn:ietf:params:oauth:token-type:access_token",
+      }),
       headers: {
         "content-type": "application/x-www-form-urlencoded",
       },
@@ -83,7 +149,7 @@ describe("cyspbot-token-exchange", () => {
 
   it("rejects token exchange requests without a requested token type", async () => {
     const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody(undefined, null),
+      body: await tokenExchangeRequestBody({ requestedTokenType: null }),
       headers: {
         "content-type": "application/x-www-form-urlencoded",
       },
@@ -99,8 +165,10 @@ describe("cyspbot-token-exchange", () => {
 
   it("rejects token exchange requests whose oidc audience does not match cyspbot", async () => {
     const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody(undefined, githubInstallationAccessTokenType, {
-        audience: "other-service",
+      body: await tokenExchangeRequestBody({
+        tokenOptions: {
+          audience: "other-service",
+        },
       }),
       headers: {
         "content-type": "application/x-www-form-urlencoded",
@@ -114,9 +182,358 @@ describe("cyspbot-token-exchange", () => {
     });
   });
 
+  it("maps invalid oidc subject tokens to invalid token exchange requests", async () => {
+    const response = await fetchTokenExchangeWithDependencies(
+      "https://example.test/token",
+      {
+        body: await tokenExchangeRequestBody(),
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        method: "POST",
+      },
+      {
+        authenticateOidcToken: async () => ({
+          ok: false,
+          reason: "invalid_token",
+        }),
+      },
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_request",
+    });
+  });
+
+  it("maps oidc subject tokens with unknown signing keys to invalid token exchange requests", async () => {
+    const response = await fetchTokenExchange("https://example.test/token", {
+      body: await tokenExchangeRequestBody({
+        tokenOptions: {
+          kid: "caller-controlled-unknown-key",
+        },
+      }),
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_request",
+    });
+  });
+
+  it("preserves authentication failure response headers", async () => {
+    const response = await fetchTokenExchangeWithDependencies(
+      "https://example.test/token",
+      {
+        body: await tokenExchangeRequestBody(),
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        method: "POST",
+      },
+      {
+        authenticateOidcToken: async () => ({
+          ok: false,
+          reason: "invalid_token",
+          responseHeaders: {
+            "www-authenticate": "Bearer",
+          },
+        }),
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get("www-authenticate")).toBe("Bearer");
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("pragma")).toBe("no-cache");
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_request",
+    });
+  });
+
+  it("maps oidc provider failures to temporarily unavailable", async () => {
+    const response = await fetchTokenExchangeWithDependencies(
+      "https://example.test/token",
+      {
+        body: await tokenExchangeRequestBody(),
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        method: "POST",
+      },
+      {
+        authenticateOidcToken: async () => ({
+          ok: false,
+          reason: "oidc_provider_failure",
+        }),
+      },
+    );
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({
+      error: "temporarily_unavailable",
+    });
+  });
+
+  it("maps oidc verifier failures to server errors", async () => {
+    const response = await fetchTokenExchangeWithDependencies(
+      "https://example.test/token",
+      {
+        body: await tokenExchangeRequestBody(),
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        method: "POST",
+      },
+      {
+        authenticateOidcToken: async () => ({
+          ok: false,
+          reason: "oidc_verifier_failure",
+        }),
+      },
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      error: "server_error",
+    });
+  });
+
+  it("rejects unsupported token exchange audience parameters", async () => {
+    const body = new URLSearchParams(await tokenExchangeRequestBody());
+    body.set(
+      "audience",
+      "https://api.github.com/repos/fixture-target-owner/fixture-target-repository",
+    );
+
+    const response = await fetchTokenExchange("https://example.test/token", {
+      body,
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_target",
+    });
+  });
+
+  it("rejects unsupported token exchange actor token parameters", async () => {
+    const body = new URLSearchParams(await tokenExchangeRequestBody());
+    body.set("actor_token", "actor");
+    body.set("actor_token_type", "urn:ietf:params:oauth:token-type:jwt");
+
+    const response = await fetchTokenExchange("https://example.test/token", {
+      body,
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_request",
+    });
+  });
+
+  it("rejects duplicate resource parameters", async () => {
+    const body = new URLSearchParams(await tokenExchangeRequestBody());
+    body.append(
+      "resource",
+      "https://api.github.com/repos/fixture-target-owner/fixture-target-repository",
+    );
+    body.append(
+      "resource",
+      "https://api.github.com/repos/fixture-target-owner/fixture-other-target",
+    );
+
+    const response = await fetchTokenExchange("https://example.test/token", {
+      body,
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_request",
+    });
+  });
+
+  it("rejects duplicate grant type parameters as malformed requests", async () => {
+    const body = new URLSearchParams(await tokenExchangeRequestBody());
+    body.append("grant_type", "urn:example:grant-type:duplicate");
+
+    const response = await fetchTokenExchange("https://example.test/token", {
+      body,
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_request",
+    });
+  });
+
+  it("treats empty duplicate grant type parameters as omitted", async () => {
+    const body = new URLSearchParams(await tokenExchangeRequestBody());
+    body.append("grant_type", "");
+
+    const response = await fetchTokenExchange("https://example.test/token", {
+      body,
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      access_token: "ghs_test_token",
+      issued_token_type: githubInstallationAccessTokenType,
+      scope: "contents:write pull_requests:write",
+      token_type: "Bearer",
+    });
+  });
+
+  it.each([
+    "authorization_details",
+    "client_assertion",
+    "client_assertion_type",
+    "client_id",
+    "client_secret",
+  ])("rejects unsupported token exchange parameter %s", async (parameter) => {
+    const body = new URLSearchParams(await tokenExchangeRequestBody());
+    body.set(parameter, "unsupported");
+
+    const response = await fetchTokenExchange("https://example.test/token", {
+      body,
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_request",
+    });
+  });
+
+  it.each([
+    "actor_token",
+    "actor_token_type",
+    "audience",
+    "authorization_details",
+    "client_assertion",
+    "client_assertion_type",
+    "client_id",
+    "client_secret",
+  ])("treats empty unsupported token exchange parameter %s as omitted", async (parameter) => {
+    const body = new URLSearchParams(await tokenExchangeRequestBody());
+    body.set(parameter, "");
+
+    const response = await fetchTokenExchange("https://example.test/token", {
+      body,
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      access_token: "ghs_test_token",
+      issued_token_type: githubInstallationAccessTokenType,
+      scope: "contents:write pull_requests:write",
+      token_type: "Bearer",
+    });
+  });
+
+  it("rejects authorization header client authentication", async () => {
+    const response = await fetchTokenExchange("https://example.test/token", {
+      body: await tokenExchangeRequestBody(),
+      headers: {
+        authorization: "Basic dW5zdXBwb3J0ZWQ=",
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get("www-authenticate")).toBe('Basic realm="cyspbot"');
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_client",
+    });
+  });
+
+  it("treats empty optional scope and resource parameters as omitted", async () => {
+    const response = await fetchTokenExchange("https://example.test/token", {
+      body: await tokenExchangeRequestBody({
+        form: {
+          resource: "",
+          scope: "",
+        },
+      }),
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      access_token: "ghs_test_token",
+      issued_token_type: githubInstallationAccessTokenType,
+      scope: "contents:write pull_requests:write",
+      token_type: "Bearer",
+    });
+  });
+
+  it.each([
+    ["whitespace-only scope", { scope: "  " }, "invalid_scope"],
+    ["padded scope", { scope: " actions:write " }, "invalid_scope"],
+    ["repeated-space scope", { scope: "contents:write  pull_requests:write" }, "invalid_scope"],
+    ["tab-separated scope", { scope: "contents:write\tpull_requests:write" }, "invalid_scope"],
+    ["newline-separated scope", { scope: "contents:write\npull_requests:write" }, "invalid_scope"],
+    ["whitespace-only resource", { resource: "  " }, "invalid_target"],
+    [
+      "padded resource",
+      { resource: " https://api.github.com/repos/fixture-target-owner/fixture-target-repository " },
+      "invalid_target",
+    ],
+  ])("rejects invalid token policy hints: %s", async (_caseName, options, error) => {
+    const response = await fetchTokenExchange("https://example.test/token", {
+      body: await tokenExchangeRequestBody({ form: options }),
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error,
+    });
+  });
+
   it("rejects token exchange requests without a supported requested token type", async () => {
     const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody(undefined, "urn:example:token-type:unknown"),
+      body: await tokenExchangeRequestBody({
+        requestedTokenType: "urn:example:token-type:unknown",
+      }),
       headers: {
         "content-type": "application/x-www-form-urlencoded",
       },
@@ -174,10 +591,12 @@ describe("cyspbot-token-exchange", () => {
   it("maps disallowed token exchange contexts to oauth token errors", async () => {
     const response = await fetchTokenExchange("https://example.test/token", {
       body: await tokenExchangeRequestBody({
-        event_name: "pull_request",
-        ref: "refs/pull/15/merge",
-        ref_type: "branch",
-        sub: "repo:cysp/terraform-provider-contentful:pull_request",
+        claims: {
+          event_name: "pull_request",
+          ref: "refs/pull/15/merge",
+          ref_type: "branch",
+          sub: "repo:fixture-owner/fixture-source-repository:pull_request",
+        },
       }),
       headers: {
         "content-type": "application/x-www-form-urlencoded",
@@ -191,15 +610,15 @@ describe("cyspbot-token-exchange", () => {
     });
   });
 
-  it("rejects workflow_dispatch runs that do not target the default branch ref", async () => {
+  it("rejects workflow_dispatch runs from unconfigured branch refs", async () => {
     const response = await fetchTokenExchange("https://example.test/token", {
       body: await tokenExchangeRequestBody({
-        ref: "refs/heads/release-candidate",
-        sub: "repo:cysp/terraform-provider-contentful:ref:refs/heads/release-candidate",
-        workflow_ref:
-          "cysp/terraform-provider-contentful/.github/workflows/update-indirect-dependencies.yml@refs/heads/release-candidate",
-        job_workflow_ref:
-          "cysp/terraform-provider-contentful/.github/workflows/update-indirect-dependencies.yml@refs/heads/release-candidate",
+        claims: {
+          ref: "refs/heads/fixture-unconfigured-branch",
+          sub: "repo:fixture-owner/fixture-source-repository:ref:refs/heads/fixture-unconfigured-branch",
+          workflow_ref:
+            "fixture-owner/fixture-source-repository/.github/workflows/fixture-token-request.yml@refs/heads/fixture-unconfigured-branch",
+        },
       }),
       headers: {
         "content-type": "application/x-www-form-urlencoded",
@@ -213,13 +632,13 @@ describe("cyspbot-token-exchange", () => {
     });
   });
 
-  it("does not currently authorize workflow_dispatch runs by workflow file path", async () => {
+  it("rejects workflow_dispatch runs from unconfigured workflow files", async () => {
     const response = await fetchTokenExchange("https://example.test/token", {
       body: await tokenExchangeRequestBody({
-        job_workflow_ref:
-          "cysp/terraform-provider-contentful/.github/workflows/release.yml@refs/heads/main",
-        workflow_ref:
-          "cysp/terraform-provider-contentful/.github/workflows/release.yml@refs/heads/main",
+        claims: {
+          workflow_ref:
+            "fixture-owner/fixture-source-repository/.github/workflows/fixture-release.yml@refs/heads/fixture-base-branch",
+        },
       }),
       headers: {
         "content-type": "application/x-www-form-urlencoded",
@@ -227,16 +646,18 @@ describe("cyspbot-token-exchange", () => {
       method: "POST",
     });
 
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      access_token: "ghs_test_token",
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_target",
     });
   });
 
   it("exchanges tokens whose oidc subject uses GitHub's immutable repository format", async () => {
     const response = await fetchTokenExchange("https://example.test/token", {
       body: await tokenExchangeRequestBody({
-        sub: "repo:cysp@555555/terraform-provider-contentful@123456789:ref:refs/heads/main",
+        claims: {
+          sub: "repo:fixture-owner@555555/fixture-source-repository@123456789:ref:refs/heads/fixture-base-branch",
+        },
       }),
       headers: {
         "content-type": "application/x-www-form-urlencoded",
@@ -248,13 +669,16 @@ describe("cyspbot-token-exchange", () => {
     await expect(response.json()).resolves.toMatchObject({
       access_token: "ghs_test_token",
       issued_token_type: githubInstallationAccessTokenType,
+      scope: "contents:write pull_requests:write",
     });
   });
 
-  it("rejects token exchange when signed repository owner claims do not match live repository metadata", async () => {
+  it("does not use signed repository owner claims as policy criteria", async () => {
     const response = await fetchTokenExchange("https://example.test/token", {
       body: await tokenExchangeRequestBody({
-        repository_owner_id: "999999",
+        claims: {
+          repository_owner_id: "999999",
+        },
       }),
       headers: {
         "content-type": "application/x-www-form-urlencoded",
@@ -262,17 +686,21 @@ describe("cyspbot-token-exchange", () => {
       method: "POST",
     });
 
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_target",
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      access_token: "ghs_test_token",
+      issued_token_type: githubInstallationAccessTokenType,
+      scope: "contents:write pull_requests:write",
     });
   });
 
-  it("rejects push events on the current default branch", async () => {
+  it("rejects push events on configured branch refs", async () => {
     const response = await fetchTokenExchange("https://example.test/token", {
       body: await tokenExchangeRequestBody({
-        event_name: "push",
-        ref: "refs/heads/main",
+        claims: {
+          event_name: "push",
+          ref: "refs/heads/fixture-base-branch",
+        },
       }),
       headers: {
         "content-type": "application/x-www-form-urlencoded",

@@ -8,7 +8,7 @@ The service contract is [docs/service-contract.md](docs/service-contract.md). Th
 
 **Caller**:
 A GitHub Actions workflow invocation that presents a GitHub-issued OIDC token to **cyspbot**.
-_Avoid_: Client, user, consumer
+_Avoid_: User, human, consumer
 
 **Authenticated Principal**:
 The cyspbot-internal identity shape produced after an OIDC token has been cryptographically verified, issuer policy has been applied, and the claims have been mapped to a trusted caller model.
@@ -22,21 +22,25 @@ _Avoid_: GitHub user, repository owner
 The cyspbot capability that exchanges a trusted GitHub Actions OIDC token for a short-lived GitHub App installation access token for workflow runs that satisfy cyspbot's checked-in OIDC trust policy.
 _Avoid_: cyspbot itself, app login
 
-**Calling Repository**:
-The GitHub repository identified by the verified OIDC claims from the **Caller**.
-_Avoid_: Target repository, requested repository
+**Installation Token Request**:
+The normalized cyspbot-internal request for one GitHub App installation access token. It contains exactly one canonical GitHub repository API resource and the GitHub App permissions requested for that resource.
+_Avoid_: Profile, grant, target selector, raw form values
+
+**Repository Resource**:
+A canonical GitHub API repository URI in the form `https://api.github.com/repos/{owner}/{repo}`. One **Installation Token Request** contains exactly one **Repository Resource**.
+_Avoid_: `owner/repo` shorthand, GitHub HTML URL, workflow endpoint URL
 
 **GitHub App Installation**:
 The installation of the configured GitHub App on a specific repository or owner scope for which GitHub can issue a GitHub App installation access token.
 _Avoid_: App session, app login
 
 **Installation Token**:
-Project shorthand for the short-lived GitHub App installation access token issued for the **Calling Repository** through a **GitHub App Installation**.
+Project shorthand for the short-lived GitHub App installation access token issued for a **Repository Resource** through one **GitHub App Installation**.
 _Avoid_: PAT, app JWT, repository secret
 
 **Token Policy**:
-The cyspbot-enforced policy code, OIDC trust conditions, repository narrowing, and GitHub permission request used when issuing an **Installation Token**.
-_Avoid_: Caller-requested scope, ad hoc caller-defined permissions, event-name-only policy, separate policy engine
+The cyspbot-enforced static allow-list that decides whether a verified **GitHub Actions Principal** may receive exactly the normalized **Installation Token Request**.
+_Avoid_: Profile selector, grant builder, ad hoc caller-defined permissions, event-name-only policy, separate policy engine
 
 **Webhook Receiver**:
 A cyspbot Worker that validates GitHub webhook authenticity and envelope fields, acknowledges valid signed deliveries, and does not retain raw payloads or run product-specific event handling.
@@ -60,10 +64,10 @@ _Avoid_: Permanent key store, token cache, caller-controlled key source
 - A **Caller** authenticates to **cyspbot** with a GitHub OIDC token.
 - A verified **Caller** is represented internally as a **GitHub Actions Principal**, which is the **Authenticated Principal** type.
 - cyspbot verifies a **Caller** only against a **Trusted OIDC Issuer**.
-- **cyspbot** derives exactly one **Calling Repository** from the verified OIDC claims.
-- **Installation Token Issuance** in **cyspbot** issues an **Installation Token** only for the **Calling Repository**.
-- The **Token Policy** is fixed by **cyspbot** for caller context, repository scope, and the GitHub permission request, while the GitHub App configuration remains the upper bound.
-- The **Token Policy** evaluates immutable and workflow-context GitHub OIDC claims such as `sub`, `repository_id`, `repository_owner_id`, `repository_visibility`, and `ref`.
+- **cyspbot** normalizes exactly one **Installation Token Request** from the verified **GitHub Actions Principal** and token-exchange `scope` and `resource`.
+- **Installation Token Issuance** in **cyspbot** issues at most one **Installation Token** for one **Repository Resource**.
+- The **Token Policy** is fixed by **cyspbot** for principal context, repository resource, and GitHub permission request, while the GitHub App configuration remains the upper bound.
+- The **Token Policy** evaluates verified GitHub OIDC principal facts such as `repository`, parsed subject context, `ref`, `event_name`, and `workflow_ref`.
 - The **Token Exchange Endpoint** is the only public interface for **Installation Token Issuance**.
 - The **JWKS Cache** supplies verification keys for a **Trusted OIDC Issuer**, but never stores issued **Installation Tokens**.
 - A **GitHub App Installation** is the GitHub-side authority that allows **cyspbot** to issue an **Installation Token**.
@@ -74,13 +78,13 @@ _Avoid_: Permanent key store, token cache, caller-controlled key source
 ## Example dialogue
 
 > **Dev:** "Can this workflow ask for a token for another repository?"
-> **Domain expert:** "No. **cyspbot** only issues an **Installation Token** for the **Calling Repository** named by the verified OIDC claims."
+> **Domain expert:** "Only when a checked-in **Token Policy** rule allows that exact **Repository Resource** and permission request for the verified workflow identity."
 
 > **Dev:** "Can the workflow ask for broader permissions when it needs them?"
-> **Domain expert:** "No. The **Caller** does not choose permissions. **cyspbot** requests the checked-in permissions selected by the **Token Policy**, and GitHub caps them to the permissions granted to the GitHub App installation."
+> **Domain expert:** "The workflow can request exact GitHub permission scopes, but **Token Policy** must explicitly allow the normalized **Installation Token Request**. GitHub also caps the request to the permissions granted to the GitHub App installation."
 
 > **Dev:** "Do we keep the issued tokens for reuse?"
 > **Domain expert:** "No. **cyspbot** does not cache issued **Installation Tokens**."
 
 > **Dev:** "What decides whether a workflow run is trusted enough for Installation Token Issuance?"
-> **Domain expert:** "The checked-in **Token Policy** evaluates the verified GitHub OIDC claims in plain code. The policy only permits default-branch `ref` contexts for `schedule` and `workflow_dispatch`."
+> **Domain expert:** "The **Token Policy** evaluates the verified GitHub OIDC principal and the normalized **Installation Token Request**. Policy permits only explicit workflow refs and repository resources configured by the service."

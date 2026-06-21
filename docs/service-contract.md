@@ -19,18 +19,43 @@ Unknown routes return `404` problem details. Unsupported methods on `/github/web
 - `subject_token=<github-actions-oidc-token>`
 - `subject_token_type=urn:ietf:params:oauth:token-type:id_token` or `urn:ietf:params:oauth:token-type:jwt`
 - `requested_token_type=urn:chikachow:github-app-installation-access-token`
+- optional `scope=<github-permission-request-list>`
+- optional `resource=<canonical-github-repository-api-uri>`
 
 Request bodies are bounded to `64 KiB`.
 
 Requests are rate limited by the `TOKEN_EXCHANGE_RATE_LIMIT` Cloudflare binding before the body is parsed.
 
-Successful responses are JSON with `Cache-Control: no-store` and `Pragma: no-cache`:
+`resource`, when present, must be exactly one canonical GitHub repository API URI:
+
+```text
+https://api.github.com/repos/{owner}/{repo}
+```
+
+Repository shorthand, GitHub HTML URLs, endpoint URLs, duplicate resource fields, query strings, fragments, userinfo, encoded slashes, dot segments, leading or trailing whitespace, arrays, and multi-resource forms are rejected. When `resource` is omitted or exactly empty, cyspbot normalizes it to the verified GitHub Actions principal repository. A whitespace-only `resource` field is rejected as `invalid_target`; omission and `resource=` are equivalent.
+
+`scope`, when present, is a single-ASCII-space-delimited list of exact GitHub App permission requests, such as `actions:write` or `contents:write pull_requests:write`. Scope order is not significant, but leading whitespace, trailing whitespace, repeated spaces, tabs, newlines, and other non-`0x20` separators are rejected. When `scope` is omitted or exactly empty, cyspbot normalizes it to `contents:write pull_requests:write`. A whitespace-only `scope` field is rejected as `invalid_scope`; omission and `scope=` are equivalent.
+
+An empty `scope` is not a no-permissions request. Following OAuth token endpoint parameter handling for this optional field, `scope=` is treated as omitted and receives the cyspbot default scope. GitHub documents that an omitted installation-token `permissions` object receives the app installation's granted permissions, and live testing showed that a present empty `permissions: {}` object receives the same default permissions. cyspbot therefore never translates an empty scope to an empty GitHub permissions object.
+
+cyspbot does not support RFC 8693 `audience`, `actor_token`, or `actor_token_type`; requests containing non-empty values for those fields are rejected. `audience` is rejected as an unsupported target selector with `invalid_target`. Actor-token parameters are rejected as malformed for this profile with `invalid_request`.
+
+cyspbot also does not support OAuth client authentication or Rich Authorization Requests at `/token`. Requests containing non-empty `client_id`, `client_secret`, `client_assertion`, `client_assertion_type`, or `authorization_details` fields are rejected with `invalid_request` rather than silently ignored. Requests containing an `Authorization` header are rejected with `401 {"error":"invalid_client"}` and a matching `WWW-Authenticate` challenge. Value-less form parameters are treated as omitted, and other unrecognized extension parameters are ignored, according to OAuth token endpoint rules.
+
+The rejection of token-exchange `audience` is intentional. RFC 8693 defines `audience` as a logical name for a target service and allows a token exchange request to include multiple `audience` or `resource` values. cyspbot's public contract does not define an audience vocabulary or issue multi-target tokens. It defines exactly one target repository through `resource=https://api.github.com/repos/{owner}/{repo}` and one GitHub permission request through `scope`. Accepting a caller-supplied `audience` would introduce an unsupported second target selector that cannot be mapped to GitHub's installation-token API, which scopes tokens with `repositories` or `repository_ids` and `permissions`.
+
+This token-exchange `audience` parameter is separate from the signed OIDC subject token's `aud` claim. The subject token is valid only when its JWT/OIDC audience identifies cyspbot: `aud` must contain `cyspbot`, and any `azp` claim must also identify `cyspbot`. A rejected form `audience` parameter never changes the required GitHub Actions OIDC token audience.
+
+Requests containing `audience` receive `400 {"error":"invalid_target"}` because the field asks for an unsupported target service and is rejected before target-policy evaluation. Policy denial for a supported, normalized `resource` also receives `400 {"error":"invalid_target"}`.
+
+Successful responses are JSON with `Cache-Control: no-store` and `Pragma: no-cache`. cyspbot always returns the canonical issued `scope`, including when the request omitted `scope`, sent `scope=`, or supplied the same permission set in a different order:
 
 ```json
 {
   "access_token": "ghs_...",
   "issued_token_type": "urn:chikachow:github-app-installation-access-token",
   "token_type": "Bearer",
+  "scope": "contents:write pull_requests:write",
   "expires_in": 3600
 }
 ```
@@ -38,12 +63,13 @@ Successful responses are JSON with `Cache-Control: no-store` and `Pragma: no-cac
 OAuth error responses use JSON with the same no-store headers:
 
 - malformed request: `400 {"error":"invalid_request"}`
+- unsupported client authentication header: `401 {"error":"invalid_client"}`
 - missing or unsupported requested token type: `400 {"error":"invalid_request"}`
 - unsupported grant type: `400 {"error":"unsupported_grant_type"}`
 - rate limit exceeded: `429 {"error":"temporarily_unavailable"}`
 - body too large: `413 {"error":"invalid_request"}`
 - OIDC/JWKS provider unavailable: `503 {"error":"temporarily_unavailable"}`
-- policy denial: `400 {"error":"invalid_target"}`
+- unsupported target selector or policy denial: `400 {"error":"invalid_target"}`
 - upstream GitHub server failure: `502 {"error":"server_error"}`
 - internal server failure: `500 {"error":"server_error"}`
 
@@ -51,20 +77,26 @@ OIDC/JWKS provider unavailability means cyspbot cannot obtain a usable trusted k
 
 ### Token Policy
 
-Installation Token Issuance is allowed only when all implemented checks pass:
+Installation Token Issuance is allowed only when the normalized installation token request matches an explicit checked-in Token Policy rule:
 
 - the caller is a verified [GitHub Actions OIDC](https://docs.github.com/en/actions/concepts/security/openid-connect) principal from `https://token.actions.githubusercontent.com`
 - the OIDC token audience is `cyspbot`
 - if the OIDC token has an `azp` claim, that claim is also `cyspbot`
-- `event_name` is `schedule` or `workflow_dispatch`
+- `event_name` is listed by the matching rule
 - the OIDC subject context is `ref`
-- `sub` and `ref` both identify the repository's current default branch ref
 - `ref_type` is `branch`
-- `repository`, `repository_id`, `repository_owner_id`, and `repository_visibility` match live GitHub repository metadata
+- the parsed subject repository name matches the signed `repository` claim
+- when the OIDC subject uses GitHub's immutable repository syntax, the parsed repository ID matches the signed `repository_id` claim and the parsed owner ID matches `repository_owner_id` when GitHub supplies that claim
+- `repository`, `ref`, parsed subject ref, and `workflow_ref` exactly match the matching rule
+- normalized `resource` and `permissions` exactly match the matching rule
 
-The caller cannot choose a repository or permission profile. cyspbot issues only for the Calling Repository derived from verified OIDC claims. The [GitHub App installation](https://docs.github.com/en/rest/apps/apps#create-an-installation-access-token-for-an-app) remains the upper-bound permission authority.
+The caller cannot supply arbitrary GitHub permissions or repository ids. `scope` and `resource` are normalized into one installation token request. Token Policy answers whether the verified GitHub Actions principal may receive exactly that token request, including cross-owner requests when explicit policy allows them. cyspbot denies unconfigured principal/resource/permission combinations with `invalid_target`. The [GitHub App installation](https://docs.github.com/en/rest/apps/apps#create-an-installation-access-token-for-an-app) remains the upper-bound permission authority.
 
-The checked-in permission request for the issued Installation Token is:
+Principal derivation validates only facts present in the signed token. For the common legacy subject form, `sub` contains the repository name but not the repository ID or owner ID, so cyspbot checks the parsed subject repository name against the signed `repository` claim. For GitHub's immutable subject form, `sub` also includes owner and repository IDs, so cyspbot checks the parsed repository ID against the signed `repository_id` claim and checks the parsed owner ID against `repository_owner_id` when GitHub supplies that claim.
+
+Token Policy intentionally uses GitHub owner/repository names as the externally meaningful repository identifier, even though [GitHub Actions OIDC](https://docs.github.com/en/actions/reference/security/oidc) also exposes immutable repository and owner IDs and GitHub's installation-token API can scope by `repository_ids`. Those IDs are authenticated principal facts, not policy keys. A repository that is deleted and recreated with the same owner/name can continue to match policy for that name when the GitHub App installation still grants sufficient permissions.
+
+The omitted `scope` and `resource` default produces this normalized permission request for the verified principal repository:
 
 ```json
 {
@@ -73,7 +105,27 @@ The checked-in permission request for the issued Installation Token is:
 }
 ```
 
-cyspbot denies `push`, `pull_request`, `pull_request_target`, forked pull request contexts, non-default-branch refs, tag refs, and unsupported event names.
+That token request is allowed only when explicit service-owned policy allows it. The exact policy entries are intentionally not part of this public contract because the policy data may move from checked-in code to live configuration.
+
+cyspbot resolves the target installation with `GET /repos/{owner}/{repo}/installation`, then mints the final installation token with GitHub's `repositories` selector and the normalized permissions. It does not fetch source repository metadata, compare OIDC repository claims to live source repository metadata, or use live default-branch metadata as policy criteria.
+
+cyspbot denies forked pull request contexts, unconfigured refs, unconfigured workflow files, tag refs, unsupported event names, unsupported scopes, and non-canonical resource forms.
+
+### Standards and Vendor References
+
+- [RFC 8693, Section 2.1](https://www.rfc-editor.org/rfc/rfc8693#section-2.1): token exchange request parameters, including `resource`, `audience`, `scope`, `subject_token`, `subject_token_type`, `actor_token`, `actor_token_type`, and `requested_token_type`.
+- [RFC 8693, Section 2.2.1](https://www.rfc-editor.org/rfc/rfc8693#section-2.2.1): successful token exchange responses, including the requirement to return `scope` when the issued token scope differs from the requested scope.
+- [RFC 8693, Section 2.2.2](https://www.rfc-editor.org/rfc/rfc8693#section-2.2.2): `invalid_target` for unsupported requested resources or audiences.
+- [RFC 6749, Section 3.2](https://www.rfc-editor.org/rfc/rfc6749#section-3.2): token endpoint request parameter handling, including value-less parameters, duplicate parameters, unrecognized parameters, and client authentication.
+- [RFC 6749, Section 3.3](https://www.rfc-editor.org/rfc/rfc6749#section-3.3): OAuth scope syntax and authorization-server-defined scope strings.
+- [RFC 6749, Section 5.1](https://www.rfc-editor.org/rfc/rfc6749#section-5.1): successful token responses, including `scope` response semantics.
+- [RFC 6749, Section 5.2](https://www.rfc-editor.org/rfc/rfc6749#section-5.2): OAuth token endpoint error responses, including `invalid_client` and `WWW-Authenticate` handling for authorization-header client authentication attempts.
+- [RFC 7523, Section 2.2](https://www.rfc-editor.org/rfc/rfc7523#section-2.2): JWT bearer client authentication parameters `client_assertion` and `client_assertion_type`.
+- [RFC 9396](https://www.rfc-editor.org/rfc/rfc9396): Rich Authorization Requests and the `authorization_details` parameter.
+- [RFC 7519, Section 4.1.3](https://www.rfc-editor.org/rfc/rfc7519#section-4.1.3): JWT `aud` claim processing and rejection when the processor is not an intended audience.
+- [OpenID Connect Core 1.0, Section 3.1.3.7](https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation): ID Token audience and authorized-party validation.
+- [GitHub Actions OIDC reference](https://docs.github.com/en/actions/reference/security/oidc): GitHub Actions OIDC claims, including `aud`, `repository`, `repository_id`, `repository_owner_id`, and `workflow_ref`.
+- [GitHub App installation access token API](https://docs.github.com/en/rest/apps/apps#create-an-installation-access-token-for-an-app): GitHub installation tokens are narrowed with `repositories` or `repository_ids` and `permissions`, subject to the app installation's grants.
 
 ## GitHub Webhook Receiver
 
@@ -119,8 +171,10 @@ The public Wrangler configs declare binding names for local development, tests, 
 
 cyspbot does not implement:
 
-- caller-selected repositories
-- caller-selected GitHub permission profiles
+- caller-selected arbitrary repositories
+- caller-supplied raw GitHub permissions
+- caller-defined GitHub permission profiles or aliases
+- multi-resource token requests
 - dynamic issuer discovery from untrusted tokens
 - raw webhook payload archival or replay
 - product-specific webhook event processing
