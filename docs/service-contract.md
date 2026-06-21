@@ -42,9 +42,12 @@ OAuth error responses use JSON with the same no-store headers:
 - unsupported grant type: `400 {"error":"unsupported_grant_type"}`
 - rate limit exceeded: `429 {"error":"temporarily_unavailable"}`
 - body too large: `413 {"error":"invalid_request"}`
+- OIDC/JWKS provider unavailable: `503 {"error":"temporarily_unavailable"}`
 - policy denial: `400 {"error":"invalid_target"}`
 - upstream GitHub server failure: `502 {"error":"server_error"}`
 - internal server failure: `500 {"error":"server_error"}`
+
+OIDC/JWKS provider unavailability means cyspbot cannot obtain a usable trusted key set: JWKS network failures, timeouts, non-200 responses, malformed JSON, malformed shape, or ambiguous key matches. OIDC tokens whose JWT header names a `kid` absent from the usable JWKS are invalid subject tokens and return `400 {"error":"invalid_request"}` because the caller controls the `kid` header.
 
 ### Token Policy
 

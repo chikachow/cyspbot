@@ -66,6 +66,11 @@ The GitHub Actions trusted issuer is defined in `packages/github-actions-oidc/sr
 
 `packages/oidc/src/verifier.ts` verifies tokens with `jose.jwtVerify` and `jose.createRemoteJWKSet`. cyspbot keeps issuer, audience, allowed-algorithm, trusted-audience, and authorized-party checks in code. GitHub Actions claim parsing and subject interpretation live in `packages/github-actions-oidc/src/github-actions-principal.ts`.
 
+OIDC/JWKS failures are classified at the verifier boundary:
+
+- Provider failure: network failures, timeouts, non-200 JWKS responses, malformed JWKS JSON, malformed JWKS shape, and ambiguous JWKS key matches. In these cases cyspbot could not obtain a usable trusted key set, so `/token` returns `503 {"error":"temporarily_unavailable"}`.
+- Invalid subject token: JWT/JWS/claim validation failures, including a JWT header `kid` absent from the usable JWKS. The caller controls the `kid` header, and a valid JWKS that lacks the requested key is not evidence of provider unavailability. `/token` returns `400 {"error":"invalid_request"}`.
+
 ## Webhook Receiver Worker
 
 `@cyspbot/github-webhook-receiver` exposes a single route:
