@@ -12,9 +12,16 @@ export interface AuthenticatedContext {
   resolvedKeyId: string | null;
 }
 
+type AuthenticateRequestFailureReason =
+  | "invalid_token"
+  | "oidc_provider_failure"
+  | "oidc_verifier_failure";
+
 interface AuthenticateRequestFailure {
-  httpStatus: number;
+  errorCode?: string;
   ok: false;
+  providerStatus?: number;
+  reason: AuthenticateRequestFailureReason;
   responseHeaders?: HeadersInit;
 }
 
@@ -31,15 +38,34 @@ export async function authenticateOidcToken(
   verifier: OidcTokenVerifier = githubActionsOidcVerifier,
 ): Promise<AuthenticateRequestResult> {
   const verified = await verifier.verify(token);
-  const claims = verified === null ? null : parseGitHubActionsClaims(verified.claims);
-  const principal = claims === null ? null : deriveGitHubActionsPrincipal(claims);
 
-  if (verified === null || principal === null) {
-    logAuthFailure(request);
+  if (!verified.ok) {
+    const reason = authenticationFailureReasonForVerifierFailure(verified.reason);
+    logAuthFailure(request, reason, {
+      ...(verified.errorCode === undefined ? {} : { errorCode: verified.errorCode }),
+      ...(verified.providerStatus === undefined ? {} : { providerStatus: verified.providerStatus }),
+    });
 
     return {
-      httpStatus: 401,
+      ...(verified.errorCode === undefined ? {} : { errorCode: verified.errorCode }),
       ok: false,
+      ...(verified.providerStatus === undefined ? {} : { providerStatus: verified.providerStatus }),
+      reason,
+      responseHeaders: {
+        "www-authenticate": "Bearer",
+      },
+    };
+  }
+
+  const claims = parseGitHubActionsClaims(verified.token.claims);
+  const principal = claims === null ? null : deriveGitHubActionsPrincipal(claims);
+
+  if (principal === null) {
+    logAuthFailure(request, "invalid_token");
+
+    return {
+      ok: false,
+      reason: "invalid_token",
       responseHeaders: {
         "www-authenticate": "Bearer",
       },
@@ -48,9 +74,9 @@ export async function authenticateOidcToken(
 
   return {
     context: {
-      issuer: verified.issuer,
+      issuer: verified.token.issuer,
       principal,
-      resolvedKeyId: verified.resolvedKeyId,
+      resolvedKeyId: verified.token.resolvedKeyId,
     },
     ok: true,
   };
@@ -60,13 +86,35 @@ const githubActionsOidcVerifier = new OidcTokenVerifier({
   issuer: githubActionsTrustedIssuer,
 });
 
-function logAuthFailure(request: Request): void {
+function logAuthFailure(
+  request: Request,
+  reason: AuthenticateRequestFailureReason,
+  diagnostics: { errorCode?: string; providerStatus?: number } = {},
+): void {
   const url = new URL(request.url);
 
   console.warn("OIDC authentication failed", {
     path: url.pathname,
     rayId: request.headers.get("cf-ray"),
-    reason: "invalid_token",
+    reason,
+    ...(diagnostics.errorCode === undefined ? {} : { errorCode: diagnostics.errorCode }),
+    ...(diagnostics.providerStatus === undefined
+      ? {}
+      : { providerStatus: diagnostics.providerStatus }),
     userAgent: request.headers.get("user-agent"),
   });
+}
+
+function authenticationFailureReasonForVerifierFailure(
+  reason: "invalid_token" | "provider_failure" | "verifier_failure",
+): AuthenticateRequestFailureReason {
+  if (reason === "provider_failure") {
+    return "oidc_provider_failure";
+  }
+
+  if (reason === "verifier_failure") {
+    return "oidc_verifier_failure";
+  }
+
+  return "invalid_token";
 }

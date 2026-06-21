@@ -27,16 +27,22 @@ describe("OidcTokenVerifier", () => {
     });
 
     await expect(verifier.verify(await createOidcToken())).resolves.toMatchObject({
-      claims: {
-        repository: "cysp/terraform-provider-contentful",
+      ok: true,
+      token: {
+        claims: {
+          repository: "cysp/terraform-provider-contentful",
+        },
+        issuer: githubActionsTrustedIssuer.issuer,
       },
-      issuer: githubActionsTrustedIssuer.issuer,
     });
     await expect(verifier.verify(await createOidcToken())).resolves.toMatchObject({
-      claims: {
-        repository: "cysp/terraform-provider-contentful",
+      ok: true,
+      token: {
+        claims: {
+          repository: "cysp/terraform-provider-contentful",
+        },
+        issuer: githubActionsTrustedIssuer.issuer,
       },
-      issuer: githubActionsTrustedIssuer.issuer,
     });
     expect(jwksFetches).toBe(1);
   });
@@ -63,7 +69,10 @@ describe("OidcTokenVerifier", () => {
       issuer: githubActionsTrustedIssuer,
     });
 
-    await expect(verifier.verify(token)).resolves.toBeNull();
+    await expect(verifier.verify(token)).resolves.toMatchObject({
+      ok: false,
+      reason: "invalid_token",
+    });
   });
 
   it("rejects tokens whose issuer is not GitHub Actions", async () => {
@@ -81,7 +90,10 @@ describe("OidcTokenVerifier", () => {
           issuer: "https://example.invalid",
         }),
       ),
-    ).resolves.toBeNull();
+    ).resolves.toMatchObject({
+      ok: false,
+      reason: "invalid_token",
+    });
   });
 
   it("rejects tokens with untrusted additional audiences", async () => {
@@ -99,7 +111,10 @@ describe("OidcTokenVerifier", () => {
           audience: ["cyspbot", "other-service"],
         }),
       ),
-    ).resolves.toBeNull();
+    ).resolves.toMatchObject({
+      ok: false,
+      reason: "invalid_token",
+    });
   });
 
   it("rejects tokens with a mismatched authorized party", async () => {
@@ -117,6 +132,104 @@ describe("OidcTokenVerifier", () => {
           azp: "other-service",
         }),
       ),
-    ).resolves.toBeNull();
+    ).resolves.toMatchObject({
+      ok: false,
+      reason: "invalid_token",
+    });
+  });
+
+  it("classifies JWKS fetch throws as provider failures", async () => {
+    const verifier = new OidcTokenVerifier({
+      fetchJwks: async () => {
+        throw new Error("network unavailable");
+      },
+      issuer: githubActionsTrustedIssuer,
+    });
+
+    await expect(verifier.verify(await createOidcToken())).resolves.toMatchObject({
+      ok: false,
+      reason: "provider_failure",
+    });
+  });
+
+  it("classifies JWKS fetch timeouts as provider failures", async () => {
+    const timeoutError = new Error("request timed out");
+    timeoutError.name = "TimeoutError";
+    const verifier = new OidcTokenVerifier({
+      fetchJwks: async () => {
+        throw timeoutError;
+      },
+      issuer: githubActionsTrustedIssuer,
+    });
+
+    await expect(verifier.verify(await createOidcToken())).resolves.toMatchObject({
+      ok: false,
+      reason: "provider_failure",
+    });
+  });
+
+  it("classifies non-200 JWKS responses as provider failures", async () => {
+    const verifier = new OidcTokenVerifier({
+      fetchJwks: async () => new Response("unavailable", { status: 503 }),
+      issuer: githubActionsTrustedIssuer,
+    });
+
+    await expect(verifier.verify(await createOidcToken())).resolves.toMatchObject({
+      ok: false,
+      reason: "provider_failure",
+    });
+  });
+
+  it("classifies malformed JWKS JSON as provider failures", async () => {
+    const verifier = new OidcTokenVerifier({
+      fetchJwks: async () =>
+        new Response("not-json", {
+          headers: {
+            "content-type": "application/json",
+          },
+        }),
+      issuer: githubActionsTrustedIssuer,
+    });
+
+    await expect(verifier.verify(await createOidcToken())).resolves.toMatchObject({
+      ok: false,
+      reason: "provider_failure",
+    });
+  });
+
+  it("classifies unresolved JWKS keys as invalid tokens", async () => {
+    const verifier = new OidcTokenVerifier({
+      fetchJwks: async () =>
+        Response.json({
+          keys: [testPublicJwk],
+        }),
+      issuer: githubActionsTrustedIssuer,
+    });
+
+    await expect(
+      verifier.verify(
+        await createOidcToken(undefined, {
+          kid: "caller-controlled-unknown-key",
+        }),
+      ),
+    ).resolves.toMatchObject({
+      ok: false,
+      reason: "invalid_token",
+    });
+  });
+
+  it("classifies structurally malformed JWKS as provider failures", async () => {
+    const verifier = new OidcTokenVerifier({
+      fetchJwks: async () =>
+        Response.json({
+          keys: "not-an-array",
+        }),
+      issuer: githubActionsTrustedIssuer,
+    });
+
+    await expect(verifier.verify(await createOidcToken())).resolves.toMatchObject({
+      ok: false,
+      reason: "provider_failure",
+    });
   });
 });

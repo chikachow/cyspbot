@@ -46,6 +46,21 @@ export function fetchTokenExchangeWithEnv(
   return fetchWorkerWithApp(tokenExchangeApp, input, init, env);
 }
 
+export function fetchTokenExchangeWithDependencies(
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+  dependencies: Partial<TokenExchangeDependencies>,
+): Promise<Response> {
+  return fetchWorkerWithApp(
+    createTokenExchangeWorker({
+      ...baseTestDependencies,
+      ...dependencies,
+    }),
+    input,
+    init,
+  );
+}
+
 export function fetchGitHubWebhookReceiver(
   input: RequestInfo | URL,
   init?: RequestInit,

@@ -63,8 +63,8 @@ export async function handleTokenExchangeRequest(
 
   if (!authentication.ok) {
     return oauthErrorResponse(
-      authentication.httpStatus === 500 ? 500 : 400,
-      authentication.httpStatus === 500 ? "server_error" : "invalid_request",
+      oauthStatusForAuthenticationFailure(authentication.reason),
+      oauthErrorCodeForAuthenticationFailure(authentication.reason),
     );
   }
 
@@ -124,6 +124,34 @@ function oauthErrorResponse(status: number, error: string): Response {
       status,
     },
   );
+}
+
+function oauthErrorCodeForAuthenticationFailure(
+  reason: "invalid_token" | "oidc_provider_failure" | "oidc_verifier_failure",
+): string {
+  if (reason === "oidc_provider_failure") {
+    return "temporarily_unavailable";
+  }
+
+  if (reason === "oidc_verifier_failure") {
+    return "server_error";
+  }
+
+  return "invalid_request";
+}
+
+function oauthStatusForAuthenticationFailure(
+  reason: "invalid_token" | "oidc_provider_failure" | "oidc_verifier_failure",
+): number {
+  if (reason === "oidc_provider_failure") {
+    return 503;
+  }
+
+  if (reason === "oidc_verifier_failure") {
+    return 500;
+  }
+
+  return 400;
 }
 
 function oauthErrorCodeForIssuanceFailure(status: number): string {
