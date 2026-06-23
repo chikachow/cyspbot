@@ -2,6 +2,9 @@ name: test
 
 on:
   workflow_call:
+    secrets:
+      CODECOV_TOKEN:
+        required: false
 
 permissions:
   contents: read
@@ -25,4 +28,14 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - run: node --run test
+      - run: node --run test:coverage
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          disable_search: true
+          fail_ci_if_error: true
+          files: ./coverage/lcov.info
+          flags: unittests
+          token: ${{ secrets.CODECOV_TOKEN }}
+          version: v11.2.8
