@@ -14,7 +14,7 @@ export default defineConfig({
     allowOnly: false,
     coverage: {
       exclude: ["worker-configuration.d.ts"],
-      provider: "v8",
+      provider: "istanbul",
       reporter: ["text", "lcov"],
     },
     detectAsyncLeaks: true,

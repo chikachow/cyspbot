@@ -27,6 +27,8 @@ jobs:
 
   test:
     uses: ./.github/workflows/ci-test.yml
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   wrangler-check:
     uses: ./.github/workflows/ci-wrangler-check.yml
