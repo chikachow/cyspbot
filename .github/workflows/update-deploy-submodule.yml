@@ -1,0 +1,30 @@
+name: update-deploy-submodule
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  update-cyspbot-deploy:
+    name: update cyspbot-deploy submodule
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: chikachow/cyspbot-app-token-action@8894f93a0c17b5a160dafa8df13a46c0399f80a8 # v0.0.4
+        id: cyspbot
+
+      - name: Dispatch cyspbot-deploy submodule update
+        env:
+          GH_TOKEN: ${{ steps.cyspbot.outputs.token }}
+        run: |
+          gh workflow run update-cyspbot-submodule.yml \
+            --repo chikachow/cyspbot-deploy \
+            --ref main \
+            --field cyspbot-repository="${{ github.repository }}" \
+            --field cyspbot-ref="${{ github.sha }}"
