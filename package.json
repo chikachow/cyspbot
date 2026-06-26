@@ -30,7 +30,7 @@
     "jose": "6.2.3"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "0.16.18",
+    "@cloudflare/vitest-pool-workers": "0.16.20",
     "@cloudflare/workers-types": "4.20260625.1",
     "@cyspbot/github-actions-oidc": "workspace:*",
     "@cyspbot/github-webhook-receiver": "workspace:*",
