@@ -54,6 +54,41 @@ describe("Production Token Policy rules", () => {
     },
   );
 
+  it("allows cyspbot-deploy's update workflow through contents and pull-requests write scope", () => {
+    const rule = requiredProductionRule({
+      principalRepository: "chikachow/cyspbot-deploy",
+      principalWorkflowRef:
+        "chikachow/cyspbot-deploy/.github/workflows/update-cyspbot.yml@refs/heads/main",
+      resource: "https://api.github.com/repos/chikachow/cyspbot-deploy",
+    });
+    const productionPrincipal = principalForRule(rule, "workflow_dispatch");
+    const tokenRequest = mustNormalizeTokenRequest(productionPrincipal, {
+      resource: "https://api.github.com/repos/chikachow/cyspbot-deploy",
+      scope: "contents:write pull_requests:write",
+    });
+
+    expect(tokenRequest).toEqual({
+      permissions: {
+        contents: "write",
+        pull_requests: "write",
+      },
+      resource: new URL("https://api.github.com/repos/chikachow/cyspbot-deploy"),
+      scope: "contents:write pull_requests:write",
+    });
+    expect(
+      evaluateConfiguredTokenPolicy(
+        {
+          principal: productionPrincipal,
+          tokenRequest,
+        },
+        productionTokenPolicyRules,
+      ),
+    ).toEqual({
+      decision: "allow",
+      matchedRule: rule,
+    });
+  });
+
   it.each(productionRuleEventCases())(
     "allows %s through normalized scope and resource inputs",
     (_caseName, rule, eventName) => {
