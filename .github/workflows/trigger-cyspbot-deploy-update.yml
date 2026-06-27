@@ -1,0 +1,27 @@
+name: trigger-cyspbot-deploy-update
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: chikachow/cyspbot-app-token-action@e46d6f86fc4f6dee6b7682be3a837859b1b42667 # v0.0.5
+        id: cyspbot
+        with:
+          resource: https://api.github.com/repos/chikachow/cyspbot-deploy
+          scope: actions:write
+
+      - run: gh workflow run update-cyspbot.yml --repo chikachow/cyspbot-deploy --ref main
+        env:
+          GH_TOKEN: ${{ steps.cyspbot.outputs.token }}
