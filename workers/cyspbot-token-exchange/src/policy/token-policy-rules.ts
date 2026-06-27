@@ -14,6 +14,17 @@ export const tokenPolicyRules = validateTokenPolicyRules([
   },
   {
     permissions: {
+      actions: "write",
+    },
+    principalEventNames: ["push", "workflow_dispatch"],
+    principalRef: "refs/heads/main",
+    principalRepository: "chikachow/cyspbot",
+    principalWorkflowRef:
+      "chikachow/cyspbot/.github/workflows/trigger-cyspbot-deploy-update.yml@refs/heads/main",
+    resource: "https://api.github.com/repos/chikachow/cyspbot-deploy",
+  },
+  {
+    permissions: {
       contents: "write",
       pull_requests: "write",
     },

@@ -89,6 +89,43 @@ describe("Production Token Policy rules", () => {
     });
   });
 
+  it.each(["push", "workflow_dispatch"])(
+    "allows this repository's deploy trigger %s workflow through actions-write scope",
+    (eventName) => {
+      const rule = requiredProductionRule({
+        principalRepository: "chikachow/cyspbot",
+        principalWorkflowRef:
+          "chikachow/cyspbot/.github/workflows/trigger-cyspbot-deploy-update.yml@refs/heads/main",
+        resource: "https://api.github.com/repos/chikachow/cyspbot-deploy",
+      });
+      const productionPrincipal = principalForRule(rule, eventName);
+      const tokenRequest = mustNormalizeTokenRequest(productionPrincipal, {
+        resource: "https://api.github.com/repos/chikachow/cyspbot-deploy",
+        scope: "actions:write",
+      });
+
+      expect(tokenRequest).toEqual({
+        permissions: {
+          actions: "write",
+        },
+        resource: new URL("https://api.github.com/repos/chikachow/cyspbot-deploy"),
+        scope: "actions:write",
+      });
+      expect(
+        evaluateConfiguredTokenPolicy(
+          {
+            principal: productionPrincipal,
+            tokenRequest,
+          },
+          productionTokenPolicyRules,
+        ),
+      ).toEqual({
+        decision: "allow",
+        matchedRule: rule,
+      });
+    },
+  );
+
   it.each(productionRuleEventCases())(
     "allows %s through normalized scope and resource inputs",
     (_caseName, rule, eventName) => {
@@ -159,24 +196,6 @@ describe("Production Token Policy rules", () => {
       },
     });
   });
-
-  it("denies actions-write requests while no production rule grants actions-write", () => {
-    expect(productionTokenPolicyRules.some((rule) => rule.permissions["actions"] === "write")).toBe(
-      false,
-    );
-
-    const rule = requiredFirstProductionRule();
-
-    expectProductionRuleDenied(rule, {
-      tokenRequest: {
-        permissions: {
-          actions: "write",
-        },
-        resource: unconfiguredResourceForRule(rule),
-        scope: "actions:write",
-      },
-    });
-  });
 });
 
 function expectProductionRuleDenied(
@@ -195,16 +214,6 @@ function expectProductionRuleDenied(
       productionTokenPolicyRules,
     ),
   ).toMatchObject({ decision: "deny" });
-}
-
-function requiredFirstProductionRule(): TokenPolicyRule {
-  const rule = productionTokenPolicyRules[0];
-
-  if (rule === undefined) {
-    throw new Error("production token policy must contain at least one rule");
-  }
-
-  return rule;
 }
 
 function requiredProductionRule(criteria: {
