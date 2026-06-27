@@ -1,7 +1,11 @@
-name: trigger-cyspbot-deploy-update
+name: run-cyspbot-deploy-update
 
 on:
-  push:
+  workflow_run:
+    workflows:
+      - ci
+    types:
+      - completed
     branches:
       - main
   workflow_dispatch:
@@ -11,7 +15,8 @@ permissions:
   id-token: write
 
 jobs:
-  trigger:
+  run:
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -22,6 +27,7 @@ jobs:
           resource: https://api.github.com/repos/chikachow/cyspbot-deploy
           scope: actions:write
 
-      - run: gh workflow run update-cyspbot.yml --repo chikachow/cyspbot-deploy --ref main
+      - name: Run cyspbot-deploy update workflow
+        run: gh workflow run update-cyspbot.yml --repo chikachow/cyspbot-deploy --ref main
         env:
           GH_TOKEN: ${{ steps.cyspbot.outputs.token }}

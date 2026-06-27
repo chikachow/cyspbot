@@ -152,8 +152,9 @@ The reusable GitHub Action for this hosted service lives in the separate `cyspbo
 
 ## Repository Workflows
 
-This repository has one public-safe umbrella workflow:
+This repository has public-safe service workflows:
 
 - `ci`: runs on pull requests and pushes to `main`; coordinates reusable jobs for formatting, linting, generated Worker bindings, type checking, Knip, tests, and Worker dry-runs.
+- `run-cyspbot-deploy-update`: runs on `workflow_dispatch`, or on `workflow_run` after the `ci` workflow completes successfully on `main`; it starts the external deployment repository's update workflow.
 
 Production deployment workflows and secrets live outside this codebase.
