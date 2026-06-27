@@ -89,13 +89,13 @@ describe("Production Token Policy rules", () => {
     });
   });
 
-  it.each(["push", "workflow_dispatch"])(
-    "allows this repository's deploy trigger %s workflow through actions-write scope",
+  it.each(["workflow_run", "workflow_dispatch"])(
+    "allows this repository's deploy update workflow on %s through actions-write scope",
     (eventName) => {
       const rule = requiredProductionRule({
         principalRepository: "chikachow/cyspbot",
         principalWorkflowRef:
-          "chikachow/cyspbot/.github/workflows/trigger-cyspbot-deploy-update.yml@refs/heads/main",
+          "chikachow/cyspbot/.github/workflows/run-cyspbot-deploy-update.yml@refs/heads/main",
         resource: "https://api.github.com/repos/chikachow/cyspbot-deploy",
       });
       const productionPrincipal = principalForRule(rule, eventName);
