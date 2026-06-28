@@ -31,7 +31,7 @@
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "0.16.20",
-    "@cloudflare/workers-types": "4.20260625.1",
+    "@cloudflare/workers-types": "4.20260628.1",
     "@cyspbot/github-actions-oidc": "workspace:*",
     "@cyspbot/github-webhook-receiver": "workspace:*",
     "@cyspbot/http": "workspace:*",
