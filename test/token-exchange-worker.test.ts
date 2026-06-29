@@ -110,6 +110,49 @@ describe("cyspbot-token-exchange", () => {
     });
   });
 
+  it("exchanges a read permission request when token policy allows it", async () => {
+    const response = await fetchTokenExchangeWithDependencies(
+      "https://example.test/token",
+      {
+        body: await tokenExchangeRequestBody({
+          form: {
+            resource: "https://api.github.com/repos/fixture-owner/fixture-source-repository",
+            scope: "pull_requests:read contents:read",
+          },
+        }),
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        method: "POST",
+      },
+      {
+        tokenPolicyRules: [
+          {
+            githubAppSlug: "cyspbot",
+            permissions: {
+              contents: "read",
+              pull_requests: "read",
+            },
+            principalEventNames: ["workflow_dispatch"],
+            principalRef: "refs/heads/fixture-base-branch",
+            principalRepository: "fixture-owner/fixture-source-repository",
+            principalWorkflowRef:
+              "fixture-owner/fixture-source-repository/.github/workflows/fixture-token-request.yml@refs/heads/fixture-base-branch",
+            resource: "https://api.github.com/repos/fixture-owner/fixture-source-repository",
+          },
+        ],
+      },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      access_token: "ghs_test_read_token",
+      issued_token_type: githubInstallationAccessTokenType,
+      scope: "contents:read pull_requests:read",
+      token_type: "Bearer",
+    });
+  });
+
   it("rejects actions-write grant requests for unconfigured target repositories", async () => {
     const response = await fetchTokenExchange("https://example.test/token", {
       body: await tokenExchangeRequestBody({
@@ -163,11 +206,11 @@ describe("cyspbot-token-exchange", () => {
     });
   });
 
-  it("rejects token exchange requests whose oidc audience does not match cyspbot", async () => {
+  it("rejects token exchange requests whose OIDC audience is not a GitHub App URL", async () => {
     const response = await fetchTokenExchange("https://example.test/token", {
       body: await tokenExchangeRequestBody({
         tokenOptions: {
-          audience: "other-service",
+          audience: "cyspbot",
         },
       }),
       headers: {
@@ -179,6 +222,146 @@ describe("cyspbot-token-exchange", () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
       error: "invalid_request",
+    });
+  });
+
+  it.each([
+    ["missing audience", null],
+    ["empty audience", ""],
+    ["bare app slug", "cyspbot"],
+    ["trailing slash", "https://github.com/apps/cyspbot/"],
+    ["query string", "https://github.com/apps/cyspbot?x=1"],
+    ["fragment", "https://github.com/apps/cyspbot#fragment"],
+    ["uppercase host canonicalization", "https://GitHub.com/apps/cyspbot"],
+    ["uppercase slug", "https://github.com/apps/Cyspbot"],
+    ["underscore slug", "https://github.com/apps/cyspbot_app"],
+    ["wrong host", "https://api.github.com/apps/cyspbot"],
+  ] as const)("rejects OIDC subject tokens with %s", async (_caseName, audience) => {
+    const response = await fetchTokenExchange("https://example.test/token", {
+      body: await tokenExchangeRequestBody({
+        tokenOptions: {
+          audience,
+        },
+      }),
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_request",
+    });
+  });
+
+  it("rejects OIDC subject tokens with multiple audiences", async () => {
+    const response = await fetchTokenExchange("https://example.test/token", {
+      body: await tokenExchangeRequestBody({
+        tokenOptions: {
+          audience: [
+            "https://github.com/apps/cyspbot",
+            "https://github.com/apps/fixture-other-app",
+          ],
+        },
+      }),
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_request",
+    });
+  });
+
+  it("rejects OIDC subject tokens with multiple audiences even when azp matches", async () => {
+    const response = await fetchTokenExchange("https://example.test/token", {
+      body: await tokenExchangeRequestBody({
+        claims: {
+          azp: "https://github.com/apps/cyspbot",
+        },
+        tokenOptions: {
+          audience: [
+            "https://github.com/apps/cyspbot",
+            "https://github.com/apps/fixture-other-app",
+          ],
+        },
+      }),
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_request",
+    });
+  });
+
+  it("accepts OIDC subject tokens with a matching authorized party", async () => {
+    const response = await fetchTokenExchange("https://example.test/token", {
+      body: await tokenExchangeRequestBody({
+        claims: {
+          azp: "https://github.com/apps/cyspbot",
+        },
+      }),
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      access_token: "ghs_test_token",
+      issued_token_type: githubInstallationAccessTokenType,
+      scope: "contents:write pull_requests:write",
+      token_type: "Bearer",
+    });
+  });
+
+  it("rejects OIDC subject tokens with a mismatched authorized party", async () => {
+    const response = await fetchTokenExchange("https://example.test/token", {
+      body: await tokenExchangeRequestBody({
+        claims: {
+          azp: "https://github.com/apps/fixture-other-app",
+        },
+      }),
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_request",
+    });
+  });
+
+  it("rejects unconfigured GitHub App audiences through token policy", async () => {
+    const response = await fetchTokenExchange("https://example.test/token", {
+      body: await tokenExchangeRequestBody({
+        form: {
+          audience: "https://github.com/apps/fixture-other-app",
+        },
+        tokenOptions: {
+          audience: "https://github.com/apps/fixture-other-app",
+        },
+      }),
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_target",
     });
   });
 
@@ -303,12 +486,76 @@ describe("cyspbot-token-exchange", () => {
     });
   });
 
-  it("rejects unsupported token exchange audience parameters", async () => {
+  it("rejects token exchange requests without a form audience", async () => {
+    const response = await fetchTokenExchange("https://example.test/token", {
+      body: await tokenExchangeRequestBody({
+        form: {
+          audience: null,
+        },
+      }),
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_target",
+    });
+  });
+
+  it("rejects token exchange audience parameters that do not match the OIDC audience", async () => {
+    const response = await fetchTokenExchange("https://example.test/token", {
+      body: await tokenExchangeRequestBody({
+        form: {
+          audience: "https://github.com/apps/fixture-other-app",
+        },
+      }),
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_request",
+    });
+  });
+
+  it.each([
+    ["bare app slug", "cyspbot"],
+    ["trailing slash", "https://github.com/apps/cyspbot/"],
+    ["query string", "https://github.com/apps/cyspbot?x=1"],
+    ["fragment", "https://github.com/apps/cyspbot#fragment"],
+    ["uppercase host canonicalization", "https://GitHub.com/apps/cyspbot"],
+    ["uppercase slug", "https://github.com/apps/Cyspbot"],
+    ["underscore slug", "https://github.com/apps/cyspbot_app"],
+    ["repository API URL", "https://api.github.com/repos/fixture-target-owner/fixture-target"],
+  ] as const)("rejects form audience parameters with %s", async (_caseName, audience) => {
+    const response = await fetchTokenExchange("https://example.test/token", {
+      body: await tokenExchangeRequestBody({
+        form: {
+          audience,
+        },
+      }),
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_target",
+    });
+  });
+
+  it("rejects duplicate non-empty audience parameters as unsupported targets", async () => {
     const body = new URLSearchParams(await tokenExchangeRequestBody());
-    body.set(
-      "audience",
-      "https://api.github.com/repos/fixture-target-owner/fixture-target-repository",
-    );
+    body.append("audience", "https://github.com/apps/cyspbot");
+    body.append("audience", "https://github.com/apps/fixture-other-app");
 
     const response = await fetchTokenExchange("https://example.test/token", {
       body,
@@ -434,7 +681,6 @@ describe("cyspbot-token-exchange", () => {
   it.each([
     "actor_token",
     "actor_token_type",
-    "audience",
     "authorization_details",
     "client_assertion",
     "client_assertion_type",
@@ -509,6 +755,9 @@ describe("cyspbot-token-exchange", () => {
     ["tab-separated scope", { scope: "contents:write\tpull_requests:write" }, "invalid_scope"],
     ["newline-separated scope", { scope: "contents:write\npull_requests:write" }, "invalid_scope"],
     ["whitespace-only resource", { resource: "  " }, "invalid_target"],
+    ["empty audience", { audience: "" }, "invalid_target"],
+    ["whitespace-only audience", { audience: "  " }, "invalid_target"],
+    ["padded audience", { audience: " https://github.com/apps/cyspbot " }, "invalid_target"],
     [
       "padded resource",
       { resource: " https://api.github.com/repos/fixture-target-owner/fixture-target-repository " },

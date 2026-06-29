@@ -12,8 +12,9 @@ cyspbot exchanges verified GitHub Actions OIDC tokens for repository-scoped GitH
 
 - issuer trust is configured, not discovered from caller-controlled tokens
 - the caller identity is derived from verified GitHub Actions OIDC claims
+- the token-exchange form audience selects one configured GitHub App, and the verified subject token audience must match it exactly
 - callers may request one canonical repository resource and an exact GitHub App permission scope
-- Token Policy must explicitly allow the normalized caller, resource, and permission combination before a token is issued
+- Token Policy must explicitly allow the normalized caller, GitHub App, resource, and permission combination before a token is issued
 - the GitHub App installation remains the upper-bound authority for repositories and permissions
 - the GitHub App private key remains inside the deployment secret boundary
 - webhook processing requires GitHub signature validation before state changes

@@ -51,9 +51,13 @@ export function crossOwnerActionsTokenRequest(): InstallationAccessTokenRequest 
 
 export function mustNormalizeTokenRequest(
   testPrincipal: GitHubActionsPrincipal,
-  options: { resource: string | null; scope: string | null },
+  options: { githubAppSlug?: string; resource: string | null; scope: string | null },
 ): InstallationAccessTokenRequest {
-  const result = normalizeInstallationAccessTokenRequest(testPrincipal, options);
+  const result = normalizeInstallationAccessTokenRequest(testPrincipal, {
+    githubAppSlug: options.githubAppSlug ?? "cyspbot",
+    resource: options.resource,
+    scope: options.scope,
+  });
 
   if (!result.ok) {
     throw new Error(result.error);
@@ -115,6 +119,7 @@ export function principalForRule(
 
 export function tokenRequestForRule(rule: TokenPolicyRule): InstallationAccessTokenRequest {
   return mustNormalizeTokenRequest(principalForRule(rule), {
+    githubAppSlug: rule.githubAppSlug,
     resource: rule.resource,
     scope: scopeForPermissions(rule.permissions),
   });
@@ -136,16 +141,16 @@ function scopeForPermissions(permissions: Record<string, string>): string {
 }
 
 function permissionScopeForRulePermission(name: string, level: string): string | null {
-  if (name === "actions" && level === "write") {
-    return "actions:write";
+  if (name === "actions" && (level === "read" || level === "write")) {
+    return `actions:${level}`;
   }
 
-  if (name === "contents" && level === "write") {
-    return "contents:write";
+  if (name === "contents" && (level === "read" || level === "write")) {
+    return `contents:${level}`;
   }
 
-  if (name === "pull_requests" && level === "write") {
-    return "pull_requests:write";
+  if (name === "pull_requests" && (level === "read" || level === "write")) {
+    return `pull_requests:${level}`;
   }
 
   return null;
