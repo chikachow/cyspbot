@@ -5,8 +5,11 @@ import {
 import { githubActionsTrustedIssuer } from "@cyspbot/github-actions-oidc/issuer";
 import type { GitHubActionsPrincipal } from "@cyspbot/github-actions-oidc/principals";
 import { OidcTokenVerifier } from "@cyspbot/oidc/verifier";
+import type { ParsedGitHubAppAudience } from "./policy/github-app-audience.ts";
 
 export interface AuthenticatedContext {
+  githubAppAudience: string;
+  githubAppSlug: string;
   issuer: string;
   principal: GitHubActionsPrincipal;
   resolvedKeyId: string | null;
@@ -35,6 +38,7 @@ export type AuthenticateRequestResult = AuthenticateRequestFailure | Authenticat
 export async function authenticateOidcToken(
   token: string,
   request: Request,
+  expectedAudience: ParsedGitHubAppAudience,
   verifier: OidcTokenVerifier = githubActionsOidcVerifier,
 ): Promise<AuthenticateRequestResult> {
   const verified = await verifier.verify(token);
@@ -72,8 +76,25 @@ export async function authenticateOidcToken(
     };
   }
 
+  if (
+    !hasMatchingAudience(verified.token.claims.aud, expectedAudience.audience) ||
+    !hasMatchingAuthorizedParty(verified.token.claims["azp"], expectedAudience.audience)
+  ) {
+    logAuthFailure(request, "invalid_token");
+
+    return {
+      ok: false,
+      reason: "invalid_token",
+      responseHeaders: {
+        "www-authenticate": "Bearer",
+      },
+    };
+  }
+
   return {
     context: {
+      githubAppAudience: expectedAudience.audience,
+      githubAppSlug: expectedAudience.slug,
       issuer: verified.token.issuer,
       principal,
       resolvedKeyId: verified.token.resolvedKeyId,
@@ -85,6 +106,14 @@ export async function authenticateOidcToken(
 const githubActionsOidcVerifier = new OidcTokenVerifier({
   issuer: githubActionsTrustedIssuer,
 });
+
+function hasMatchingAudience(audienceClaim: unknown, expectedAudience: string): boolean {
+  return typeof audienceClaim === "string" && audienceClaim === expectedAudience;
+}
+
+function hasMatchingAuthorizedParty(authorizedParty: unknown, audience: string): boolean {
+  return authorizedParty === undefined || authorizedParty === audience;
+}
 
 function logAuthFailure(
   request: Request,

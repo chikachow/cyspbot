@@ -24,8 +24,8 @@ cyspbot does not implement:
 - caller-selected arbitrary repositories
 - caller-supplied raw GitHub permissions
 - caller-defined GitHub permission profiles or aliases
-- multi-resource token requests
-- token-exchange `audience`, actor-token delegation, or client-authenticated token exchange
+- multi-audience subject tokens or multi-resource token requests
+- actor-token delegation or client-authenticated token exchange
 - dynamic issuer discovery from untrusted tokens
 - raw webhook payload archival or replay
 - product-specific webhook event processing

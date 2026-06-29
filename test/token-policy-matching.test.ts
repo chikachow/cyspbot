@@ -137,6 +137,24 @@ describe("Token Policy matching", () => {
     ).toMatchObject({ decision: "deny" });
   });
 
+  it("denies unconfigured GitHub Apps", () => {
+    expect(
+      evaluateConfiguredTokenPolicy(
+        {
+          principal,
+          tokenRequest: {
+            ...sameRepositoryTokenRequest(),
+            githubAppSlug: "fixture-other-app",
+          },
+        },
+        testTokenPolicyRules,
+      ),
+    ).toEqual({
+      decision: "deny",
+      reasons: ["github_app"],
+    });
+  });
+
   it("denies unconfigured permissions", () => {
     expect(
       evaluateConfiguredTokenPolicy(
@@ -223,6 +241,22 @@ describe("Token Policy rule validation", () => {
         },
       ]),
     ).toThrow("invalid token policy rule events");
+  });
+
+  it("accepts read permission levels in rules", () => {
+    const rule = testTokenPolicyRules[0] as TokenPolicyRule;
+
+    expect(() =>
+      validateTokenPolicyRules([
+        {
+          ...rule,
+          permissions: {
+            contents: "read",
+            pull_requests: "read",
+          },
+        },
+      ]),
+    ).not.toThrow();
   });
 
   it("rejects permissions that cannot be requested by normalized scope", () => {

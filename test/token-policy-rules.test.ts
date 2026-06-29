@@ -32,6 +32,7 @@ describe("Production Token Policy rules", () => {
       });
 
       expect(tokenRequest).toEqual({
+        githubAppSlug: "cyspbot",
         permissions: {
           contents: "write",
           pull_requests: "write",
@@ -68,6 +69,7 @@ describe("Production Token Policy rules", () => {
     });
 
     expect(tokenRequest).toEqual({
+      githubAppSlug: "cyspbot",
       permissions: {
         contents: "write",
         pull_requests: "write",
@@ -105,6 +107,7 @@ describe("Production Token Policy rules", () => {
       });
 
       expect(tokenRequest).toEqual({
+        githubAppSlug: "cyspbot",
         permissions: {
           actions: "write",
         },
@@ -182,6 +185,15 @@ describe("Production Token Policy rules", () => {
       tokenRequest: {
         ...tokenRequestForRule(rule),
         resource: unconfiguredResourceForRule(rule),
+      },
+    });
+  });
+
+  it.each(productionRuleCases())("denies %s when the GitHub App changes", (_caseName, rule) => {
+    expectProductionRuleDenied(rule, {
+      tokenRequest: {
+        ...tokenRequestForRule(rule),
+        githubAppSlug: `${rule.githubAppSlug}-unconfigured`,
       },
     });
   });

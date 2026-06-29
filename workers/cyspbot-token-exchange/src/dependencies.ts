@@ -3,9 +3,14 @@ import {
   authenticateOidcToken as defaultAuthenticateOidcToken,
   type AuthenticateRequestResult,
 } from "./authentication.ts";
+import type { ParsedGitHubAppAudience } from "./policy/github-app-audience.ts";
 
 export interface TokenExchangeDependencies extends InstallationTokenIssuanceDependencies {
-  authenticateOidcToken(token: string, request: Request): Promise<AuthenticateRequestResult>;
+  authenticateOidcToken(
+    token: string,
+    request: Request,
+    expectedAudience: ParsedGitHubAppAudience,
+  ): Promise<AuthenticateRequestResult>;
   now(): Date;
 }
 

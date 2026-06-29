@@ -96,7 +96,7 @@ describe("OidcTokenVerifier", () => {
     });
   });
 
-  it("rejects tokens with untrusted additional audiences", async () => {
+  it("leaves audience policy to callers after verifying the token", async () => {
     const verifier = new OidcTokenVerifier({
       fetchJwks: async () =>
         Response.json({
@@ -108,16 +108,20 @@ describe("OidcTokenVerifier", () => {
     await expect(
       verifier.verify(
         await createOidcToken(undefined, {
-          audience: ["cyspbot", "other-service"],
+          audience: ["https://github.com/apps/cyspbot", "other-service"],
         }),
       ),
     ).resolves.toMatchObject({
-      ok: false,
-      reason: "invalid_token",
+      ok: true,
+      token: {
+        claims: {
+          aud: ["https://github.com/apps/cyspbot", "other-service"],
+        },
+      },
     });
   });
 
-  it("rejects tokens with a mismatched authorized party", async () => {
+  it("leaves authorized-party policy to callers after verifying the token", async () => {
     const verifier = new OidcTokenVerifier({
       fetchJwks: async () =>
         Response.json({
@@ -133,8 +137,12 @@ describe("OidcTokenVerifier", () => {
         }),
       ),
     ).resolves.toMatchObject({
-      ok: false,
-      reason: "invalid_token",
+      ok: true,
+      token: {
+        claims: {
+          azp: "other-service",
+        },
+      },
     });
   });
 

@@ -79,11 +79,16 @@ export async function fetchGitHubTestDouble(
 
     const requestedPermissions = permissions as Record<string, unknown>;
 
-    if (
-      Object.keys(requestedPermissions).length !== 2 ||
-      requestedPermissions["contents"] !== "write" ||
-      requestedPermissions["pull_requests"] !== "write"
-    ) {
+    const hasMatchingContentAndPullRequestPermissions =
+      Object.keys(requestedPermissions).length === 2 &&
+      requestedPermissions["contents"] === requestedPermissions["pull_requests"];
+    const permissionLevel =
+      hasMatchingContentAndPullRequestPermissions &&
+      (requestedPermissions["contents"] === "read" || requestedPermissions["contents"] === "write")
+        ? requestedPermissions["contents"]
+        : null;
+
+    if (permissionLevel === null) {
       return new Response(null, { status: 500 });
     }
 
@@ -91,10 +96,10 @@ export async function fetchGitHubTestDouble(
       {
         expires_at: "2030-01-01T00:00:00Z",
         permissions: {
-          contents: "write",
-          pull_requests: "write",
+          contents: permissionLevel,
+          pull_requests: permissionLevel,
         },
-        token: "ghs_test_token",
+        token: permissionLevel === "read" ? "ghs_test_read_token" : "ghs_test_token",
       },
       { status: 201 },
     );

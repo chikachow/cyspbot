@@ -1,4 +1,5 @@
 import type { GitHubActionsPrincipal } from "@cyspbot/github-actions-oidc/principals";
+import { decodeJwt } from "jose";
 import { describe, expect, it, vi } from "vitest";
 
 import { issueInstallationTokenForContext } from "../workers/cyspbot-token-exchange/src/policy/installation-token-issuance.ts";
@@ -68,11 +69,14 @@ describe("installation token issuance", () => {
       issueInstallationTokenForContext(
         testEnv,
         {
+          githubAppAudience: "https://github.com/apps/cyspbot",
+          githubAppSlug: "cyspbot",
           issuer: "https://token.actions.githubusercontent.com",
           principal,
           resolvedKeyId: "test-key-1",
         },
         {
+          githubAppSlug: "cyspbot",
           permissions: {
             contents: "write",
             pull_requests: "write",
@@ -113,11 +117,14 @@ describe("installation token issuance", () => {
         issueInstallationTokenForContext(
           testEnv,
           {
+            githubAppAudience: "https://github.com/apps/cyspbot",
+            githubAppSlug: "cyspbot",
             issuer: "https://token.actions.githubusercontent.com",
             principal,
             resolvedKeyId: "test-key-1",
           },
           {
+            githubAppSlug: "cyspbot",
             permissions: {
               contents: "write",
               pull_requests: "write",
@@ -152,6 +159,7 @@ describe("installation token issuance", () => {
         sub: "repo:fixture-owner/fixture-source-repository:ref:refs/heads/fixture-base-branch",
       }),
       target_installation: {
+        github_app_slug: "cyspbot",
         id: 67890,
         repository: testRepository,
       },
@@ -163,6 +171,7 @@ describe("installation token issuance", () => {
         }),
       },
       token_request: {
+        github_app_slug: "cyspbot",
         permissions: {
           contents: "write",
           pull_requests: "write",
@@ -172,5 +181,68 @@ describe("installation token issuance", () => {
       },
     });
     expect(JSON.stringify(consoleInfo.mock.calls)).not.toContain("ghs_test_token");
+  });
+
+  it("uses slug-selected GitHub App credentials when minting installation tokens", async () => {
+    const selectedAppSlug = "fixture-other-app";
+    const selectedAppId = "999999";
+    const baseRule = testTokenPolicyRules[0];
+    const issuers: string[] = [];
+
+    if (baseRule === undefined) {
+      throw new Error("expected at least one test token policy rule");
+    }
+
+    const selectedEnv = Object.assign({}, testEnv, {
+      GITHUB_APP_FIXTURE_OTHER_APP_ID: selectedAppId,
+      GITHUB_APP_FIXTURE_OTHER_APP_PRIVATE_KEY: testEnv.GITHUB_APP_PRIVATE_KEY,
+    }) as TokenExchangeBindings;
+
+    await expect(
+      issueInstallationTokenForContext(
+        selectedEnv,
+        {
+          githubAppAudience: `https://github.com/apps/${selectedAppSlug}`,
+          githubAppSlug: selectedAppSlug,
+          issuer: "https://token.actions.githubusercontent.com",
+          principal,
+          resolvedKeyId: "test-key-1",
+        },
+        {
+          githubAppSlug: selectedAppSlug,
+          permissions: {
+            contents: "write",
+            pull_requests: "write",
+          },
+          resource: new URL("https://api.github.com/repos/fixture-owner/fixture-source-repository"),
+          scope: "contents:write pull_requests:write",
+        },
+        {
+          fetch: async (input, init) => {
+            const authorization = new Headers(init?.headers).get("authorization");
+
+            if (authorization === null || !authorization.startsWith("Bearer ")) {
+              throw new Error("GitHub App request should use bearer authorization");
+            }
+
+            issuers.push(String(decodeJwt(authorization.slice("Bearer ".length)).iss));
+
+            return fetchGitHubTestDouble(input, init);
+          },
+          tokenPolicyRules: [
+            ...testTokenPolicyRules,
+            {
+              ...baseRule,
+              githubAppSlug: selectedAppSlug,
+            },
+          ],
+        },
+      ),
+    ).resolves.toMatchObject({
+      ok: true,
+      token: "ghs_test_token",
+    });
+
+    expect(issuers).toEqual([selectedAppId, selectedAppId]);
   });
 });
