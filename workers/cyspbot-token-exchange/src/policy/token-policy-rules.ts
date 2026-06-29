@@ -2,6 +2,7 @@ import { validateTokenPolicyRules, type TokenPolicyRule } from "./token-policy.t
 
 export const tokenPolicyRules = validateTokenPolicyRules([
   {
+    githubAppSlug: "cyspbot",
     permissions: {
       contents: "write",
       pull_requests: "write",
@@ -13,6 +14,7 @@ export const tokenPolicyRules = validateTokenPolicyRules([
     resource: "https://api.github.com/repos/chikachow/cyspbot",
   },
   {
+    githubAppSlug: "cyspbot",
     permissions: {
       actions: "write",
     },
@@ -24,6 +26,7 @@ export const tokenPolicyRules = validateTokenPolicyRules([
     resource: "https://api.github.com/repos/chikachow/cyspbot-deploy",
   },
   {
+    githubAppSlug: "cyspbot",
     permissions: {
       contents: "write",
       pull_requests: "write",
@@ -36,6 +39,7 @@ export const tokenPolicyRules = validateTokenPolicyRules([
     resource: "https://api.github.com/repos/chikachow/cyspbot-deploy",
   },
   {
+    githubAppSlug: "cyspbot",
     permissions: {
       contents: "write",
       pull_requests: "write",
@@ -48,6 +52,7 @@ export const tokenPolicyRules = validateTokenPolicyRules([
     resource: "https://api.github.com/repos/chikachow/cyspbot-app-token-action",
   },
   {
+    githubAppSlug: "cyspbot",
     permissions: {
       contents: "write",
       pull_requests: "write",
@@ -60,6 +65,7 @@ export const tokenPolicyRules = validateTokenPolicyRules([
     resource: "https://api.github.com/repos/cysp/graphql-schema-registry",
   },
   {
+    githubAppSlug: "cyspbot",
     permissions: {
       contents: "write",
       pull_requests: "write",
@@ -72,6 +78,7 @@ export const tokenPolicyRules = validateTokenPolicyRules([
     resource: "https://api.github.com/repos/cysp/terraform-provider-braze",
   },
   {
+    githubAppSlug: "cyspbot",
     permissions: {
       contents: "write",
       pull_requests: "write",
@@ -84,6 +91,7 @@ export const tokenPolicyRules = validateTokenPolicyRules([
     resource: "https://api.github.com/repos/cysp/terraform-provider-censusworkspace",
   },
   {
+    githubAppSlug: "cyspbot",
     permissions: {
       contents: "write",
       pull_requests: "write",
@@ -96,6 +104,7 @@ export const tokenPolicyRules = validateTokenPolicyRules([
     resource: "https://api.github.com/repos/cysp/terraform-provider-contentful",
   },
   {
+    githubAppSlug: "cyspbot",
     permissions: {
       contents: "write",
       pull_requests: "write",

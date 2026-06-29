@@ -52,10 +52,5 @@
   "engines": {
     "node": "24"
   },
-  "packageManager": "pnpm@10.33.0",
-  "pnpm": {
-    "overrides": {
-      "esbuild@>=0.17.0 <0.28.1": "0.28.1"
-    }
-  }
+  "packageManager": "pnpm@10.33.0"
 }

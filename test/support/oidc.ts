@@ -15,7 +15,7 @@ import {
 export { githubInstallationAccessTokenType, testPublicJwk } from "./constants.ts";
 
 export interface CreateOidcTokenOptions {
-  audience?: string | string[];
+  audience?: string | string[] | null;
   issuer?: string;
   kid?: string;
 }
@@ -49,6 +49,7 @@ export async function tokenExchangeRequestBody({
 }: TokenExchangeRequestBodyOptions = {}): Promise<string> {
   const subjectToken = await createOidcToken(claims, tokenOptions);
   const form = new URLSearchParams({
+    audience: "https://github.com/apps/cyspbot",
     grant_type: tokenExchangeGrantType,
     subject_token: subjectToken,
     subject_token_type: oidcIdTokenType,
@@ -59,7 +60,9 @@ export async function tokenExchangeRequestBody({
   }
 
   for (const [key, value] of Object.entries(formOptions ?? {})) {
-    if (value !== undefined && value !== null) {
+    if (value === null) {
+      form.delete(key);
+    } else if (value !== undefined) {
       form.set(key, value);
     }
   }
@@ -74,8 +77,9 @@ export async function createOidcToken(
   const now = Math.floor(Date.now() / 1000);
   const privateKey = createPrivateKey(testPrivateKeyPem);
   const { sub, ...payloadOverrides } = overrides ?? {};
-
-  return new SignJWT({
+  const audience =
+    options?.audience === undefined ? "https://github.com/apps/cyspbot" : options.audience;
+  let jwt = new SignJWT({
     actor: "dependabot[bot]",
     base_ref: "",
     event_name: "workflow_dispatch",
@@ -95,7 +99,6 @@ export async function createOidcToken(
     ...payloadOverrides,
   })
     .setProtectedHeader({ alg: "RS256", kid: options?.kid ?? "test-key-1" })
-    .setAudience(options?.audience ?? "cyspbot")
     .setIssuer(options?.issuer ?? "https://token.actions.githubusercontent.com")
     .setIssuedAt(now - 10)
     .setNotBefore(now - 10)
@@ -104,8 +107,13 @@ export async function createOidcToken(
       typeof sub === "string"
         ? sub
         : "repo:fixture-owner/fixture-source-repository:ref:refs/heads/fixture-base-branch",
-    )
-    .sign(privateKey);
+    );
+
+  if (audience !== null) {
+    jwt = jwt.setAudience(audience);
+  }
+
+  return jwt.sign(privateKey);
 }
 
 async function fetchOidcJwksTestDouble(input: RequestInfo | URL, init?: RequestInit) {

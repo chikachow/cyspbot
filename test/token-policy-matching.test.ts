@@ -137,6 +137,24 @@ describe("Token Policy matching", () => {
     ).toMatchObject({ decision: "deny" });
   });
 
+  it("denies unconfigured GitHub Apps", () => {
+    expect(
+      evaluateConfiguredTokenPolicy(
+        {
+          principal,
+          tokenRequest: {
+            ...sameRepositoryTokenRequest(),
+            githubAppSlug: "fixture-other-app",
+          },
+        },
+        testTokenPolicyRules,
+      ),
+    ).toEqual({
+      decision: "deny",
+      reasons: ["github_app"],
+    });
+  });
+
   it("denies unconfigured permissions", () => {
     expect(
       evaluateConfiguredTokenPolicy(

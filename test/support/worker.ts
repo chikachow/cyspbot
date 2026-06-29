@@ -23,8 +23,8 @@ type TestDependencies = GitHubWebhookReceiverDependencies & TokenExchangeDepende
 type TestBindings = GitHubWebhookReceiverBindings & TokenExchangeBindings;
 
 const baseTestDependencies = {
-  authenticateOidcToken: (token, request) =>
-    authenticateOidcToken(token, request, testOidcVerifier),
+  authenticateOidcToken: (token, request, expectedAudience) =>
+    authenticateOidcToken(token, request, expectedAudience, testOidcVerifier),
   fetch: fetchGitHubTestDouble,
   now: () => testNow,
   tokenPolicyRules: testTokenPolicyRules,

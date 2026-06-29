@@ -51,9 +51,13 @@ export function crossOwnerActionsTokenRequest(): InstallationAccessTokenRequest 
 
 export function mustNormalizeTokenRequest(
   testPrincipal: GitHubActionsPrincipal,
-  options: { resource: string | null; scope: string | null },
+  options: { githubAppSlug?: string; resource: string | null; scope: string | null },
 ): InstallationAccessTokenRequest {
-  const result = normalizeInstallationAccessTokenRequest(testPrincipal, options);
+  const result = normalizeInstallationAccessTokenRequest(testPrincipal, {
+    githubAppSlug: options.githubAppSlug ?? "cyspbot",
+    resource: options.resource,
+    scope: options.scope,
+  });
 
   if (!result.ok) {
     throw new Error(result.error);
@@ -115,6 +119,7 @@ export function principalForRule(
 
 export function tokenRequestForRule(rule: TokenPolicyRule): InstallationAccessTokenRequest {
   return mustNormalizeTokenRequest(principalForRule(rule), {
+    githubAppSlug: rule.githubAppSlug,
     resource: rule.resource,
     scope: scopeForPermissions(rule.permissions),
   });
