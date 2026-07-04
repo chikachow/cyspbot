@@ -16,7 +16,6 @@ describe("InstallationAccessTokenRequest normalization", () => {
     });
 
     expect(tokenRequest).toEqual({
-      githubAppSlug: "cyspbot",
       permissions: {
         contents: "write",
         pull_requests: "write",
@@ -33,7 +32,6 @@ describe("InstallationAccessTokenRequest normalization", () => {
     });
 
     expect(tokenRequest).toEqual({
-      githubAppSlug: "cyspbot",
       permissions: {
         contents: "write",
         pull_requests: "write",
@@ -50,7 +48,6 @@ describe("InstallationAccessTokenRequest normalization", () => {
     });
 
     expect(tokenRequest).toEqual({
-      githubAppSlug: "cyspbot",
       permissions: {
         actions: "read",
         contents: "read",
@@ -76,7 +73,6 @@ describe("InstallationAccessTokenRequest normalization", () => {
   ])("rejects non-canonical resource %s", (resource) => {
     expect(
       normalizeInstallationAccessTokenRequest(principal, {
-        githubAppSlug: "cyspbot",
         resource,
         scope: "actions:write",
       }),
@@ -100,7 +96,6 @@ describe("InstallationAccessTokenRequest normalization", () => {
   ])("rejects unsupported scope %s", (scope) => {
     expect(
       normalizeInstallationAccessTokenRequest(principal, {
-        githubAppSlug: "cyspbot",
         resource: fixtureTargetResource,
         scope,
       }),
@@ -109,40 +104,4 @@ describe("InstallationAccessTokenRequest normalization", () => {
       ok: false,
     });
   });
-
-  it("uses the authenticated GitHub App slug", () => {
-    expect(
-      normalizeInstallationAccessTokenRequest(principal, {
-        githubAppSlug: "fixture-app",
-        resource: fixtureTargetResource,
-        scope: "actions:write",
-      }),
-    ).toEqual({
-      ok: true,
-      tokenRequest: {
-        githubAppSlug: "fixture-app",
-        permissions: {
-          actions: "write",
-        },
-        resource: new URL(fixtureTargetResource),
-        scope: "actions:write",
-      },
-    });
-  });
-
-  it.each(["", " ", "Fixture-App", "fixture_app", "-fixture-app", "fixture-app-"])(
-    "rejects unsupported GitHub App slug %s",
-    (githubAppSlug) => {
-      expect(
-        normalizeInstallationAccessTokenRequest(principal, {
-          githubAppSlug,
-          resource: fixtureTargetResource,
-          scope: "actions:write",
-        }),
-      ).toEqual({
-        error: "invalid_target",
-        ok: false,
-      });
-    },
-  );
 });

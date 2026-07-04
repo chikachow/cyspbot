@@ -1,10 +1,8 @@
 import type { GitHubActionsPrincipal } from "@cyspbot/github-actions-oidc/principals";
-import { isGitHubAppSlug } from "./github-app.ts";
 
 type GitHubInstallationPermissions = Record<string, string>;
 
 export interface InstallationAccessTokenRequest {
-  githubAppSlug: string;
   permissions: GitHubInstallationPermissions;
   resource: URL;
   scope: string;
@@ -16,7 +14,6 @@ export interface TokenPolicyInput {
 }
 
 export interface TokenPolicyRule {
-  githubAppSlug: string;
   permissions: GitHubInstallationPermissions;
   principalEventNames: readonly string[];
   principalRef: string;
@@ -57,12 +54,8 @@ const supportedPermissionPairs = new Set(
 
 export function normalizeInstallationAccessTokenRequest(
   principal: GitHubActionsPrincipal,
-  options: { githubAppSlug: string; resource: string | null; scope: string | null },
+  options: { resource: string | null; scope: string | null },
 ): { ok: true; tokenRequest: InstallationAccessTokenRequest } | { error: string; ok: false } {
-  if (!isGitHubAppSlug(options.githubAppSlug)) {
-    return { error: "invalid_target", ok: false };
-  }
-
   const resourceValue = options.resource ?? `https://api.github.com/repos/${principal.repository}`;
   const parsedResource = parseGitHubRepositoryResource(resourceValue);
 
@@ -79,7 +72,6 @@ export function normalizeInstallationAccessTokenRequest(
   return {
     ok: true,
     tokenRequest: {
-      githubAppSlug: options.githubAppSlug,
       permissions: scope.permissions,
       resource: parsedResource.resource,
       scope: scope.scope,
@@ -126,10 +118,6 @@ export function validateTokenPolicyRules(
 
     if (rule.principalEventNames.length === 0) {
       throw new Error("invalid token policy rule events");
-    }
-
-    if (!isGitHubAppSlug(rule.githubAppSlug)) {
-      throw new Error("invalid token policy rule github app");
     }
 
     if (!rulePermissionsAreSupported(rule.permissions)) {
@@ -200,7 +188,6 @@ function tokenPolicyRuleMatches(rule: TokenPolicyRule, input: TokenPolicyInput):
     principal.subject.kind === "ref" &&
     principal.subject.ref === rule.principalRef &&
     principal.workflowRef === rule.principalWorkflowRef &&
-    tokenRequest.githubAppSlug === rule.githubAppSlug &&
     tokenRequest.resource.href === rule.resource &&
     permissionsEqual(tokenRequest.permissions, rule.permissions)
   );
@@ -264,19 +251,11 @@ function tokenPolicyDenyReasons(
     reasons.push("workflow_ref");
   }
 
-  const githubAppRules = workflowRules.filter(
-    (rule) => tokenRequest.githubAppSlug === rule.githubAppSlug,
-  );
-
-  if (workflowRules.length > 0 && githubAppRules.length === 0) {
-    reasons.push("github_app");
-  }
-
-  const resourceRules = githubAppRules.filter(
+  const resourceRules = workflowRules.filter(
     (rule) => tokenRequest.resource.href === rule.resource,
   );
 
-  if (githubAppRules.length > 0 && resourceRules.length === 0) {
+  if (workflowRules.length > 0 && resourceRules.length === 0) {
     reasons.push("resource");
   }
 
@@ -344,7 +323,6 @@ function permissionsEqual(
 
 function tokenPolicyRuleKey(rule: TokenPolicyRule): string {
   return JSON.stringify({
-    githubAppSlug: rule.githubAppSlug,
     permissions: Object.fromEntries(Object.entries(rule.permissions).sort(comparePermissionEntry)),
     principalEventNames: [...rule.principalEventNames].sort(),
     principalRef: rule.principalRef,

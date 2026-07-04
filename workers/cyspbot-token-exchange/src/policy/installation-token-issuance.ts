@@ -1,10 +1,8 @@
 import {
   createInstallationTokenForRepository,
-  type GitHubAppEnv,
   resolveInstallationForRepository,
 } from "@cyspbot/github/app";
 import { GitHubApiError, type GitHubApiDependencies } from "@cyspbot/github/http";
-import type { SecretTextBinding } from "@cyspbot/github/secrets";
 import type { AuthenticatedContext } from "../authentication.ts";
 import {
   evaluateConfiguredTokenPolicy,
@@ -62,15 +60,14 @@ export async function issueInstallationTokenForContext(
     }
 
     const requestedResourceName = `${requestedResource.owner}/${requestedResource.repository}`;
-    const githubAppEnv = githubAppEnvForSlug(env, tokenRequest.githubAppSlug);
     const targetInstallation = await resolveInstallationForRepository(
-      githubAppEnv,
+      env,
       requestedResourceName,
       dependencies,
     );
     targetInstallationId = targetInstallation.id;
     const installationToken = await createInstallationTokenForRepository(
-      githubAppEnv,
+      env,
       targetInstallation.id,
       requestedResourceName,
       tokenRequest.permissions,
@@ -82,7 +79,6 @@ export async function issueInstallationTokenForContext(
       expires_at: installationToken.expiresAt,
       principal: principalLogFields(authenticationContext),
       target_installation: {
-        github_app_slug: tokenRequest.githubAppSlug,
         id: targetInstallation.id,
         repository: requestedResourceName,
       },
@@ -110,7 +106,6 @@ export async function issueInstallationTokenForContext(
       event: "installation_token_issuance_failed",
       principal: principalLogFields(authenticationContext),
       target_installation: {
-        github_app_slug: tokenRequest.githubAppSlug,
         id: targetInstallationId,
       },
       token_policy: tokenPolicyLogFields(error, policyDecision),
@@ -183,7 +178,6 @@ function tokenRequestLogFields(
   tokenRequest: InstallationAccessTokenRequest,
 ): Record<string, unknown> {
   return {
-    github_app_slug: tokenRequest.githubAppSlug,
     permissions: tokenRequest.permissions,
     resource: tokenRequest.resource.href,
     scope: tokenRequest.scope,
@@ -212,38 +206,4 @@ function tokenPolicyLogFields(
   return {
     matched: false,
   };
-}
-
-function githubAppEnvForSlug(env: TokenExchangeBindings, slug: string): GitHubAppEnv {
-  if (slug === "cyspbot") {
-    return env;
-  }
-
-  const bindingSuffix = slug.toUpperCase().replaceAll("-", "_");
-  const appId = dynamicEnvBinding(env, `GITHUB_APP_${bindingSuffix}_ID`);
-  const privateKey = dynamicEnvBinding(env, `GITHUB_APP_${bindingSuffix}_PRIVATE_KEY`);
-
-  if (typeof appId !== "string" || appId.length === 0 || !isSecretTextBinding(privateKey)) {
-    throw new GitHubApiError(500, "missing GitHub App credentials");
-  }
-
-  return {
-    ...env,
-    GITHUB_APP_ID: appId,
-    GITHUB_APP_PRIVATE_KEY: privateKey,
-  };
-}
-
-function dynamicEnvBinding(env: TokenExchangeBindings, name: string): unknown {
-  return (env as unknown as Record<string, unknown>)[name];
-}
-
-function isSecretTextBinding(value: unknown): value is SecretTextBinding {
-  return (
-    typeof value === "string" ||
-    (typeof value === "object" &&
-      value !== null &&
-      "get" in value &&
-      typeof value.get === "function")
-  );
 }

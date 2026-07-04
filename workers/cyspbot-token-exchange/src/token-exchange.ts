@@ -2,7 +2,6 @@ import { jsonResponse } from "@cyspbot/http/problem-details";
 import { readRequestBodyUpTo } from "@cyspbot/http/request-body";
 import { cyspbotOidcAudience } from "./authentication.ts";
 import { issueInstallationTokenForContext } from "./policy/installation-token-issuance.ts";
-import { parseGitHubAppSlug } from "./policy/github-app.ts";
 import { normalizeInstallationAccessTokenRequest } from "./policy/token-policy.ts";
 import type { TokenExchangeDependencies } from "./dependencies.ts";
 
@@ -12,6 +11,7 @@ const githubInstallationAccessTokenType = "urn:chikachow:github-app-installation
 const oidcIdTokenType = "urn:ietf:params:oauth:token-type:id_token";
 const jwtTokenType = "urn:ietf:params:oauth:token-type:jwt";
 const unknownRateLimitKey = "unknown";
+const unsupportedInvalidTargetParameters = ["audience"];
 const unsupportedInvalidRequestParameters = [
   "actor_token",
   "actor_token_type",
@@ -101,7 +101,6 @@ export async function handleTokenExchangeRequest(
   }
 
   const tokenRequest = normalizeInstallationAccessTokenRequest(authentication.context.principal, {
-    githubAppSlug: tokenRequestOptions.options.githubAppSlug,
     resource: tokenRequestOptions.options.resource,
     scope: tokenRequestOptions.options.scope,
   });
@@ -212,7 +211,6 @@ function parseInstallationAccessTokenRequestOptions(form: URLSearchParams):
   | {
       ok: true;
       options: {
-        githubAppSlug: string;
         resource: string | null;
         scope: string | null;
       };
@@ -224,19 +222,9 @@ function parseInstallationAccessTokenRequestOptions(form: URLSearchParams):
     return { error: "invalid_request", ok: false };
   }
 
-  if (hasNonEmptyFormValue(form, "audience")) {
-    return { error: "invalid_target", ok: false };
-  }
-
-  const githubApp = requiredTokenRequestFormValue(form, "github_app", "invalid_target");
-
-  if (!githubApp.ok) {
-    return { error: githubApp.error, ok: false };
-  }
-
-  const githubAppSlug = parseGitHubAppSlug(githubApp.value);
-
-  if (githubAppSlug === null) {
+  if (
+    unsupportedInvalidTargetParameters.some((parameter) => hasNonEmptyFormValue(form, parameter))
+  ) {
     return { error: "invalid_target", ok: false };
   }
 
@@ -254,31 +242,10 @@ function parseInstallationAccessTokenRequestOptions(form: URLSearchParams):
   return {
     ok: true,
     options: {
-      githubAppSlug,
       resource: resource.value,
       scope: scope.value,
     },
   };
-}
-
-function requiredTokenRequestFormValue(
-  form: URLSearchParams,
-  key: string,
-  error: string,
-): { ok: true; value: string } | { error: string; ok: false } {
-  const values = form.getAll(key);
-
-  if (values.length !== 1) {
-    return { error, ok: false };
-  }
-
-  const value = values[0] ?? "";
-
-  if (value.trim() !== value || value.length === 0) {
-    return { error, ok: false };
-  }
-
-  return { ok: true, value };
 }
 
 function oauthTokenResponse(body: Record<string, number | string>): Response {

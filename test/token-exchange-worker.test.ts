@@ -128,7 +128,6 @@ describe("cyspbot-token-exchange", () => {
       {
         tokenPolicyRules: [
           {
-            githubAppSlug: "cyspbot",
             permissions: {
               contents: "read",
               pull_requests: "read",
@@ -331,25 +330,6 @@ describe("cyspbot-token-exchange", () => {
     });
   });
 
-  it("rejects unconfigured GitHub Apps through token policy", async () => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody({
-        form: {
-          github_app: "fixture-other-app",
-        },
-      }),
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_target",
-    });
-  });
-
   it("maps invalid oidc subject tokens to invalid token exchange requests", async () => {
     const response = await fetchTokenExchangeWithDependencies(
       "https://example.test/token",
@@ -471,25 +451,6 @@ describe("cyspbot-token-exchange", () => {
     });
   });
 
-  it("rejects token exchange requests without github_app", async () => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody({
-        form: {
-          github_app: null,
-        },
-      }),
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_target",
-    });
-  });
-
   it("rejects token exchange requests with non-empty audience parameters", async () => {
     const response = await fetchTokenExchange("https://example.test/token", {
       body: await tokenExchangeRequestBody({
@@ -525,52 +486,6 @@ describe("cyspbot-token-exchange", () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
       error: "invalid_request",
-    });
-  });
-
-  it.each([
-    ["empty", ""],
-    ["whitespace-only", "  "],
-    ["padded", " cyspbot "],
-    ["GitHub App URL", "https://github.com/apps/cyspbot"],
-    ["uppercase slug", "Cyspbot"],
-    ["underscore slug", "cyspbot_app"],
-    ["leading hyphen", "-cyspbot"],
-    ["trailing hyphen", "cyspbot-"],
-  ] as const)("rejects github_app parameters with %s values", async (_caseName, githubApp) => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody({
-        form: {
-          github_app: githubApp,
-        },
-      }),
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_target",
-    });
-  });
-
-  it("rejects duplicate github_app parameters as unsupported targets", async () => {
-    const body = new URLSearchParams(await tokenExchangeRequestBody());
-    body.append("github_app", "fixture-other-app");
-
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body,
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_target",
     });
   });
 
@@ -777,9 +692,6 @@ describe("cyspbot-token-exchange", () => {
     ["tab-separated scope", { scope: "contents:write\tpull_requests:write" }, "invalid_scope"],
     ["newline-separated scope", { scope: "contents:write\npull_requests:write" }, "invalid_scope"],
     ["whitespace-only resource", { resource: "  " }, "invalid_target"],
-    ["empty github_app", { github_app: "" }, "invalid_target"],
-    ["whitespace-only github_app", { github_app: "  " }, "invalid_target"],
-    ["padded github_app", { github_app: " cyspbot " }, "invalid_target"],
     [
       "padded resource",
       { resource: " https://api.github.com/repos/fixture-target-owner/fixture-target-repository " },
