@@ -69,8 +69,6 @@ describe("installation token issuance", () => {
       issueInstallationTokenForContext(
         testEnv,
         {
-          githubAppAudience: "https://github.com/apps/cyspbot",
-          githubAppSlug: "cyspbot",
           issuer: "https://token.actions.githubusercontent.com",
           principal,
           resolvedKeyId: "test-key-1",
@@ -117,8 +115,6 @@ describe("installation token issuance", () => {
         issueInstallationTokenForContext(
           testEnv,
           {
-            githubAppAudience: "https://github.com/apps/cyspbot",
-            githubAppSlug: "cyspbot",
             issuer: "https://token.actions.githubusercontent.com",
             principal,
             resolvedKeyId: "test-key-1",
@@ -202,8 +198,6 @@ describe("installation token issuance", () => {
       issueInstallationTokenForContext(
         selectedEnv,
         {
-          githubAppAudience: `https://github.com/apps/${selectedAppSlug}`,
-          githubAppSlug: selectedAppSlug,
           issuer: "https://token.actions.githubusercontent.com",
           principal,
           resolvedKeyId: "test-key-1",

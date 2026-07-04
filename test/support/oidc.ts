@@ -49,8 +49,8 @@ export async function tokenExchangeRequestBody({
 }: TokenExchangeRequestBodyOptions = {}): Promise<string> {
   const subjectToken = await createOidcToken(claims, tokenOptions);
   const form = new URLSearchParams({
-    audience: "https://github.com/apps/cyspbot",
     grant_type: tokenExchangeGrantType,
+    github_app: "cyspbot",
     subject_token: subjectToken,
     subject_token_type: oidcIdTokenType,
   });
@@ -77,8 +77,7 @@ export async function createOidcToken(
   const now = Math.floor(Date.now() / 1000);
   const privateKey = createPrivateKey(testPrivateKeyPem);
   const { sub, ...payloadOverrides } = overrides ?? {};
-  const audience =
-    options?.audience === undefined ? "https://github.com/apps/cyspbot" : options.audience;
+  const audience = options?.audience === undefined ? "cyspbot" : options.audience;
   let jwt = new SignJWT({
     actor: "dependabot[bot]",
     base_ref: "",
