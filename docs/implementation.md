@@ -36,21 +36,21 @@ The Worker factory is `createTokenExchangeWorker` in `workers/cyspbot-token-exch
 3. Read at most `64 KiB`.
 4. Require exactly one non-empty value for each required token-exchange form parameter that cyspbot consumes; value-less instances are treated as omitted, and duplicated non-empty consumed parameters are malformed.
 5. Require `requested_token_type=urn:chikachow:github-app-installation-access-token`.
-6. Require exactly one non-empty RFC 8693 form `audience`, parse it as one canonical GitHub App URL, and reject missing, duplicate, or malformed audiences with `invalid_target`.
+6. Require exactly one non-empty `github_app` extension parameter, parse it as a GitHub App slug, and reject missing, empty, padded, duplicate, malformed, or unconfigured slugs with `invalid_target`.
 7. Treat exactly empty optional `scope` and `resource` form values as omitted, and preserve non-empty values for normalization after authentication.
-8. Reject unsupported or ambiguous RFC 8693 fields, including malformed `scope` or `resource`, duplicate consumed fields, actor-token fields, and multi-resource forms. Actor-token parameters map to `invalid_request`.
-9. Verify the GitHub Actions OIDC subject token with the configured issuer, signing algorithm, and JWKS URI, then validate that the verified token `aud` claim is the same single string as the form `audience` and that any `azp` claim matches it.
+8. Reject unsupported or ambiguous fields, including non-empty RFC 8693 `audience`, malformed `scope` or `resource`, duplicate consumed fields, actor-token fields, and multi-resource forms. Non-empty `audience` maps to `invalid_target`; actor-token parameters map to `invalid_request`.
+9. Verify the GitHub Actions OIDC subject token with the configured issuer, signing algorithm, and JWKS URI, then validate that the verified token `aud` claim is the internal service audience `cyspbot` and that any `azp` claim matches it.
 10. Derive a GitHub Actions Principal from validated GitHub OIDC claims.
-11. Normalize an `InstallationAccessTokenRequest` from the validated form audience plus `scope` and `resource`.
+11. Normalize an `InstallationAccessTokenRequest` from the selected GitHub App slug plus `scope` and `resource`.
 12. Evaluate static Token Policy over `{ principal, tokenRequest }`.
 13. Select GitHub App credentials from the normalized app slug, then resolve the target GitHub App installation from the normalized repository resource.
 14. Issue a GitHub App installation access token for `repositories: [<repo>]` and the normalized permissions.
 
 The token policy in `workers/cyspbot-token-exchange/src/policy/token-policy.ts` authorizes a normalized token request. Policy does not mutate the requested token shape. The current policy data lives in `workers/cyspbot-token-exchange/src/policy/token-policy-rules.ts`, but exact entries are service-owned authorization data rather than implementation documentation.
 
-The token-exchange `audience` form parameter is required because RFC 8693 treats form `audience` as a logical target service selector. cyspbot constrains this profile to one GitHub App audience, one matching signed subject-token `aud` string, one canonical GitHub repository API `resource`, and one normalized permission set. Plural subject-token audiences are rejected rather than interpreted by containment, so the token-exchange form cannot steer one target out of a multi-recipient token. Token Policy is the fail-closed app allowlist for syntactically valid GitHub App audiences.
+The `github_app` form parameter is a cyspbot token endpoint extension parameter that selects the GitHub App credential profile by slug. cyspbot constrains this profile to one GitHub App slug, one signed subject-token `aud` string equal to `cyspbot`, one canonical GitHub repository API `resource`, and one normalized permission set. Plural subject-token audiences are rejected rather than interpreted by containment. Token Policy is the fail-closed app allowlist for syntactically valid GitHub App slugs.
 
-Omitted `scope` and `resource` normalize to a same-repository PR-authoring token request for the GitHub App selected by the validated form audience:
+Omitted `scope` and `resource` normalize to a same-repository PR-authoring token request for the GitHub App selected by `github_app`:
 
 ```json
 {
@@ -68,7 +68,7 @@ Repository identity in Token Policy is intentionally name-based. GitHub Actions 
 
 cyspbot treats exactly empty optional `scope` and `resource` form values as omitted to follow OAuth token endpoint parameter handling for those fields. It does not translate `scope=` into `permissions: {}`. GitHub documents that omitting `permissions` defaults to the app installation's granted permissions, and live testing showed that a present empty `permissions: {}` object receives the same default permission set. Minimal-permission token shapes must be expressed as explicit non-empty scopes such as `contents:read`. Scope values are parsed as OAuth scope tokens separated by a single ASCII space; order is not significant, but leading whitespace, trailing whitespace, repeated spaces, tabs, and newlines are rejected. The normalized token request retains a canonical scope string, and `/token` success responses always include that issued scope so clients can observe defaults and normalized ordering.
 
-cyspbot does not support OAuth client authentication at `/token`. Non-empty `client_id`, `client_secret`, `client_assertion`, and `client_assertion_type` form parameters are rejected with `invalid_request` so callers cannot mistakenly believe client credentials affected token issuance. Value-less form parameters are treated as omitted. An `Authorization` header is rejected with `invalid_client` and `401` before body parsing. Non-empty `authorization_details` is also rejected because this profile expresses the token shape only through `audience`, `resource`, and `scope`.
+cyspbot does not support OAuth client authentication at `/token`. Non-empty `client_id`, `client_secret`, `client_assertion`, and `client_assertion_type` form parameters are rejected with `invalid_request` so callers cannot mistakenly believe client credentials affected token issuance. Value-less form parameters are treated as omitted, except `github_app`, where a value-less or empty parameter is a malformed required selector. An `Authorization` header is rejected with `invalid_client` and `401` before body parsing. Non-empty `authorization_details` is also rejected because this profile expresses the token shape only through `github_app`, `resource`, and `scope`.
 
 ## OIDC Verification
 
@@ -78,7 +78,7 @@ The GitHub Actions trusted issuer is defined in `packages/github-actions-oidc/sr
 - JWKS URI: `https://token.actions.githubusercontent.com/.well-known/jwks`
 - allowed signing algorithm: `RS256`
 
-`packages/oidc/src/verifier.ts` verifies tokens with `jose.jwtVerify` and `jose.createRemoteJWKSet`. The generic verifier owns issuer, allowed-algorithm, signature, expiry, and JWKS checks. Token-exchange authentication owns the exact match between the parsed form audience, signed subject-token audience, and optional authorized-party claim. GitHub Actions claim parsing and subject interpretation live in `packages/github-actions-oidc/src/github-actions-principal.ts`.
+`packages/oidc/src/verifier.ts` verifies tokens with `jose.jwtVerify` and `jose.createRemoteJWKSet`. The generic verifier owns issuer, allowed-algorithm, signature, expiry, and JWKS checks. Token-exchange authentication owns the exact match between the signed subject-token audience, optional authorized-party claim, and cyspbot's internal service audience. GitHub Actions claim parsing and subject interpretation live in `packages/github-actions-oidc/src/github-actions-principal.ts`.
 
 OIDC/JWKS failures are classified at the verifier boundary:
 

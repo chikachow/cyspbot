@@ -1,5 +1,5 @@
 import type { GitHubActionsPrincipal } from "@cyspbot/github-actions-oidc/principals";
-import { isGitHubAppSlug } from "./github-app-audience.ts";
+import { isGitHubAppSlug } from "./github-app.ts";
 
 type GitHubInstallationPermissions = Record<string, string>;
 

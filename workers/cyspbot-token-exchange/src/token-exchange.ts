@@ -1,10 +1,8 @@
 import { jsonResponse } from "@cyspbot/http/problem-details";
 import { readRequestBodyUpTo } from "@cyspbot/http/request-body";
+import { cyspbotOidcAudience } from "./authentication.ts";
 import { issueInstallationTokenForContext } from "./policy/installation-token-issuance.ts";
-import {
-  parseGitHubAppAudience,
-  type ParsedGitHubAppAudience,
-} from "./policy/github-app-audience.ts";
+import { parseGitHubAppSlug } from "./policy/github-app.ts";
 import { normalizeInstallationAccessTokenRequest } from "./policy/token-policy.ts";
 import type { TokenExchangeDependencies } from "./dependencies.ts";
 
@@ -91,7 +89,7 @@ export async function handleTokenExchangeRequest(
   const authentication = await dependencies.authenticateOidcToken(
     subjectToken,
     request,
-    tokenRequestOptions.options.githubAppAudience,
+    cyspbotOidcAudience,
   );
 
   if (!authentication.ok) {
@@ -103,7 +101,7 @@ export async function handleTokenExchangeRequest(
   }
 
   const tokenRequest = normalizeInstallationAccessTokenRequest(authentication.context.principal, {
-    githubAppSlug: tokenRequestOptions.options.githubAppAudience.slug,
+    githubAppSlug: tokenRequestOptions.options.githubAppSlug,
     resource: tokenRequestOptions.options.resource,
     scope: tokenRequestOptions.options.scope,
   });
@@ -214,7 +212,7 @@ function parseInstallationAccessTokenRequestOptions(form: URLSearchParams):
   | {
       ok: true;
       options: {
-        githubAppAudience: ParsedGitHubAppAudience;
+        githubAppSlug: string;
         resource: string | null;
         scope: string | null;
       };
@@ -226,15 +224,19 @@ function parseInstallationAccessTokenRequestOptions(form: URLSearchParams):
     return { error: "invalid_request", ok: false };
   }
 
-  const audiences = nonEmptyFormValues(form, "audience");
-
-  if (audiences.length !== 1) {
+  if (hasNonEmptyFormValue(form, "audience")) {
     return { error: "invalid_target", ok: false };
   }
 
-  const githubAppAudience = parseGitHubAppAudience(audiences[0] ?? "");
+  const githubApp = requiredTokenRequestFormValue(form, "github_app", "invalid_target");
 
-  if (githubAppAudience === null) {
+  if (!githubApp.ok) {
+    return { error: githubApp.error, ok: false };
+  }
+
+  const githubAppSlug = parseGitHubAppSlug(githubApp.value);
+
+  if (githubAppSlug === null) {
     return { error: "invalid_target", ok: false };
   }
 
@@ -252,11 +254,31 @@ function parseInstallationAccessTokenRequestOptions(form: URLSearchParams):
   return {
     ok: true,
     options: {
-      githubAppAudience,
+      githubAppSlug,
       resource: resource.value,
       scope: scope.value,
     },
   };
+}
+
+function requiredTokenRequestFormValue(
+  form: URLSearchParams,
+  key: string,
+  error: string,
+): { ok: true; value: string } | { error: string; ok: false } {
+  const values = form.getAll(key);
+
+  if (values.length !== 1) {
+    return { error, ok: false };
+  }
+
+  const value = values[0] ?? "";
+
+  if (value.trim() !== value || value.length === 0) {
+    return { error, ok: false };
+  }
+
+  return { ok: true, value };
 }
 
 function oauthTokenResponse(body: Record<string, number | string>): Response {

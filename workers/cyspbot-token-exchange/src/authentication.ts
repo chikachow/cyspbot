@@ -5,11 +5,10 @@ import {
 import { githubActionsTrustedIssuer } from "@cyspbot/github-actions-oidc/issuer";
 import type { GitHubActionsPrincipal } from "@cyspbot/github-actions-oidc/principals";
 import { OidcTokenVerifier } from "@cyspbot/oidc/verifier";
-import type { ParsedGitHubAppAudience } from "./policy/github-app-audience.ts";
+
+export const cyspbotOidcAudience = "cyspbot";
 
 export interface AuthenticatedContext {
-  githubAppAudience: string;
-  githubAppSlug: string;
   issuer: string;
   principal: GitHubActionsPrincipal;
   resolvedKeyId: string | null;
@@ -38,7 +37,7 @@ export type AuthenticateRequestResult = AuthenticateRequestFailure | Authenticat
 export async function authenticateOidcToken(
   token: string,
   request: Request,
-  expectedAudience: ParsedGitHubAppAudience,
+  expectedAudience: string,
   verifier: OidcTokenVerifier = githubActionsOidcVerifier,
 ): Promise<AuthenticateRequestResult> {
   const verified = await verifier.verify(token);
@@ -77,8 +76,8 @@ export async function authenticateOidcToken(
   }
 
   if (
-    !hasMatchingAudience(verified.token.claims.aud, expectedAudience.audience) ||
-    !hasMatchingAuthorizedParty(verified.token.claims["azp"], expectedAudience.audience)
+    !hasMatchingAudience(verified.token.claims.aud, expectedAudience) ||
+    !hasMatchingAuthorizedParty(verified.token.claims["azp"], expectedAudience)
   ) {
     logAuthFailure(request, "invalid_token");
 
@@ -93,8 +92,6 @@ export async function authenticateOidcToken(
 
   return {
     context: {
-      githubAppAudience: expectedAudience.audience,
-      githubAppSlug: expectedAudience.slug,
       issuer: verified.token.issuer,
       principal,
       resolvedKeyId: verified.token.resolvedKeyId,
