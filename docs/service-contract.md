@@ -19,7 +19,6 @@ Unknown routes return `404` problem details. Unsupported methods on `/github/web
 - `subject_token=<github-actions-oidc-token>`
 - `subject_token_type=urn:ietf:params:oauth:token-type:id_token` or `urn:ietf:params:oauth:token-type:jwt`
 - `requested_token_type=urn:chikachow:github-app-installation-access-token`
-- `github_app=<github-app-slug>`
 - optional `scope=<github-permission-request-list>`
 - optional `resource=<canonical-github-repository-api-uri>`
 
@@ -39,15 +38,13 @@ Repository shorthand, GitHub HTML URLs, endpoint URLs, duplicate resource fields
 
 An empty `scope` is not a no-permissions request. Following OAuth token endpoint parameter handling for this optional field, `scope=` is treated as omitted and receives the cyspbot default scope. GitHub documents that an omitted installation-token `permissions` object receives the app installation's granted permissions, and live testing showed that a present empty `permissions: {}` object receives the same default permissions. cyspbot therefore never translates an empty scope to an empty GitHub permissions object.
 
-`github_app` is a cyspbot OAuth token endpoint extension parameter for this token-exchange profile. It is required and must contain exactly one GitHub App slug, such as `cyspbot`. The slug is the GitHub App slug from the app's public URL. cyspbot uses it to select GitHub App credentials before resolving the target repository installation. Missing, empty, whitespace-padded, duplicate, URL-shaped, malformed, and unconfigured `github_app` values are rejected with `400 {"error":"invalid_target"}`.
-
 The GitHub Actions OIDC subject token's `aud` claim must be the internal service audience `cyspbot`. cyspbot rejects missing `aud`, plural `aud`, and any other `aud` value as invalid subject tokens with `400 {"error":"invalid_request"}`. If the subject token has an `azp` claim, cyspbot accepts it only when it also matches `cyspbot`.
 
-cyspbot does not support RFC 8693 `audience`, `actor_token`, or `actor_token_type` form parameters. Non-empty `audience` parameters are rejected with `invalid_target` because this profile uses `resource` for the issued token target and `github_app` for GitHub App credential selection. Actor-token parameters are rejected as malformed for this profile with `invalid_request`.
+cyspbot does not support RFC 8693 `audience`, `actor_token`, or `actor_token_type` form parameters. Non-empty `audience` parameters are rejected with `invalid_target` because this profile uses `resource` for the issued token target and service-owned GitHub App credentials. Actor-token parameters are rejected as malformed for this profile with `invalid_request`.
 
 cyspbot also does not support OAuth client authentication or Rich Authorization Requests at `/token`. Requests containing non-empty `client_id`, `client_secret`, `client_assertion`, `client_assertion_type`, or `authorization_details` fields are rejected with `invalid_request` rather than silently ignored. Requests containing an `Authorization` header are rejected with `401 {"error":"invalid_client"}` and a matching `WWW-Authenticate` challenge. Value-less form parameters are treated as omitted, and other unrecognized extension parameters are ignored, according to OAuth token endpoint rules.
 
-The signed subject token proves it was minted for cyspbot as the relying service; `github_app` names the GitHub App credential profile; `resource` names the GitHub API repository target where the issued token will be used; and Token Policy decides whether that verified principal may receive the requested installation token. Plural subject-token audiences are rejected rather than interpreted by containment.
+The signed subject token proves it was minted for cyspbot as the relying service; the service owns the GitHub App credential profile; `resource` names the GitHub API repository target where the issued token will be used; and Token Policy decides whether that verified principal may receive the requested installation token. Plural subject-token audiences are rejected rather than interpreted by containment.
 
 Policy denial for a supported, normalized GitHub App and `resource` receives `400 {"error":"invalid_target"}`.
 
@@ -68,7 +65,6 @@ OAuth error responses use JSON with the same no-store headers:
 - malformed request: `400 {"error":"invalid_request"}`
 - unsupported client authentication header: `401 {"error":"invalid_client"}`
 - missing or unsupported requested token type: `400 {"error":"invalid_request"}`
-- missing, duplicate, malformed, or unsupported `github_app`: `400 {"error":"invalid_target"}`
 - unsupported non-empty token-exchange `audience`: `400 {"error":"invalid_target"}`
 - unsupported grant type: `400 {"error":"unsupported_grant_type"}`
 - rate limit exceeded: `429 {"error":"temporarily_unavailable"}`
@@ -85,25 +81,23 @@ OIDC/JWKS provider unavailability means cyspbot cannot obtain a usable trusted k
 Installation Token Issuance is allowed only when the normalized installation token request matches an explicit checked-in Token Policy rule:
 
 - the caller is a verified [GitHub Actions OIDC](https://docs.github.com/en/actions/concepts/security/openid-connect) principal from `https://token.actions.githubusercontent.com`
-- `github_app` is one configured GitHub App slug
 - the signed subject token audience is `cyspbot`
 - if the OIDC token has an `azp` claim, that claim matches `cyspbot`
-- the normalized GitHub App slug matches the matching rule
 - `event_name` is listed by the matching rule
 - the OIDC subject context is `ref`
 - `ref_type` is `branch`
 - the parsed subject repository name matches the signed `repository` claim
 - when the OIDC subject uses GitHub's immutable repository syntax, the parsed repository ID matches the signed `repository_id` claim and the parsed owner ID matches `repository_owner_id` when GitHub supplies that claim
 - `repository`, `ref`, parsed subject ref, and `workflow_ref` exactly match the matching rule
-- normalized GitHub App slug, `resource`, and `permissions` exactly match the matching rule
+- normalized `resource` and `permissions` exactly match the matching rule
 
-The caller cannot supply arbitrary GitHub Apps, GitHub permissions, or repository ids. The validated `github_app`, `scope`, and `resource` are normalized into one installation token request. Token Policy answers whether the verified GitHub Actions principal may receive exactly that token request, including cross-owner requests when explicit policy allows them. cyspbot denies unconfigured principal/GitHub App/resource/permission combinations with `invalid_target`. The [GitHub App installation](https://docs.github.com/en/rest/apps/apps#create-an-installation-access-token-for-an-app) remains the upper-bound permission authority.
+The caller cannot supply arbitrary GitHub Apps, GitHub permissions, or repository ids. The validated `scope` and validated `resource` are normalized into one installation token request. Token Policy answers whether the verified GitHub Actions principal may receive exactly that token request, including cross-owner requests when explicit policy allows them. cyspbot denies unconfigured principal/resource/permission combinations with `invalid_target`. The [GitHub App installation](https://docs.github.com/en/rest/apps/apps#create-an-installation-access-token-for-an-app) remains the upper-bound permission authority.
 
 Principal derivation validates only facts present in the signed token. For the common legacy subject form, `sub` contains the repository name but not the repository ID or owner ID, so cyspbot checks the parsed subject repository name against the signed `repository` claim. For GitHub's immutable subject form, `sub` also includes owner and repository IDs, so cyspbot checks the parsed repository ID against the signed `repository_id` claim and checks the parsed owner ID against `repository_owner_id` when GitHub supplies that claim.
 
 Token Policy intentionally uses GitHub owner/repository names as the externally meaningful repository identifier, even though [GitHub Actions OIDC](https://docs.github.com/en/actions/reference/security/oidc) also exposes immutable repository and owner IDs and GitHub's installation-token API can scope by `repository_ids`. Those IDs are authenticated principal facts, not policy keys. A repository that is deleted and recreated with the same owner/name can continue to match policy for that name when the GitHub App installation still grants sufficient permissions.
 
-The omitted `scope` and `resource` default produces this normalized permission request for the GitHub App selected by `github_app` and the verified principal repository:
+The omitted `scope` and `resource` default produces this normalized permission request for cyspbot's service-owned GitHub App and the verified principal repository:
 
 ```json
 {
@@ -172,7 +166,6 @@ The implementation uses these runtime bindings:
 - `GITHUB_APP_ID`
 - `GITHUB_WEBHOOK_SECRET` Secrets Store binding or Worker secret
 - `GITHUB_APP_PRIVATE_KEY` Secrets Store binding or Worker secret
-- `GITHUB_APP_<SLUG>_ID` and `GITHUB_APP_<SLUG>_PRIVATE_KEY` for additional token-exchange GitHub Apps, where `<SLUG>` is the uppercase GitHub App slug with `-` replaced by `_`
 - `TOKEN_EXCHANGE_RATE_LIMIT` Cloudflare rate-limit binding
 
 The public Wrangler configs declare binding names for local development, tests, and dry-runs. `GITHUB_API_BASE_URL` is optional for the token exchange Worker and defaults to `https://api.github.com`.

@@ -29,11 +29,10 @@ grant_type=urn:ietf:params:oauth:grant-type:token-exchange
 requested_token_type=urn:chikachow:github-app-installation-access-token
 subject_token=<github-actions-oidc-token>
 subject_token_type=urn:ietf:params:oauth:token-type:id_token
-github_app=<github-app-slug>
 ```
 
 `subject_token_type` may also be `urn:ietf:params:oauth:token-type:jwt`. `requested_token_type` is required and must be the cyspbot GitHub App installation token URN.
-The `github_app` extension parameter selects the GitHub App credential profile by slug. It is required and must be exactly one GitHub App slug such as `cyspbot`. The subject token's verified OIDC `aud` claim must be the internal cyspbot service audience `cyspbot`, and any `azp` claim must also match `cyspbot`. cyspbot uses the validated `github_app` slug to select GitHub App credentials, resolve the target installation, and evaluate Token Policy.
+The subject token's verified OIDC `aud` claim must be the internal cyspbot service audience `cyspbot`, and any `azp` claim must also match `cyspbot`. cyspbot uses its service-owned GitHub App credential profile to resolve the target installation and evaluate Token Policy. Non-empty `audience` form parameters are rejected as unsupported target selectors.
 
 Requests may include RFC 8693 `scope` and `resource` fields to request a concrete GitHub App installation token shape. `resource` must be one canonical GitHub repository API URI in the form `https://api.github.com/repos/{owner}/{repo}` with no leading or trailing whitespace. `scope` is a single-ASCII-space-delimited list of exact GitHub App permission requests, such as `actions:read`, `actions:write`, or `contents:read pull_requests:read`; scope order is not significant. Omitted or exactly empty `resource` defaults to the verified GitHub Actions principal repository. Omitted or exactly empty `scope` defaults to `contents:write pull_requests:write`. Whitespace-only, padded, duplicate, or multi-value `scope` and `resource` fields are rejected.
 
@@ -64,22 +63,20 @@ Signed `ping` deliveries return `202 {"accepted":true,"event":"ping"}`. Any othe
 Installation Token Issuance is allowed only when a normalized token request matches an explicit checked-in Token Policy rule.
 
 - the caller is a verified GitHub Actions principal from the configured issuer
-- `github_app` is one configured GitHub App slug
 - the signed subject token audience is `cyspbot`, and any `azp` claim is accepted only if it also matches `cyspbot`
-- the normalized GitHub App slug matches the checked-in rule
 - `event_name` matches the checked-in rule
 - the OIDC subject context is `ref`
 - `ref` and the parsed subject ref exactly match the checked-in rule
 - the parsed subject repository name matches the signed `repository` claim, and immutable subject IDs are checked when GitHub includes them in `sub`
 - `workflow_ref` exactly matches the checked-in rule
 - `ref_type` is `branch`
-- the normalized token request GitHub App slug, `resource`, and `permissions` exactly match the checked-in rule
+- the normalized token request `resource` and `permissions` exactly match the checked-in rule
 
-The caller cannot supply arbitrary GitHub Apps, GitHub permissions, or repository ids. The validated `github_app`, `scope`, and `resource` are normalized into one installation token request, then policy answers whether the verified GitHub Actions principal may receive exactly that token. Cross-owner requests are possible only when explicitly allowed by policy. Unlisted GitHub Apps and repositories do not receive a default token.
+The caller cannot supply arbitrary GitHub Apps, GitHub permissions, or repository ids. The validated `scope` and validated `resource` are normalized into one installation token request, then policy answers whether the verified GitHub Actions principal may receive exactly that token. Cross-owner requests are possible only when explicitly allowed by policy. Unlisted repositories do not receive a default token.
 
 Repository identity in policy is intentionally based on GitHub owner/repository names rather than repository IDs. GitHub Actions OIDC tokens may carry repository IDs as separate signed claims, and immutable subject formats may repeat those IDs inside `sub`; cyspbot validates the parsed repository ID against the signed `repository_id`, and validates the parsed owner ID when GitHub supplies `repository_owner_id`, but policy matching itself remains name-based. A repository that is deleted and recreated with the same owner/name can match existing policy for that name, and token issuance still depends on the GitHub App being installed with sufficient permissions.
 
-The exact policy entries are intentionally not documented here. They are service-owned authorization data and may move from checked-in code to live configuration. The durable contract is deny-by-default: unlisted principal, GitHub App, resource, and permission combinations do not receive tokens.
+The exact policy entries are intentionally not documented here. They are service-owned authorization data and may move from checked-in code to live configuration. The durable contract is deny-by-default: unlisted principal, resource, and permission combinations do not receive tokens.
 
 cyspbot denies forked pull request contexts, unconfigured refs, unconfigured workflow files, tag refs, unsupported event names, unsupported scopes, and non-canonical resource forms.
 
@@ -132,7 +129,7 @@ The root Wrangler config is a test harness for Vitest bindings, not a deployable
 
 The public Wrangler configs declare required secret names. Secret values live in Cloudflare for production and `.dev.vars` for local development.
 
-The default GitHub App uses `GITHUB_APP_ID` and `GITHUB_APP_PRIVATE_KEY`. Additional token-exchange GitHub Apps use slug-derived bindings: `GITHUB_APP_<SLUG>_ID` and `GITHUB_APP_<SLUG>_PRIVATE_KEY`, where `<SLUG>` is the uppercase GitHub App slug with `-` replaced by `_`.
+The token-exchange Worker uses the service-owned GitHub App from `GITHUB_APP_ID` and `GITHUB_APP_PRIVATE_KEY`.
 
 ## GitHub Actions Usage
 

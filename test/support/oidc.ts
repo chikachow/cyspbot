@@ -50,7 +50,6 @@ export async function tokenExchangeRequestBody({
   const subjectToken = await createOidcToken(claims, tokenOptions);
   const form = new URLSearchParams({
     grant_type: tokenExchangeGrantType,
-    github_app: "cyspbot",
     subject_token: subjectToken,
     subject_token_type: oidcIdTokenType,
   });

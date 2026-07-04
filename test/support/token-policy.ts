@@ -10,7 +10,6 @@ const testPrincipalWorkflowRef = `${testRepository}/.github/workflows/fixture-to
 
 export const testTokenPolicyRules = validateTokenPolicyRules([
   {
-    githubAppSlug: "cyspbot",
     permissions: {
       contents: "write",
       pull_requests: "write",
@@ -22,7 +21,6 @@ export const testTokenPolicyRules = validateTokenPolicyRules([
     resource: `https://api.github.com/repos/${testRepository}`,
   },
   {
-    githubAppSlug: "cyspbot",
     permissions: {
       actions: "write",
     },
