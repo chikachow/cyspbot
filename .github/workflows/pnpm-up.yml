@@ -15,7 +15,7 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - uses: chikachow/cyspbot-app-token-action@6bd54daaa3f0427dadae8b719437d989d4f68432 # v0.0.7
+      - uses: chikachow/cyspbot-app-token-action@a70b4b3212ad874677e6c676cb6bc502cce09ced # v0.0.8
         id: cyspbot
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
