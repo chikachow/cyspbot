@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { githubActionsIssuerAdapter } from "@cyspbot/oidc-issuer-github-actions";
+import {
+  githubActionsIssuerAdapter,
+  githubActionsTrustedIssuer,
+} from "@cyspbot/oidc-issuer-github-actions";
 import type { OidcIssuerAdapter } from "@cyspbot/oidc/issuer-adapter";
 import { authenticateOidcToken } from "@cyspbot/token-exchange/authentication";
 
@@ -32,6 +35,87 @@ describe("OIDC authentication", () => {
       },
       ok: true,
     });
+  });
+
+  it("passes the centrally verified token to subject-token binding validation", async () => {
+    const validateSubjectTokenBinding = vi.fn(() => true);
+    const capturingAdapter: OidcIssuerAdapter = {
+      ...githubActionsIssuerAdapter,
+      validateSubjectTokenBinding,
+    };
+
+    await expect(
+      authenticateOidcToken(
+        await createOidcToken(),
+        "id_token",
+        request,
+        "cyspbot",
+        [capturingAdapter],
+        fetchOidcJwksTestDouble,
+      ),
+    ).resolves.toMatchObject({ ok: true });
+    expect(validateSubjectTokenBinding).toHaveBeenCalledOnce();
+    expect(validateSubjectTokenBinding).toHaveBeenCalledWith({
+      expectedAudience: "cyspbot",
+      verifiedToken: {
+        claims: expect.objectContaining({
+          iss: "https://token.actions.githubusercontent.com",
+          repository: "fixture-owner/fixture-source-repository",
+        }),
+        issuer: "https://token.actions.githubusercontent.com",
+        resolvedKeyId: "test-key-1",
+      },
+    });
+  });
+
+  it.each([
+    ["signature verification fails", createOidcTokenWithInvalidSignature],
+    [
+      "the issuer is unconfigured",
+      () => createOidcToken(undefined, { issuer: "https://issuer.example" }),
+    ],
+  ])("does not validate subject-token binding when %s", async (_label, createToken) => {
+    const validateSubjectTokenBinding = vi.fn(() => true);
+    const capturingAdapter: OidcIssuerAdapter = {
+      ...githubActionsIssuerAdapter,
+      validateSubjectTokenBinding,
+    };
+
+    await expect(
+      authenticateOidcToken(
+        await createToken(),
+        "id_token",
+        request,
+        "cyspbot",
+        [capturingAdapter],
+        fetchOidcJwksTestDouble,
+      ),
+    ).resolves.toMatchObject({ ok: false });
+    expect(validateSubjectTokenBinding).not.toHaveBeenCalled();
+  });
+
+  it("does not validate subject-token binding when verified issuer validation fails", async () => {
+    const validateSubjectTokenBinding = vi.fn(() => true);
+    const mismatchedIssuerAdapter: OidcIssuerAdapter = {
+      ...githubActionsIssuerAdapter,
+      resolveIssuer: () => ({
+        status: "configured",
+        trustedIssuer: githubActionsTrustedIssuer,
+      }),
+      validateSubjectTokenBinding,
+    };
+
+    await expect(
+      authenticateOidcToken(
+        await createOidcToken(undefined, { issuer: "https://issuer.example" }),
+        "id_token",
+        request,
+        "cyspbot",
+        [mismatchedIssuerAdapter],
+        fetchOidcJwksTestDouble,
+      ),
+    ).resolves.toMatchObject({ ok: false, reason: "invalid_token" });
+    expect(validateSubjectTokenBinding).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -126,3 +210,17 @@ describe("OIDC authentication", () => {
     });
   });
 });
+
+async function createOidcTokenWithInvalidSignature(): Promise<string> {
+  const token = await createOidcToken();
+  const segments = token.split(".");
+
+  if (segments.length !== 3 || segments[2] === undefined || segments[2].length === 0) {
+    throw new Error("Expected a signed JWT test fixture");
+  }
+
+  const signature = segments[2];
+  segments[2] = `${signature[0] === "A" ? "B" : "A"}${signature.slice(1)}`;
+
+  return segments.join(".");
+}
