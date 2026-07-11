@@ -17,7 +17,7 @@ export interface InstallationTokenIssuanceDependencies extends GitHubApiDependen
   tokenPolicyRules?: readonly TokenPolicyRule[];
 }
 
-type InstallationTokenIssuanceResult =
+export type InstallationTokenIssuanceResult =
   | { expiresAt: string; ok: true; token: string }
   | { ok: false; status: number };
 

@@ -1,8 +1,12 @@
-import { authenticateOidcToken } from "@cyspbot/token-exchange/authentication";
 import { createGitHubWebhookReceiverWorker } from "@cyspbot/github-webhook-receiver/worker";
 import { createTokenExchangeWorker } from "@cyspbot/token-exchange/worker";
 import type { GitHubWebhookReceiverDependencies } from "@cyspbot/github-webhook-receiver/dependencies";
-import type { TokenExchangeDependencies } from "@cyspbot/token-exchange/dependencies";
+import {
+  createTokenExchangeRequestRuntime,
+  type TokenExchangeRequestRuntime,
+  type TokenExchangeWorkerDependencies,
+} from "@cyspbot/token-exchange/dependencies";
+import { handleTokenExchangeRequest } from "@cyspbot/token-exchange/token-exchange";
 
 import { testNow } from "./constants.ts";
 import { fetchGitHubTestDouble } from "./github-api.ts";
@@ -19,19 +23,12 @@ export {
 } from "./oidc.ts";
 export { testEnv };
 
-type TestDependencies = GitHubWebhookReceiverDependencies & TokenExchangeDependencies;
+type TestDependencies = GitHubWebhookReceiverDependencies & TokenExchangeWorkerDependencies;
 type TestBindings = GitHubWebhookReceiverBindings & TokenExchangeBindings;
 
 const baseTestDependencies = {
-  authenticateOidcToken: (token, request, expectedAudience, issuerAdapters) =>
-    authenticateOidcToken(
-      token,
-      request,
-      expectedAudience,
-      issuerAdapters,
-      fetchOidcJwksTestDouble,
-    ),
   fetch: fetchGitHubTestDouble,
+  fetchJwks: fetchOidcJwksTestDouble,
   now: () => testNow,
   tokenPolicyRules: testTokenPolicyRules,
 } satisfies TestDependencies;
@@ -57,7 +54,7 @@ export function fetchTokenExchangeWithEnv(
 export function fetchTokenExchangeWithDependencies(
   input: RequestInfo | URL,
   init: RequestInit | undefined,
-  dependencies: Partial<TokenExchangeDependencies>,
+  dependencies: Partial<TokenExchangeWorkerDependencies>,
 ): Promise<Response> {
   return fetchWorkerWithApp(
     createTokenExchangeWorker({
@@ -67,6 +64,17 @@ export function fetchTokenExchangeWithDependencies(
     input,
     init,
   );
+}
+
+export function fetchTokenExchangeWithRuntime(
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+  runtime: Partial<TokenExchangeRequestRuntime>,
+): Promise<Response> {
+  return handleTokenExchangeRequest(new Request(input, init), {
+    ...createTokenExchangeRequestRuntime(testEnv, baseTestDependencies),
+    ...runtime,
+  });
 }
 
 export function fetchGitHubWebhookReceiver(
