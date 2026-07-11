@@ -30,6 +30,9 @@ importers:
       '@cyspbot/oidc':
         specifier: workspace:*
         version: link:packages/oidc
+      '@cyspbot/oidc-issuer-fly':
+        specifier: workspace:*
+        version: link:packages/oidc-issuer-fly
       '@cyspbot/oidc-issuer-github-actions':
         specifier: workspace:*
         version: link:packages/oidc-issuer-github-actions
@@ -84,6 +87,12 @@ importers:
         specifier: 6.2.3
         version: 6.2.3
 
+  packages/oidc-issuer-fly:
+    dependencies:
+      '@cyspbot/oidc':
+        specifier: workspace:*
+        version: link:../oidc
+
   packages/oidc-issuer-github-actions:
     dependencies:
       '@cyspbot/oidc':
@@ -116,6 +125,9 @@ importers:
       '@cyspbot/oidc':
         specifier: workspace:*
         version: link:../../packages/oidc
+      '@cyspbot/oidc-issuer-fly':
+        specifier: workspace:*
+        version: link:../../packages/oidc-issuer-fly
       '@cyspbot/oidc-issuer-github-actions':
         specifier: workspace:*
         version: link:../../packages/oidc-issuer-github-actions

@@ -10,5 +10,6 @@ export interface OidcIssuerAdapter {
   validateSubjectTokenBinding(input: {
     claims: VerifiedOidcToken["claims"];
     expectedAudience: string;
+    issuer: string;
   }): boolean;
 }

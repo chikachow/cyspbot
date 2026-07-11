@@ -6,7 +6,7 @@ This document describes the public interface, security boundaries, and externall
 
 | Route              | Method | Purpose                                     | Success response           |
 | ------------------ | ------ | ------------------------------------------- | -------------------------- |
-| `/token`           | `POST` | Exchange trusted GitHub Actions OIDC tokens | OAuth token response JSON  |
+| `/token`           | `POST` | Exchange trusted OIDC tokens                | OAuth token response JSON  |
 | `/github/webhooks` | `POST` | Accept signed GitHub App webhook deliveries | `202` acknowledgement JSON |
 
 Unknown routes return `404` problem details. Unsupported methods on `/github/webhooks` return `405` problem details with `Allow: POST`. Unsupported methods on `/token` return OAuth error JSON with `400 {"error":"invalid_request"}`.
@@ -89,6 +89,8 @@ Installation Token Issuance is allowed only when the normalized installation tok
 - `repository`, `ref`, `sub`, and `workflow_ref` exactly satisfy the matching rule's CEL condition
 - normalized `resource` and `permissions` exactly match the matching rule
 
+Fly.io Machine tokens may authenticate only from organization issuers explicitly configured by the service. Authentication requires non-empty immutable organization, app, and Machine identity claims; `org_name` must match the configured issuer slug; and `sub` must equal `org_name:app_name:machine_name`. They remain denied unless an issuer-guarded Token Policy rule also matches immutable organization and app IDs, an optional Machine ID, the resource, and requested permissions.
+
 The caller cannot supply arbitrary GitHub Apps, GitHub permissions, or repository ids. The validated `scope` and validated `resource` are normalized into one installation token request. Token Policy answers whether the verified subject token may receive exactly that token request, including cross-owner requests when explicit policy allows them. cyspbot denies unconfigured issuer/condition/resource/permission combinations with `invalid_target`. The [GitHub App installation](https://docs.github.com/en/rest/apps/apps#create-an-installation-access-token-for-an-app) remains the upper-bound permission authority.
 
 Policy evaluates only facts present in the verified token. For the common legacy subject form, the rule requires `sub` to contain the same repository name as the signed `repository` claim; `repository_id` and `repository_owner_id` are not inputs to that authorization decision. For GitHub's immutable subject form, `repository_id` must be present and consistent with `sub`. When the optional `repository_owner_id` claim is present, it must also be a string consistent with `sub`; when it is absent or null, policy accepts any owner ID embedded in the otherwise matching immutable subject. These IDs check internal subject consistency but are not independent policy keys.
@@ -164,6 +166,7 @@ The receiver verifies the exact request bytes read through the bounded request-b
 The implementation uses these runtime bindings:
 
 - `GITHUB_APP_ID`
+- `FLY_OIDC_ORG_SLUGS`
 - `GITHUB_WEBHOOK_SECRET` Secrets Store binding or Worker secret
 - `GITHUB_APP_PRIVATE_KEY` Secrets Store binding or Worker secret
 - `TOKEN_EXCHANGE_RATE_LIMIT` Cloudflare rate-limit binding

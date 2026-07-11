@@ -110,10 +110,12 @@ export async function createOidcToken(
 export async function fetchOidcJwksTestDouble(input: RequestInfo | URL, init?: RequestInit) {
   const request = new Request(input, init);
 
-  if (
-    request.method !== "GET" ||
-    request.url !== "https://token.actions.githubusercontent.com/.well-known/jwks"
-  ) {
+  const supportedJwksUrls = new Set([
+    "https://token.actions.githubusercontent.com/.well-known/jwks",
+    "https://oidc.fly.io/example-org/.well-known/jwks",
+  ]);
+
+  if (request.method !== "GET" || !supportedJwksUrls.has(request.url)) {
     return new Response(null, { status: 404 });
   }
 

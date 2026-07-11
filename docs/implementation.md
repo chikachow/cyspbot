@@ -17,6 +17,7 @@ Shared packages:
 - `packages/http` owns framework-free JSON responses, problem details, and bounded request-body reading.
 - `packages/github` owns GitHub App JWT signing, GitHub REST calls, installation lookup, installation token creation, and secret binding resolution.
 - `packages/oidc` owns generic OIDC JWT verification and the issuer-adapter contract.
+- `packages/oidc-issuer-fly` owns configured Fly.io organization issuer adapters.
 - `packages/oidc-issuer-github-actions` owns the GitHub Actions issuer adapter and trusted issuer constants.
 
 The root `wrangler.jsonc` points at `test/support/root-test-harness.ts`. It is a local/test binding harness, not a deployable product Worker.
@@ -38,7 +39,7 @@ The Worker factory is `createTokenExchangeWorker` in `workers/cyspbot-token-exch
 5. Require `requested_token_type=urn:chikachow:github-app-installation-access-token`.
 6. Treat exactly empty optional `scope` and `resource` form values as omitted, and preserve non-empty values for normalization after authentication.
 7. Reject unsupported or ambiguous fields, including non-empty RFC 8693 `audience`, malformed `scope` or `resource`, duplicate consumed fields, actor-token fields, and multi-resource forms. Non-empty `audience` maps to `invalid_target`; actor-token parameters map to `invalid_request`.
-8. Select the configured GitHub Actions issuer adapter from the token's unverified `iss` claim, verify the subject token with that adapter's trusted issuer, signing algorithm, and JWKS URI, then validate that the verified token `aud` claim is the internal service audience `cyspbot` and that any `azp` claim matches it. Unconfigured issuers are rejected before any JWKS fetch.
+8. Select a configured issuer adapter from the token's unverified `iss` claim, verify the subject token with that adapter's trusted issuer, signing algorithm, and JWKS URI, then validate that the verified token `aud` claim is the internal service audience `cyspbot` and that any `azp` claim matches it. Unconfigured issuers are rejected before any JWKS fetch.
 9. Retain the verified subject-token claims, issuer, resolved key ID, and declared subject-token type as the authenticated context.
 10. Normalize an `InstallationAccessTokenRequest` from `scope` and `resource`.
 11. Evaluate static Token Policy over `{ subjectToken, tokenRequest }`.
@@ -78,6 +79,12 @@ The GitHub Actions trusted issuer is defined in `packages/oidc-issuer-github-act
 - JWKS URI: `https://token.actions.githubusercontent.com/.well-known/jwks`
 - allowed signing algorithm: `RS256`
 
+Fly.io trusted issuers are derived from the comma-delimited `FLY_OIDC_ORG_SLUGS` Worker variable. Each valid organization slug maps to `https://oidc.fly.io/{org-slug}` and its issuer-relative `/.well-known/jwks` endpoint with `RS256`. Invalid configuration fails closed, and unconfigured Fly.io organization issuers are rejected before any JWKS fetch. Adapter sets are cached by the complete binding value so their trusted-issuer object identities remain stable and the shared verifier retains its remote JWKS cache across requests.
+
+The Fly adapter requires non-empty `org_id`, `org_name`, `app_id`, `app_name`, `machine_id`, `machine_name`, and `machine_version` claims. It binds `org_name` to the configured issuer slug and requires `sub` to equal `org_name:app_name:machine_name`. These checks establish a consistent authenticated Machine identity before policy evaluation.
+
+`workers/cyspbot-token-exchange/src/policy/fly-machine-token-policy-rule.ts` builds Fly allow rules using the configured issuer plus immutable organization and app IDs. A rule may also require one immutable Machine ID. Every rule still specifies an exact GitHub repository resource and permission map; there is no default Fly resource and no implicit production Fly grant.
+
 `packages/oidc/src/verifier.ts` verifies tokens with `jose.jwtVerify` and `jose.createRemoteJWKSet`. The generic verifier owns issuer, allowed-algorithm, signature, expiry, and JWKS checks. `packages/oidc/src/issuer-adapter.ts` defines how authentication recognizes a configured issuer and validates subject-token binding. Token-exchange authentication selects only from adapters composed in `workers/cyspbot-token-exchange/src/oidc-issuers.ts`; the unverified `iss` claim never supplies a JWKS URI. The GitHub Actions adapter owns the exact match between any signed optional authorized-party claim and cyspbot's internal service audience, while authentication validates the signed `aud` claim.
 
 OIDC/JWKS failures are classified at the verifier boundary:
@@ -115,6 +122,7 @@ Token exchange Worker bindings:
 - `GITHUB_APP_ID`
 - `GITHUB_APP_PRIVATE_KEY`
 - `GITHUB_API_BASE_URL`, defaulting to `https://api.github.com`
+- `FLY_OIDC_ORG_SLUGS`, a comma-delimited list of trusted Fly.io organization slugs
 - `TOKEN_EXCHANGE_RATE_LIMIT`
 
 Webhook receiver Worker bindings:

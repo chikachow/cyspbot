@@ -8,6 +8,7 @@
     "./authentication": "./src/authentication.ts",
     "./dependencies": "./src/dependencies.ts",
     "./oidc-issuers": "./src/oidc-issuers.ts",
+    "./policy/fly-machine-token-policy-rule": "./src/policy/fly-machine-token-policy-rule.ts",
     "./policy/token-policy": "./src/policy/token-policy.ts",
     "./policy/token-policy-rules": "./src/policy/token-policy-rules.ts",
     "./token-exchange": "./src/token-exchange.ts",
@@ -24,6 +25,7 @@
     "@cyspbot/github": "workspace:*",
     "@cyspbot/http": "workspace:*",
     "@cyspbot/oidc": "workspace:*",
+    "@cyspbot/oidc-issuer-fly": "workspace:*",
     "@cyspbot/oidc-issuer-github-actions": "workspace:*",
     "jose": "6.2.3"
   }

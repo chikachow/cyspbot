@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { flyIssuerAdapter } from "@cyspbot/oidc-issuer-fly";
 import { githubActionsIssuerAdapter } from "@cyspbot/oidc-issuer-github-actions";
 import type { OidcIssuerAdapter } from "@cyspbot/oidc/issuer-adapter";
 import { authenticateOidcToken } from "@cyspbot/token-exchange/authentication";
+import { configuredOidcIssuerAdapters } from "@cyspbot/token-exchange/oidc-issuers";
 
 import { createOidcToken, fetchOidcJwksTestDouble } from "./support/oidc.ts";
 
@@ -32,6 +34,69 @@ describe("OIDC authentication", () => {
       },
       ok: true,
     });
+  });
+
+  it("authenticates a Fly Machine token through a configured organization issuer", async () => {
+    const result = await authenticateOidcToken(
+      await createOidcToken(
+        {
+          app_id: "fly-app-id",
+          app_name: "fixture-app",
+          machine_id: "fly-machine-id",
+          machine_name: "fixture-machine",
+          machine_version: "01KWR7P5J8EP4B0QJ0M3D4P5A6",
+          nbf: Math.floor(Date.now() / 1000) - 10,
+          org_id: "fly-org-id",
+          org_name: "example-org",
+          sub: "example-org:fixture-app:fixture-machine",
+        },
+        { issuer: "https://oidc.fly.io/example-org" },
+      ),
+      "jwt",
+      request,
+      "cyspbot",
+      [flyIssuerAdapter("example-org")],
+      fetchOidcJwksTestDouble,
+    );
+
+    expect(result).toEqual({
+      context: {
+        subjectToken: {
+          claims: expect.objectContaining({ nbf: expect.any(Number) }),
+          issuer: "https://oidc.fly.io/example-org",
+          resolvedKeyId: "test-key-1",
+          subjectTokenType: "jwt",
+        },
+      },
+      ok: true,
+    });
+  });
+
+  it("reuses the Fly verifier and remote JWKS cache across authentications", async () => {
+    const fetchJwks = vi.fn(fetchOidcJwksTestDouble);
+    const adapters = configuredOidcIssuerAdapters({ FLY_OIDC_ORG_SLUGS: "example-org" });
+    const token = await createOidcToken(
+      {
+        app_id: "fly-app-id",
+        app_name: "fixture-app",
+        machine_id: "fly-machine-id",
+        machine_name: "fixture-machine",
+        machine_version: "01KWR7P5J8EP4B0QJ0M3D4P5A6",
+        nbf: Math.floor(Date.now() / 1000) - 10,
+        org_id: "fly-org-id",
+        org_name: "example-org",
+        sub: "example-org:fixture-app:fixture-machine",
+      },
+      { issuer: "https://oidc.fly.io/example-org" },
+    );
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await expect(
+        authenticateOidcToken(token, "jwt", request, "cyspbot", adapters, fetchJwks),
+      ).resolves.toMatchObject({ ok: true });
+    }
+
+    expect(fetchJwks).toHaveBeenCalledTimes(1);
   });
 
   it.each([

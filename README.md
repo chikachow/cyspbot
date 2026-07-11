@@ -1,10 +1,10 @@
 # cyspbot
 
-cyspbot is a hosted Security Token Service for GitHub Actions workflows. It verifies GitHub Actions OIDC tokens from the configured issuer and exchanges allowed workflow contexts for short-lived, repository-scoped GitHub App installation access tokens without exposing the GitHub App private key outside Cloudflare.
+cyspbot is a hosted Security Token Service for trusted automation workloads. It verifies OIDC tokens from configured GitHub Actions and Fly.io issuers and exchanges allowed caller contexts for short-lived, repository-scoped GitHub App installation access tokens without exposing the GitHub App private key outside Cloudflare.
 
 Implemented public endpoints:
 
-- `POST /token` exchanges a trusted GitHub Actions OIDC token for a scoped GitHub App installation access token.
+- `POST /token` exchanges a trusted OIDC token for a scoped GitHub App installation access token.
 - `POST /github/webhooks` accepts signed GitHub App webhook deliveries and acknowledges them without retaining raw payloads or running downstream product logic.
 
 The primary service contract is [docs/service-contract.md](docs/service-contract.md). The implementation reference is [docs/implementation.md](docs/implementation.md). The documentation map is [docs/README.md](docs/README.md).
@@ -14,9 +14,10 @@ The primary service contract is [docs/service-contract.md](docs/service-contract
 - Two deployable Worker packages under `workers/*`: `@cyspbot/token-exchange` and `@cyspbot/github-webhook-receiver`.
 - Worker names are consistently prefixed: `cyspbot-token-exchange` and `cyspbot-github-webhook-receiver`.
 - Each Worker package owns its runtime composition, HTTP route, dependency defaults, and Wrangler config. Shared implementation code lives under `packages/*`. The root Wrangler config is only the local/test binding harness.
-- `jose`-backed OIDC verification for the GitHub Actions issuer, with GitHub Actions claim parsing as a separate provider layer.
+- `jose`-backed OIDC verification behind provider-owned issuer adapters for GitHub Actions and configured Fly.io organizations.
 - GitHub App private key in a Cloudflare Worker secret binding.
 - Checked-in Token Policy code that allows Installation Token Issuance only for explicit verified subject-token issuer, CEL claim condition, resource, and permission combinations.
+- A Fly Machine policy-rule builder that requires immutable organization and app IDs and can optionally narrow a grant to one immutable Machine ID.
 
 ## Current Public Surface
 
@@ -77,6 +78,8 @@ The caller cannot supply arbitrary GitHub Apps, GitHub permissions, or repositor
 Repository identity in policy is intentionally based on GitHub owner/repository names rather than repository IDs. GitHub Actions OIDC tokens may carry repository IDs as separate signed claims, and immutable subject formats may repeat those IDs inside `sub`; the CEL condition requires the immutable `sub` IDs to agree with the corresponding signed claims, but policy matching itself remains name-based. A repository that is deleted and recreated with the same owner/name can match existing policy for that name, and token issuance still depends on the GitHub App being installed with sufficient permissions.
 
 The exact policy entries are intentionally not documented here. They are service-owned authorization data and may move from checked-in code to live configuration. The durable contract is deny-by-default: unlisted principal, resource, and permission combinations do not receive tokens.
+
+Fly Machine authentication does not create an implicit grant. A Fly rule must be added with `flyMachineInstallationTokenRule`, including the configured organization slug, signed immutable organization and app IDs, exact repository resource, and permissions. Use `machineId` when only one Machine should receive the grant.
 
 cyspbot denies forked pull request contexts, unconfigured refs, unconfigured workflow files, tag refs, unsupported event names, unsupported scopes, and non-canonical resource forms.
 

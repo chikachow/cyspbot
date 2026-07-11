@@ -1,13 +1,13 @@
 # cyspbot
 
-cyspbot is the maintainer's hosted automation application. It lets trusted GitHub Actions workflow runs obtain repository-scoped GitHub App installation access tokens without exposing the GitHub App private key outside Cloudflare.
+cyspbot is the maintainer's hosted automation application. It lets trusted automation workloads obtain repository-scoped GitHub App installation access tokens without exposing the GitHub App private key outside Cloudflare.
 
 The service contract is [docs/service-contract.md](docs/service-contract.md). The implementation reference is [docs/implementation.md](docs/implementation.md).
 
 ## Language
 
 **Caller**:
-A GitHub Actions workflow invocation that presents a GitHub-issued OIDC token to **cyspbot**.
+An automation workload that presents an OIDC token from a configured issuer to **cyspbot**.
 _Avoid_: User, human, consumer
 
 **Verified Subject Token**:
@@ -18,8 +18,12 @@ _Avoid_: Principal, raw JWT, unverified subject
 The verified JWT claims carried by a **Verified Subject Token**. **Token Policy** may read these through CEL as `claims["..."]`, but cyspbot does not require issuer-specific claims unless a checked-in policy condition names them.
 _Avoid_: Derived principal fields, caller-provided attributes
 
+**Fly Machine Identity**:
+The internally consistent organization, app, and Machine identity authenticated from a Fly.io subject token. It requires immutable IDs, binds the organization name to the configured issuer slug, and binds the subject to the organization, app, and Machine names.
+_Avoid_: Fly user, app secret, unverified Machine metadata
+
 **Installation Token Issuance**:
-The cyspbot capability that exchanges a trusted GitHub Actions OIDC token for a short-lived GitHub App installation access token for workflow runs that satisfy cyspbot's checked-in OIDC trust policy.
+The cyspbot capability that exchanges a trusted OIDC token for a short-lived GitHub App installation access token for callers that satisfy cyspbot's checked-in OIDC trust policy.
 _Avoid_: cyspbot itself, app login
 
 **Installation Token Request**:
@@ -61,8 +65,9 @@ _Avoid_: Permanent key store, token cache, caller-controlled key source
 ## Relationships
 
 - The product surface is `POST /token` and `POST /github/webhooks`.
-- A **Caller** authenticates to **cyspbot** with a GitHub OIDC token.
+- A **Caller** authenticates to **cyspbot** with an OIDC token from a configured issuer.
 - A verified **Caller** is represented internally as a **Verified Subject Token**.
+- A Fly.io **Verified Subject Token** must carry a canonical **Fly Machine Identity** before its claims can reach **Token Policy**.
 - cyspbot verifies a **Caller** only against a **Trusted OIDC Issuer**.
 - **cyspbot** normalizes exactly one **Installation Token Request** from token-exchange `scope`, token-exchange `resource`, and, for GitHub Actions defaulting only, the verified `repository` claim.
 - **Installation Token Issuance** in **cyspbot** issues at most one **Installation Token** for one **Repository Resource**.

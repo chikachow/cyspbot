@@ -48,7 +48,7 @@ export function createTokenExchangeRequestRuntime(
         subjectTokenType,
         request,
         cyspbotOidcAudience,
-        configuredOidcIssuerAdapters,
+        configuredOidcIssuerAdapters(env),
         dependencies.fetchJwks,
       ),
     issueInstallationToken: (context, tokenRequest) =>
