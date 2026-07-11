@@ -32,7 +32,7 @@ Requests are rate limited by the `TOKEN_EXCHANGE_RATE_LIMIT` Cloudflare binding 
 https://api.github.com/repos/{owner}/{repo}
 ```
 
-Repository shorthand, GitHub HTML URLs, endpoint URLs, duplicate resource fields, query strings, fragments, userinfo, encoded slashes, dot segments, leading or trailing whitespace, arrays, and multi-resource forms are rejected. When `resource` is omitted or exactly empty, cyspbot normalizes it to the verified GitHub Actions principal repository. A whitespace-only `resource` field is rejected as `invalid_target`; omission and `resource=` are equivalent.
+Repository shorthand, GitHub HTML URLs, endpoint URLs, duplicate resource fields, query strings, fragments, userinfo, encoded slashes, dot segments, leading or trailing whitespace, arrays, and multi-resource forms are rejected. When `resource` is omitted or exactly empty, cyspbot normalizes it to the verified GitHub Actions subject token's signed repository claim. A whitespace-only `resource` field is rejected as `invalid_target`; omission and `resource=` are equivalent.
 
 `scope`, when present, is a single-ASCII-space-delimited list of exact GitHub App permission requests, such as `actions:read`, `actions:write`, or `contents:read pull_requests:read`. Scope order is not significant, but leading whitespace, trailing whitespace, repeated spaces, tabs, newlines, and other non-`0x20` separators are rejected. When `scope` is omitted or exactly empty, cyspbot normalizes it to `contents:write pull_requests:write`. A whitespace-only `scope` field is rejected as `invalid_scope`; omission and `scope=` are equivalent.
 
@@ -85,13 +85,15 @@ Installation Token Issuance is allowed only when the normalized installation tok
 - if the OIDC token has an `azp` claim, that claim matches `cyspbot`
 - `event_name` is listed by the matching rule
 - `ref_type` is `branch`
-- `sub` is either the expected legacy repository/ref form or the immutable form constructed from the signed repository and owner ID claims
+- `sub` is either the expected legacy repository/ref form or an immutable form consistent with the signed repository ID and, when present, owner ID claim
 - `repository`, `ref`, `sub`, and `workflow_ref` exactly satisfy the matching rule's CEL condition
 - normalized `resource` and `permissions` exactly match the matching rule
 
 The caller cannot supply arbitrary GitHub Apps, GitHub permissions, or repository ids. The validated `scope` and validated `resource` are normalized into one installation token request. Token Policy answers whether the verified subject token may receive exactly that token request, including cross-owner requests when explicit policy allows them. cyspbot denies unconfigured issuer/condition/resource/permission combinations with `invalid_target`. The [GitHub App installation](https://docs.github.com/en/rest/apps/apps#create-an-installation-access-token-for-an-app) remains the upper-bound permission authority.
 
-Policy evaluates only facts present in the verified token. For the common legacy subject form, the rule requires `sub` to contain the same repository name as the signed `repository` claim. For GitHub's immutable subject form, the CEL condition constructs the expected `sub` from the signed repository name, `repository_id`, and `repository_owner_id`, so inconsistent names or IDs do not match.
+Policy evaluates only facts present in the verified token. For the common legacy subject form, the rule requires `sub` to contain the same repository name as the signed `repository` claim; `repository_id` and `repository_owner_id` are not inputs to that authorization decision. For GitHub's immutable subject form, `repository_id` must be present and consistent with `sub`. When the optional `repository_owner_id` claim is present, it must also be a string consistent with `sub`; when it is absent or null, policy accepts any owner ID embedded in the otherwise matching immutable subject. These IDs check internal subject consistency but are not independent policy keys.
+
+Missing or incorrectly typed claims used by a configured policy condition authenticate as verified token data but fail policy with `400 {"error":"invalid_target"}`. Claims that the matching rule does not use, such as GitHub's `actor` metadata, do not affect authorization. Invalid issuer, signature, audience, expiry, `azp`, or subject binding remains an invalid subject token and returns `400 {"error":"invalid_request"}`. Subject matching is literal; percent-encoded repository or ref components are not decoded into an allowed subject.
 
 Token Policy intentionally uses GitHub owner/repository names as the externally meaningful repository identifier, even though [GitHub Actions OIDC](https://docs.github.com/en/actions/reference/security/oidc) also exposes immutable repository and owner IDs and GitHub's installation-token API can scope by `repository_ids`. Those IDs participate in the immutable-subject consistency condition but are not independent policy keys. A repository that is deleted and recreated with the same owner/name can continue to match policy for that name when the GitHub App installation still grants sufficient permissions.
 

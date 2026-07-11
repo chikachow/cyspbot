@@ -11,7 +11,7 @@ import {
   tokenExchangeRequestBody,
 } from "./support/worker.ts";
 import { subjectToken } from "./support/token-policy-fixtures.ts";
-import { githubActionsRule } from "./support/token-policy.ts";
+import { githubActionsInstallationTokenRule } from "../workers/cyspbot-token-exchange/src/policy/github-actions-token-policy-rule.ts";
 
 describe("cyspbot-token-exchange", () => {
   it("short-circuits through the request runtime when rate limited", async () => {
@@ -197,7 +197,7 @@ describe("cyspbot-token-exchange", () => {
       },
       {
         tokenPolicyRules: [
-          githubActionsRule({
+          githubActionsInstallationTokenRule({
             eventNames: ["workflow_dispatch"],
             id: "test-github-read-permissions",
             permissions: {
@@ -906,6 +906,101 @@ describe("cyspbot-token-exchange", () => {
     });
   });
 
+  it.each([
+    ["missing event name", { event_name: undefined }],
+    ["non-string ref type", { ref_type: 123 }],
+    ["missing repository", { repository: undefined }],
+    ["null workflow ref", { workflow_ref: null }],
+  ])("maps a policy claim with %s to invalid_target", async (_name, claims) => {
+    const response = await fetchTokenExchange("https://example.test/token", {
+      body: await tokenExchangeRequestBody({ claims }),
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_target",
+    });
+  });
+
+  it("maps an empty subject binding to invalid_request", async () => {
+    const response = await fetchTokenExchange("https://example.test/token", {
+      body: await tokenExchangeRequestBody({ claims: { sub: "" } }),
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_request",
+    });
+  });
+
+  it("ignores policy-irrelevant GitHub metadata", async () => {
+    const response = await fetchTokenExchange("https://example.test/token", {
+      body: await tokenExchangeRequestBody({ claims: { actor: 123 } }),
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      access_token: "ghs_test_token",
+      issued_token_type: githubInstallationAccessTokenType,
+    });
+  });
+
+  it.each([
+    [
+      "repository",
+      "repo:fixture-owner%2Ffixture-source-repository:ref:refs/heads/fixture-base-branch",
+    ],
+    ["ref", "repo:fixture-owner/fixture-source-repository:ref:refs%2Fheads%2Ffixture-base-branch"],
+  ])("rejects a percent-encoded legacy subject %s", async (_component, sub) => {
+    const response = await fetchTokenExchange("https://example.test/token", {
+      body: await tokenExchangeRequestBody({
+        claims: { sub },
+      }),
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_target",
+    });
+  });
+
+  it.each([
+    ["absent", undefined],
+    ["null", null],
+    ["empty", ""],
+    ["non-string", 123],
+  ])("does not use a %s repository id for legacy subject authorization", async (_name, id) => {
+    const response = await fetchTokenExchange("https://example.test/token", {
+      body: await tokenExchangeRequestBody({ claims: { repository_id: id } }),
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      access_token: "ghs_test_token",
+      issued_token_type: githubInstallationAccessTokenType,
+    });
+  });
+
   it("exchanges tokens whose oidc subject uses GitHub's immutable repository format", async () => {
     const response = await fetchTokenExchange("https://example.test/token", {
       body: await tokenExchangeRequestBody({
@@ -952,11 +1047,15 @@ describe("cyspbot-token-exchange", () => {
     },
   );
 
-  it("does not use signed repository owner claims as policy criteria", async () => {
+  it.each([
+    ["mismatched string", "999999"],
+    ["empty string", ""],
+    ["non-string", 123],
+  ])("does not use a %s owner id for legacy subject authorization", async (_name, ownerId) => {
     const response = await fetchTokenExchange("https://example.test/token", {
       body: await tokenExchangeRequestBody({
         claims: {
-          repository_owner_id: "999999",
+          repository_owner_id: ownerId,
         },
       }),
       headers: {
@@ -970,6 +1069,60 @@ describe("cyspbot-token-exchange", () => {
       access_token: "ghs_test_token",
       issued_token_type: githubInstallationAccessTokenType,
       scope: "contents:write pull_requests:write",
+    });
+  });
+
+  it.each([
+    ["missing repository id", { repository_id: undefined }],
+    ["non-string repository id", { repository_id: 123 }],
+    ["non-string repository owner id", { repository_owner_id: 123 }],
+  ])("rejects an immutable GitHub subject with a %s", async (_name, claims) => {
+    const response = await fetchTokenExchange("https://example.test/token", {
+      body: await tokenExchangeRequestBody({
+        claims: {
+          ...claims,
+          sub: "repo:fixture-owner@555555/fixture-source-repository@123456789:ref:refs/heads/fixture-base-branch",
+        },
+      }),
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_target",
+    });
+  });
+
+  it.each([
+    [
+      "repository owner id",
+      {
+        repository_owner_id: "999999",
+        sub: "repo:fixture-owner@555555/fixture-source-repository@123456789:ref:refs/heads/fixture-base-branch",
+      },
+    ],
+    [
+      "repository id",
+      {
+        repository_id: "999999999",
+        sub: "repo:fixture-owner@555555/fixture-source-repository@123456789:ref:refs/heads/fixture-base-branch",
+      },
+    ],
+  ])("rejects immutable GitHub subjects with a mismatched signed %s", async (_name, claims) => {
+    const response = await fetchTokenExchange("https://example.test/token", {
+      body: await tokenExchangeRequestBody({ claims }),
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_target",
     });
   });
 
