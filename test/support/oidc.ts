@@ -1,7 +1,5 @@
 import { createPrivateKey } from "node:crypto";
 
-import { githubActionsTrustedIssuer } from "@cyspbot/github-actions-oidc/issuer";
-import { OidcTokenVerifier } from "@cyspbot/oidc/verifier";
 import { SignJWT } from "jose";
 
 import {
@@ -26,11 +24,6 @@ export interface TokenExchangeRequestBodyOptions {
   requestedTokenType?: string | null;
   tokenOptions?: CreateOidcTokenOptions;
 }
-
-export const testOidcVerifier = new OidcTokenVerifier({
-  fetchJwks: fetchOidcJwksTestDouble,
-  issuer: githubActionsTrustedIssuer,
-});
 
 export function authorizationHeaders(
   overrides?: Partial<Record<string, unknown>>,

@@ -1,10 +1,7 @@
 import { jsonResponse } from "@cyspbot/http/problem-details";
 import { readRequestBodyUpTo } from "@cyspbot/http/request-body";
-import { cyspbotOidcAudience } from "./authentication.ts";
-import { issueInstallationTokenForContext } from "./policy/installation-token-issuance.ts";
 import { normalizeInstallationAccessTokenRequest } from "./policy/token-policy.ts";
-import type { TokenExchangeDependencies } from "./dependencies.ts";
-import { configuredOidcIssuerAdapters } from "./dependencies.ts";
+import type { TokenExchangeRequestRuntime } from "./dependencies.ts";
 
 const maxTokenExchangeBodyBytes = 64 * 1024;
 const tokenExchangeGrantType = "urn:ietf:params:oauth:grant-type:token-exchange";
@@ -29,14 +26,11 @@ export function tokenExchangeMethodNotAllowedResponse(): Response {
 
 export async function handleTokenExchangeRequest(
   request: Request,
-  env: TokenExchangeBindings,
-  dependencies: TokenExchangeDependencies,
+  runtime: TokenExchangeRequestRuntime,
 ): Promise<Response> {
-  const rateLimit = await env.TOKEN_EXCHANGE_RATE_LIMIT.limit({
-    key: tokenExchangeRateLimitKey(request),
-  });
+  const rateLimit = await runtime.rateLimit(tokenExchangeRateLimitKey(request));
 
-  if (!rateLimit.success) {
+  if (!rateLimit) {
     return oauthErrorResponse(429, "temporarily_unavailable");
   }
 
@@ -87,12 +81,10 @@ export async function handleTokenExchangeRequest(
     return oauthErrorResponse(400, tokenRequestOptions.error);
   }
 
-  const authentication = await dependencies.authenticateOidcToken(
-    subjectToken,
+  const authentication = await runtime.authenticateSubjectToken({
     request,
-    cyspbotOidcAudience,
-    configuredOidcIssuerAdapters,
-  );
+    subjectToken,
+  });
 
   if (!authentication.ok) {
     return oauthErrorResponse(
@@ -111,11 +103,9 @@ export async function handleTokenExchangeRequest(
     return oauthErrorResponse(400, tokenRequest.error);
   }
 
-  const result = await issueInstallationTokenForContext(
-    env,
+  const result = await runtime.issueInstallationToken(
     authentication.context,
     tokenRequest.tokenRequest,
-    dependencies,
   );
 
   if (!result.ok) {
@@ -127,7 +117,7 @@ export async function handleTokenExchangeRequest(
 
   return oauthTokenResponse({
     access_token: result.token,
-    expires_in: expiresInSeconds(result.expiresAt, dependencies.now()),
+    expires_in: expiresInSeconds(result.expiresAt, runtime.now()),
     issued_token_type: githubInstallationAccessTokenType,
     scope: tokenRequest.tokenRequest.scope,
     token_type: "Bearer",

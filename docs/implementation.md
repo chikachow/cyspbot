@@ -27,9 +27,9 @@ The root `wrangler.jsonc` points at `test/support/root-test-harness.ts`. It is a
 
 - `POST /token`
 
-The Worker factory is `createTokenExchangeWorker` in `workers/cyspbot-token-exchange/src/worker.ts`. Requests with any other path return problem-details `404`. Non-`POST` requests to `/token` return OAuth error JSON with `400 {"error":"invalid_request"}`.
+The Worker factory is `createTokenExchangeWorker` in `workers/cyspbot-token-exchange/src/worker.ts`. It constructs a request-scoped `TokenExchangeRequestRuntime` from Worker bindings and infrastructure dependencies, then passes that narrow runtime to the request handler. Requests with any other path return problem-details `404`. Non-`POST` requests to `/token` return OAuth error JSON with `400 {"error":"invalid_request"}`.
 
-`handleTokenExchangeRequest` in `workers/cyspbot-token-exchange/src/token-exchange.ts` implements the request flow:
+`handleTokenExchangeRequest` in `workers/cyspbot-token-exchange/src/token-exchange.ts` implements the request flow without direct access to Cloudflare bindings. The runtime supplies rate limiting, subject-token authentication, installation-token issuance, and the current time:
 
 1. Apply `TOKEN_EXCHANGE_RATE_LIMIT` before parsing the request body.
 2. Require `application/x-www-form-urlencoded`.

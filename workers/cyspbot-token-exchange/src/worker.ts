@@ -4,12 +4,13 @@ import {
   tokenExchangeMethodNotAllowedResponse,
 } from "./token-exchange.ts";
 import {
-  defaultTokenExchangeDependencies,
-  type TokenExchangeDependencies,
+  createTokenExchangeRequestRuntime,
+  defaultTokenExchangeWorkerDependencies,
+  type TokenExchangeWorkerDependencies,
 } from "./dependencies.ts";
 
 export function createTokenExchangeWorker(
-  dependencies: TokenExchangeDependencies = defaultTokenExchangeDependencies,
+  dependencies: TokenExchangeWorkerDependencies = defaultTokenExchangeWorkerDependencies,
 ): ExportedHandler<TokenExchangeBindings> {
   return {
     fetch(request, env) {
@@ -23,7 +24,10 @@ export function createTokenExchangeWorker(
         return tokenExchangeMethodNotAllowedResponse();
       }
 
-      return handleTokenExchangeRequest(request, env, dependencies);
+      return handleTokenExchangeRequest(
+        request,
+        createTokenExchangeRequestRuntime(env, dependencies),
+      );
     },
   };
 }

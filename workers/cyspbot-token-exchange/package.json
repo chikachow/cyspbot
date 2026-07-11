@@ -10,6 +10,7 @@
     "./oidc-issuers": "./src/oidc-issuers.ts",
     "./policy/token-policy": "./src/policy/token-policy.ts",
     "./policy/token-policy-rules": "./src/policy/token-policy-rules.ts",
+    "./token-exchange": "./src/token-exchange.ts",
     "./worker": "./src/worker.ts"
   },
   "scripts": {
