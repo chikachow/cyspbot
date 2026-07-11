@@ -84,6 +84,7 @@ export async function handleTokenExchangeRequest(
   const authentication = await runtime.authenticateSubjectToken({
     request,
     subjectToken,
+    subjectTokenType: subjectTokenType === oidcIdTokenType ? "id_token" : "jwt",
   });
 
   if (!authentication.ok) {
@@ -94,10 +95,13 @@ export async function handleTokenExchangeRequest(
     );
   }
 
-  const tokenRequest = normalizeInstallationAccessTokenRequest(authentication.context.principal, {
-    resource: tokenRequestOptions.options.resource,
-    scope: tokenRequestOptions.options.scope,
-  });
+  const tokenRequest = normalizeInstallationAccessTokenRequest(
+    authentication.context.subjectToken,
+    {
+      resource: tokenRequestOptions.options.resource,
+      scope: tokenRequestOptions.options.scope,
+    },
+  );
 
   if (!tokenRequest.ok) {
     return oauthErrorResponse(400, tokenRequest.error);

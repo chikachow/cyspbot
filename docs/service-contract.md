@@ -78,24 +78,22 @@ OIDC/JWKS provider unavailability means cyspbot cannot obtain a usable trusted k
 
 ### Token Policy
 
-Installation Token Issuance is allowed only when the normalized installation token request matches an explicit checked-in Token Policy rule:
+Installation Token Issuance is allowed only when the normalized installation token request matches an explicit checked-in Token Policy rule. Each rule binds a verified subject-token issuer, exact resource and permissions, and a fail-closed CEL condition over signed `claims`, `subject`, and normalized `request` data:
 
-- the caller is a verified [GitHub Actions OIDC](https://docs.github.com/en/actions/concepts/security/openid-connect) principal from `https://token.actions.githubusercontent.com`
+- the caller presents a verified [GitHub Actions OIDC](https://docs.github.com/en/actions/concepts/security/openid-connect) subject token from `https://token.actions.githubusercontent.com`
 - the signed subject token audience is `cyspbot`
 - if the OIDC token has an `azp` claim, that claim matches `cyspbot`
 - `event_name` is listed by the matching rule
-- the OIDC subject context is `ref`
 - `ref_type` is `branch`
-- the parsed subject repository name matches the signed `repository` claim
-- when the OIDC subject uses GitHub's immutable repository syntax, the parsed repository ID matches the signed `repository_id` claim and the parsed owner ID matches `repository_owner_id` when GitHub supplies that claim
-- `repository`, `ref`, parsed subject ref, and `workflow_ref` exactly match the matching rule
+- `sub` is either the expected legacy repository/ref form or the immutable form constructed from the signed repository and owner ID claims
+- `repository`, `ref`, `sub`, and `workflow_ref` exactly satisfy the matching rule's CEL condition
 - normalized `resource` and `permissions` exactly match the matching rule
 
-The caller cannot supply arbitrary GitHub Apps, GitHub permissions, or repository ids. The validated `scope` and validated `resource` are normalized into one installation token request. Token Policy answers whether the verified GitHub Actions principal may receive exactly that token request, including cross-owner requests when explicit policy allows them. cyspbot denies unconfigured principal/resource/permission combinations with `invalid_target`. The [GitHub App installation](https://docs.github.com/en/rest/apps/apps#create-an-installation-access-token-for-an-app) remains the upper-bound permission authority.
+The caller cannot supply arbitrary GitHub Apps, GitHub permissions, or repository ids. The validated `scope` and validated `resource` are normalized into one installation token request. Token Policy answers whether the verified subject token may receive exactly that token request, including cross-owner requests when explicit policy allows them. cyspbot denies unconfigured issuer/condition/resource/permission combinations with `invalid_target`. The [GitHub App installation](https://docs.github.com/en/rest/apps/apps#create-an-installation-access-token-for-an-app) remains the upper-bound permission authority.
 
-Principal derivation validates only facts present in the signed token. For the common legacy subject form, `sub` contains the repository name but not the repository ID or owner ID, so cyspbot checks the parsed subject repository name against the signed `repository` claim. For GitHub's immutable subject form, `sub` also includes owner and repository IDs, so cyspbot checks the parsed repository ID against the signed `repository_id` claim and checks the parsed owner ID against `repository_owner_id` when GitHub supplies that claim.
+Policy evaluates only facts present in the verified token. For the common legacy subject form, the rule requires `sub` to contain the same repository name as the signed `repository` claim. For GitHub's immutable subject form, the CEL condition constructs the expected `sub` from the signed repository name, `repository_id`, and `repository_owner_id`, so inconsistent names or IDs do not match.
 
-Token Policy intentionally uses GitHub owner/repository names as the externally meaningful repository identifier, even though [GitHub Actions OIDC](https://docs.github.com/en/actions/reference/security/oidc) also exposes immutable repository and owner IDs and GitHub's installation-token API can scope by `repository_ids`. Those IDs are authenticated principal facts, not policy keys. A repository that is deleted and recreated with the same owner/name can continue to match policy for that name when the GitHub App installation still grants sufficient permissions.
+Token Policy intentionally uses GitHub owner/repository names as the externally meaningful repository identifier, even though [GitHub Actions OIDC](https://docs.github.com/en/actions/reference/security/oidc) also exposes immutable repository and owner IDs and GitHub's installation-token API can scope by `repository_ids`. Those IDs participate in the immutable-subject consistency condition but are not independent policy keys. A repository that is deleted and recreated with the same owner/name can continue to match policy for that name when the GitHub App installation still grants sufficient permissions.
 
 The omitted `scope` and `resource` default produces this normalized permission request for cyspbot's service-owned GitHub App and the verified principal repository:
 

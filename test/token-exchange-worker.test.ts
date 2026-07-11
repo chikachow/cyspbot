@@ -10,7 +10,8 @@ import {
   testEnv,
   tokenExchangeRequestBody,
 } from "./support/worker.ts";
-import { principal } from "./support/token-policy-fixtures.ts";
+import { subjectToken } from "./support/token-policy-fixtures.ts";
+import { githubActionsRule } from "./support/token-policy.ts";
 
 describe("cyspbot-token-exchange", () => {
   it("short-circuits through the request runtime when rate limited", async () => {
@@ -38,9 +39,7 @@ describe("cyspbot-token-exchange", () => {
 
   it("delegates authenticated context and normalized token request through the runtime", async () => {
     const context = {
-      issuer: "https://token.actions.githubusercontent.com",
-      principal,
-      resolvedKeyId: "test-key-1",
+      subjectToken,
     };
     const authenticateSubjectToken = vi.fn(async () => ({ context, ok: true }) as const);
     const issueInstallationToken = vi.fn(async () => ({
@@ -66,6 +65,7 @@ describe("cyspbot-token-exchange", () => {
     expect(authenticateSubjectToken).toHaveBeenCalledWith({
       request: expect.any(Request),
       subjectToken: expect.any(String),
+      subjectTokenType: "id_token",
     });
     expect(issueInstallationToken).toHaveBeenCalledWith(
       context,
@@ -197,18 +197,19 @@ describe("cyspbot-token-exchange", () => {
       },
       {
         tokenPolicyRules: [
-          {
+          githubActionsRule({
+            eventNames: ["workflow_dispatch"],
+            id: "test-github-read-permissions",
             permissions: {
               contents: "read",
               pull_requests: "read",
             },
-            principalEventNames: ["workflow_dispatch"],
-            principalRef: "refs/heads/fixture-base-branch",
-            principalRepository: "fixture-owner/fixture-source-repository",
-            principalWorkflowRef:
+            ref: "refs/heads/fixture-base-branch",
+            repository: "fixture-owner/fixture-source-repository",
+            workflowRef:
               "fixture-owner/fixture-source-repository/.github/workflows/fixture-token-request.yml@refs/heads/fixture-base-branch",
             resource: "https://api.github.com/repos/fixture-owner/fixture-source-repository",
-          },
+          }),
         ],
       },
     );
@@ -925,6 +926,31 @@ describe("cyspbot-token-exchange", () => {
       scope: "contents:write pull_requests:write",
     });
   });
+
+  it.each([undefined, null])(
+    "accepts immutable GitHub subjects when the optional owner id claim is %s",
+    async (repositoryOwnerId) => {
+      const response = await fetchTokenExchange("https://example.test/token", {
+        body: await tokenExchangeRequestBody({
+          claims: {
+            repository_owner_id: repositoryOwnerId,
+            sub: "repo:fixture-owner@555555/fixture-source-repository@123456789:ref:refs/heads/fixture-base-branch",
+          },
+        }),
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        method: "POST",
+      });
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({
+        access_token: "ghs_test_token",
+        issued_token_type: githubInstallationAccessTokenType,
+        scope: "contents:write pull_requests:write",
+      });
+    },
+  );
 
   it("does not use signed repository owner claims as policy criteria", async () => {
     const response = await fetchTokenExchange("https://example.test/token", {

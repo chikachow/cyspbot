@@ -1,15 +1,21 @@
-import type { GitHubActionsPrincipal } from "@cyspbot/github-actions-oidc/principals";
 import type { OidcIssuerAdapter } from "@cyspbot/oidc/issuer-adapter";
-import type { TrustedOidcIssuer } from "@cyspbot/oidc";
+import type { TrustedOidcIssuer, VerifiedOidcToken } from "@cyspbot/oidc";
 import { OidcTokenVerifier } from "@cyspbot/oidc/verifier";
 import { decodeJwt } from "jose";
 
 export const cyspbotOidcAudience = "cyspbot";
 
-export interface AuthenticatedContext {
+export type SubjectTokenType = "id_token" | "jwt";
+
+export interface VerifiedSubjectToken {
+  claims: VerifiedOidcToken["claims"];
   issuer: string;
-  principal: GitHubActionsPrincipal;
   resolvedKeyId: string | null;
+  subjectTokenType: SubjectTokenType;
+}
+
+export interface AuthenticatedContext {
+  subjectToken: VerifiedSubjectToken;
 }
 
 type AuthenticateRequestFailureReason =
@@ -34,9 +40,10 @@ export type AuthenticateRequestResult = AuthenticateRequestFailure | Authenticat
 
 export async function authenticateOidcToken(
   token: string,
+  subjectTokenType: SubjectTokenType,
   request: Request,
   expectedAudience: string,
-  issuerAdapters: readonly OidcIssuerAdapter<GitHubActionsPrincipal>[],
+  issuerAdapters: readonly OidcIssuerAdapter<unknown>[],
   fetchJwks?: typeof fetch,
 ): Promise<AuthenticateRequestResult> {
   const trustedIssuer = trustedIssuerForSubjectToken(token, issuerAdapters);
@@ -75,20 +82,6 @@ export async function authenticateOidcToken(
     };
   }
 
-  const principal = trustedIssuer.adapter.derivePrincipal(verified.token.claims);
-
-  if (principal === null) {
-    logAuthFailure(request, "invalid_token");
-
-    return {
-      ok: false,
-      reason: "invalid_token",
-      responseHeaders: {
-        "www-authenticate": "Bearer",
-      },
-    };
-  }
-
   if (
     !hasMatchingAudience(verified.token.claims.aud, expectedAudience) ||
     !trustedIssuer.adapter.validateSubjectTokenBinding({
@@ -109,9 +102,12 @@ export async function authenticateOidcToken(
 
   return {
     context: {
-      issuer: verified.token.issuer,
-      principal,
-      resolvedKeyId: verified.token.resolvedKeyId,
+      subjectToken: {
+        claims: verified.token.claims,
+        issuer: verified.token.issuer,
+        resolvedKeyId: verified.token.resolvedKeyId,
+        subjectTokenType,
+      },
     },
     ok: true,
   };
@@ -121,10 +117,10 @@ const oidcVerifiers = new WeakMap<TrustedOidcIssuer, OidcTokenVerifier>();
 
 function trustedIssuerForSubjectToken(
   token: string,
-  issuerAdapters: readonly OidcIssuerAdapter<GitHubActionsPrincipal>[],
+  issuerAdapters: readonly OidcIssuerAdapter<unknown>[],
 ):
   | {
-      adapter: OidcIssuerAdapter<GitHubActionsPrincipal>;
+      adapter: OidcIssuerAdapter<unknown>;
       issuer: TrustedOidcIssuer;
       ok: true;
     }

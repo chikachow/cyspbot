@@ -3,7 +3,7 @@ import {
   resolveInstallationForRepository,
 } from "@cyspbot/github/app";
 import { GitHubApiError, type GitHubApiDependencies } from "@cyspbot/github/http";
-import type { AuthenticatedContext } from "../authentication.ts";
+import type { AuthenticatedContext, VerifiedSubjectToken } from "../authentication.ts";
 import {
   evaluateConfiguredTokenPolicy,
   parseGitHubRepositoryResource,
@@ -36,14 +36,14 @@ export async function issueInstallationTokenForContext(
   tokenRequest: InstallationAccessTokenRequest,
   dependencies: InstallationTokenIssuanceDependencies,
 ): Promise<InstallationTokenIssuanceResult> {
-  const { principal } = authenticationContext;
+  const { subjectToken } = authenticationContext;
   let policyDecision: TokenPolicyDecision | undefined;
   let targetInstallationId: number | undefined;
 
   try {
     policyDecision = evaluateConfiguredTokenPolicy(
       {
-        principal,
+        subjectToken,
         tokenRequest,
       },
       dependencies.tokenPolicyRules ?? defaultTokenPolicyRules,
@@ -77,14 +77,14 @@ export async function issueInstallationTokenForContext(
     console.info({
       event: "installation_token_issuance_succeeded",
       expires_at: installationToken.expiresAt,
-      principal: principalLogFields(authenticationContext),
+      subject_token: subjectTokenLogFields(authenticationContext),
       target_installation: {
         id: targetInstallation.id,
         repository: requestedResourceName,
       },
       token_policy: {
         matched: true,
-        rule: policyDecision.matchedRule,
+        rule_id: policyDecision.matchedRule.id,
       },
       token_request: tokenRequestLogFields(tokenRequest),
     });
@@ -104,7 +104,7 @@ export async function issueInstallationTokenForContext(
         status: error instanceof GitHubApiError ? error.status : undefined,
       },
       event: "installation_token_issuance_failed",
-      principal: principalLogFields(authenticationContext),
+      subject_token: subjectTokenLogFields(authenticationContext),
       target_installation: {
         id: targetInstallationId,
       },
@@ -150,28 +150,21 @@ function logMessageForInstallationTokenIssuanceError(error: unknown): string {
   return "unexpected Installation Token Issuance error";
 }
 
-function principalLogFields(authenticationContext: AuthenticatedContext): Record<string, unknown> {
-  const { principal } = authenticationContext;
-
+function subjectTokenLogFields(
+  authenticationContext: AuthenticatedContext,
+): Record<string, unknown> {
   return {
-    actor: principal.actor,
-    event_name: principal.eventName,
-    issuer: authenticationContext.issuer,
-    ref: principal.ref,
-    ref_type: principal.refType,
-    repository: principal.repository,
-    repository_id: principal.repositoryId,
-    repository_owner_id: principal.repositoryOwnerId,
-    repository_visibility: principal.repositoryVisibility,
-    resolved_key_id: authenticationContext.resolvedKeyId,
-    run_attempt: principal.runAttempt,
-    run_id: principal.runId,
-    sha: principal.sha,
-    sub: principal.rawSubject,
-    subject_kind: principal.subject.kind,
-    workflow: principal.workflow,
-    workflow_ref: principal.workflowRef,
+    issuer: authenticationContext.subjectToken.issuer,
+    resolved_key_id: authenticationContext.subjectToken.resolvedKeyId,
+    sub: subjectTokenSubjectLogValue(authenticationContext.subjectToken),
+    subject_token_type: authenticationContext.subjectToken.subjectTokenType,
   };
+}
+
+function subjectTokenSubjectLogValue(subjectToken: VerifiedSubjectToken): string | null {
+  const subject = subjectToken.claims.sub;
+
+  return typeof subject === "string" ? subject : null;
 }
 
 function tokenRequestLogFields(
@@ -199,7 +192,7 @@ function tokenPolicyLogFields(
   if (policyDecision?.decision === "allow") {
     return {
       matched: true,
-      rule: policyDecision.matchedRule,
+      rule_id: policyDecision.matchedRule.id,
     };
   }
 

@@ -13,6 +13,7 @@ describe("OIDC authentication", () => {
   it("authenticates a token through its configured issuer adapter", async () => {
     const result = await authenticateOidcToken(
       await createOidcToken(),
+      "id_token",
       request,
       "cyspbot",
       [githubActionsIssuerAdapter],
@@ -21,11 +22,14 @@ describe("OIDC authentication", () => {
 
     expect(result).toEqual({
       context: {
-        issuer: "https://token.actions.githubusercontent.com",
-        principal: expect.objectContaining({
-          repository: "fixture-owner/fixture-source-repository",
-        }),
-        resolvedKeyId: "test-key-1",
+        subjectToken: {
+          claims: expect.objectContaining({
+            repository: "fixture-owner/fixture-source-repository",
+          }),
+          issuer: "https://token.actions.githubusercontent.com",
+          resolvedKeyId: "test-key-1",
+          subjectTokenType: "id_token",
+        },
       },
       ok: true,
     });
@@ -39,7 +43,14 @@ describe("OIDC authentication", () => {
     const token = await createToken();
 
     await expect(
-      authenticateOidcToken(token, request, "cyspbot", [githubActionsIssuerAdapter], fetchJwks),
+      authenticateOidcToken(
+        token,
+        "id_token",
+        request,
+        "cyspbot",
+        [githubActionsIssuerAdapter],
+        fetchJwks,
+      ),
     ).resolves.toEqual({
       ok: false,
       reason: "invalid_token",
@@ -58,6 +69,7 @@ describe("OIDC authentication", () => {
     await expect(
       authenticateOidcToken(
         await createOidcToken(),
+        "id_token",
         request,
         "cyspbot",
         [invalidAdapter],
@@ -81,6 +93,7 @@ describe("OIDC authentication", () => {
     await expect(
       authenticateOidcToken(
         await createOidcToken(),
+        "id_token",
         request,
         "cyspbot",
         [decliningAdapter],
@@ -100,6 +113,7 @@ describe("OIDC authentication", () => {
   ])("rejects %s", async (_label, createToken) => {
     const result = await authenticateOidcToken(
       await createToken(),
+      "id_token",
       request,
       "cyspbot",
       [githubActionsIssuerAdapter],

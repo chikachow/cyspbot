@@ -7,6 +7,7 @@ import {
   authenticateOidcToken as defaultAuthenticateOidcToken,
   type AuthenticateRequestResult,
   type AuthenticatedContext,
+  type SubjectTokenType,
   cyspbotOidcAudience,
 } from "./authentication.ts";
 import { configuredOidcIssuerAdapters } from "./oidc-issuers.ts";
@@ -16,6 +17,7 @@ export interface TokenExchangeRequestRuntime {
   authenticateSubjectToken(input: {
     request: Request;
     subjectToken: string;
+    subjectTokenType: SubjectTokenType;
   }): Promise<AuthenticateRequestResult>;
   issueInstallationToken(
     context: AuthenticatedContext,
@@ -40,9 +42,10 @@ export function createTokenExchangeRequestRuntime(
   dependencies: TokenExchangeWorkerDependencies,
 ): TokenExchangeRequestRuntime {
   return {
-    authenticateSubjectToken: ({ request, subjectToken }) =>
+    authenticateSubjectToken: ({ request, subjectToken, subjectTokenType }) =>
       defaultAuthenticateOidcToken(
         subjectToken,
+        subjectTokenType,
         request,
         cyspbotOidcAudience,
         configuredOidcIssuerAdapters,

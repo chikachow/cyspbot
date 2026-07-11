@@ -16,7 +16,7 @@ The primary service contract is [docs/service-contract.md](docs/service-contract
 - Each Worker package owns its runtime composition, HTTP route, dependency defaults, and Wrangler config. Shared implementation code lives under `packages/*`. The root Wrangler config is only the local/test binding harness.
 - `jose`-backed OIDC verification for the GitHub Actions issuer, with GitHub Actions claim parsing as a separate provider layer.
 - GitHub App private key in a Cloudflare Worker secret binding.
-- Checked-in Token Policy code that allows Installation Token Issuance only for explicit GitHub Actions OIDC principal, GitHub App, workflow, ref, resource, and permission combinations.
+- Checked-in Token Policy code that allows Installation Token Issuance only for explicit verified subject-token issuer, CEL claim condition, resource, and permission combinations.
 
 ## Current Public Surface
 
@@ -60,7 +60,7 @@ Signed `ping` deliveries return `202 {"accepted":true,"event":"ping"}`. Any othe
 
 ## Current Token Policy
 
-Installation Token Issuance is allowed only when a normalized token request matches an explicit checked-in Token Policy rule.
+Installation Token Issuance is allowed only when a normalized token request matches an explicit checked-in Token Policy rule. Rules bind the verified subject-token issuer, exact resource and permissions, and a CEL condition over signed `claims`, `subject`, and normalized `request` data.
 
 - the caller is a verified GitHub Actions principal from the configured issuer
 - the signed subject token audience is `cyspbot`, and any `azp` claim is accepted only if it also matches `cyspbot`
@@ -72,9 +72,9 @@ Installation Token Issuance is allowed only when a normalized token request matc
 - `ref_type` is `branch`
 - the normalized token request `resource` and `permissions` exactly match the checked-in rule
 
-The caller cannot supply arbitrary GitHub Apps, GitHub permissions, or repository ids. The validated `scope` and validated `resource` are normalized into one installation token request, then policy answers whether the verified GitHub Actions principal may receive exactly that token. Cross-owner requests are possible only when explicitly allowed by policy. Unlisted repositories do not receive a default token.
+The caller cannot supply arbitrary GitHub Apps, GitHub permissions, or repository ids. The validated `scope` and validated `resource` are normalized into one installation token request, then policy answers whether the verified subject token may receive exactly that token. Cross-owner requests are possible only when explicitly allowed by policy. Unlisted repositories do not receive a default token.
 
-Repository identity in policy is intentionally based on GitHub owner/repository names rather than repository IDs. GitHub Actions OIDC tokens may carry repository IDs as separate signed claims, and immutable subject formats may repeat those IDs inside `sub`; cyspbot validates the parsed repository ID against the signed `repository_id`, and validates the parsed owner ID when GitHub supplies `repository_owner_id`, but policy matching itself remains name-based. A repository that is deleted and recreated with the same owner/name can match existing policy for that name, and token issuance still depends on the GitHub App being installed with sufficient permissions.
+Repository identity in policy is intentionally based on GitHub owner/repository names rather than repository IDs. GitHub Actions OIDC tokens may carry repository IDs as separate signed claims, and immutable subject formats may repeat those IDs inside `sub`; the CEL condition requires the immutable `sub` IDs to agree with the corresponding signed claims, but policy matching itself remains name-based. A repository that is deleted and recreated with the same owner/name can match existing policy for that name, and token issuance still depends on the GitHub App being installed with sufficient permissions.
 
 The exact policy entries are intentionally not documented here. They are service-owned authorization data and may move from checked-in code to live configuration. The durable contract is deny-by-default: unlisted principal, resource, and permission combinations do not receive tokens.
 

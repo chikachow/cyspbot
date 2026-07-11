@@ -5,12 +5,12 @@ import {
   fixtureSourceResource,
   fixtureTargetResource,
   mustNormalizeTokenRequest,
-  principal,
+  subjectToken,
 } from "./support/token-policy-fixtures.ts";
 
 describe("InstallationAccessTokenRequest normalization", () => {
-  it("defaults omitted resource and scope from the verified principal", () => {
-    const tokenRequest = mustNormalizeTokenRequest(principal, {
+  it("defaults omitted GitHub Actions resource and scope from verified claims", () => {
+    const tokenRequest = mustNormalizeTokenRequest(subjectToken, {
       resource: null,
       scope: null,
     });
@@ -26,7 +26,7 @@ describe("InstallationAccessTokenRequest normalization", () => {
   });
 
   it("normalizes reordered GitHub permission scopes", () => {
-    const tokenRequest = mustNormalizeTokenRequest(principal, {
+    const tokenRequest = mustNormalizeTokenRequest(subjectToken, {
       resource: fixtureSourceResource,
       scope: "pull_requests:write contents:write",
     });
@@ -42,7 +42,7 @@ describe("InstallationAccessTokenRequest normalization", () => {
   });
 
   it("normalizes read GitHub permission scopes", () => {
-    const tokenRequest = mustNormalizeTokenRequest(principal, {
+    const tokenRequest = mustNormalizeTokenRequest(subjectToken, {
       resource: fixtureSourceResource,
       scope: "pull_requests:read contents:read actions:read",
     });
@@ -72,7 +72,7 @@ describe("InstallationAccessTokenRequest normalization", () => {
     "https://api.github.com/repos/fixture-target-owner/fixture-target-repository/actions/workflows/x.yml",
   ])("rejects non-canonical resource %s", (resource) => {
     expect(
-      normalizeInstallationAccessTokenRequest(principal, {
+      normalizeInstallationAccessTokenRequest(subjectToken, {
         resource,
         scope: "actions:write",
       }),
@@ -95,7 +95,7 @@ describe("InstallationAccessTokenRequest normalization", () => {
     "actions",
   ])("rejects unsupported scope %s", (scope) => {
     expect(
-      normalizeInstallationAccessTokenRequest(principal, {
+      normalizeInstallationAccessTokenRequest(subjectToken, {
         resource: fixtureTargetResource,
         scope,
       }),
