@@ -118,6 +118,27 @@ describe("OIDC authentication", () => {
     });
   });
 
+  it("rejects a Google ID token whose authorized party does not match its subject", async () => {
+    const issuer = "https://accounts.google.com";
+    const result = await authenticateOidcToken(
+      await createOidcToken(
+        { azp: "different-service-account", sub: "107517467455664443765" },
+        { issuer },
+      ),
+      "id_token",
+      request,
+      "cyspbot",
+      [googleServiceAccountIssuerAdapter],
+      fetchOidcJwksTestDouble,
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      reason: "invalid_token",
+      responseHeaders: { "www-authenticate": "Bearer" },
+    });
+  });
+
   it.each([
     ["an unknown issuer", () => createOidcToken(undefined, { issuer: "https://issuer.example" })],
     ["a malformed token", () => Promise.resolve("not-a-jwt")],

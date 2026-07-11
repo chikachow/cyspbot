@@ -25,12 +25,20 @@ describe("Google service-account installation-token policy rules", () => {
 
   it("optionally requires the verified service-account email", () => {
     const rule = googleRule({ email });
+    const { email_verified: _emailVerified, ...claimsWithoutEmailVerification } = claims;
 
     expect(evaluate(rule, claims)).toEqual({ decision: "allow", matchedRule: rule });
-    expect(evaluate(rule, { ...claims, email_verified: false })).toEqual({
-      decision: "deny",
-      reasons: ["condition"],
-    });
+    for (const candidateClaims of [
+      { ...claims, email: "different@fixture-project.iam.gserviceaccount.com" },
+      { ...claims, email_verified: false },
+      { ...claims, email_verified: "true" },
+      claimsWithoutEmailVerification,
+    ]) {
+      expect(evaluate(rule, candidateClaims)).toEqual({
+        decision: "deny",
+        reasons: ["condition"],
+      });
+    }
   });
 
   it("denies a different unique ID, resource, or permissions", () => {
@@ -46,6 +54,13 @@ describe("Google service-account installation-token policy rules", () => {
     expect(evaluate(googleRule(), claims, { scope: "contents:read" })).toEqual({
       decision: "deny",
       reasons: ["permissions"],
+    });
+  });
+
+  it("reasserts the service-account subject binding at the policy boundary", () => {
+    expect(evaluate(googleRule(), { ...claims, azp: "different-id" })).toEqual({
+      decision: "deny",
+      reasons: ["condition"],
     });
   });
 

@@ -24,6 +24,15 @@ describe("Token Policy documentation contract", () => {
     expect(documentation).toContain("CEL");
     expect(documentation).toContain("claims");
   });
+
+  it("documents how Google service-account callers acquire a compatible token", () => {
+    expect(readmeDoc).toContain("generateIdToken");
+    expect(readmeDoc).toContain('"audience": "cyspbot"');
+    expect(readmeDoc).toContain('"includeEmail": false');
+    expect(readmeDoc).toContain('{"includeEmail": true}');
+    expect(readmeDoc).toContain("Google token-generation `audience`");
+    expect(readmeDoc).toContain("https://api.github.com/repos/{owner}/{repo}");
+  });
 });
 
 function documentationText(): string {

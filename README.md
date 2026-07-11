@@ -38,6 +38,32 @@ The subject token's verified OIDC `aud` claim must be the internal cyspbot servi
 
 Requests may include RFC 8693 `scope` and `resource` fields to request a concrete GitHub App installation token shape. `resource` must be one canonical GitHub repository API URI in the form `https://api.github.com/repos/{owner}/{repo}` with no leading or trailing whitespace. `scope` is a single-ASCII-space-delimited list of exact GitHub App permission requests, such as `actions:read`, `actions:write`, or `contents:read pull_requests:read`; scope order is not significant. Omitted or exactly empty `resource` defaults to the verified GitHub Actions token's repository claim; Fly.io and Google callers must provide it explicitly. Omitted or exactly empty `scope` defaults to `contents:write pull_requests:write`. Whitespace-only, padded, duplicate, or multi-value `scope` and `resource` fields are rejected.
 
+#### Google service-account caller
+
+Acquire a short-lived Google-signed ID token for the service account with the IAM Credentials API [`projects.serviceAccounts.generateIdToken`](https://cloud.google.com/iam/docs/reference/credentials/rest/v1/projects.serviceAccounts/generateIdToken). The invoking principal needs `iam.serviceAccounts.getOpenIdToken` on the target service account and the corresponding Token Creator permissions for any delegation chain. Prefer an attached service identity or service-account impersonation over a downloaded service-account key.
+
+```http
+POST https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/{service-account}:generateIdToken
+Authorization: Bearer <google-access-token>
+Content-Type: application/json
+
+{
+  "audience": "cyspbot",
+  "includeEmail": false
+}
+```
+
+The safe default is `{"includeEmail": false}` for a unique-ID-only rule. Change only that field to `{"includeEmail": true}` when the matching cyspbot policy rule also constrains the signed service-account email. Use the returned `token` as the subject token in a request to cyspbot:
+
+```http
+POST /token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=urn:ietf:params:oauth:grant-type:token-exchange&requested_token_type=urn:chikachow:github-app-installation-access-token&subject_token=<google-id-token>&subject_token_type=urn:ietf:params:oauth:token-type:id_token&resource=https://api.github.com/repos/{owner}/{repo}&scope=contents:read
+```
+
+Google token-generation `audience` creates the ID token's signed `aud` claim and must be `cyspbot`. It is distinct from the RFC 8693 `audience` form field, which cyspbot does not accept. A compatible Google token authenticates the service account but does not create a grant: checked-in Token Policy must still allow its immutable unique ID, repository resource, and exact permissions. Google ID tokens are short-lived; acquire or refresh them according to their signed expiry. See [Get an ID token](https://cloud.google.com/docs/authentication/get-id-token) for supported acquisition methods.
+
 Empty `scope` is not a no-permissions request. Following OAuth token endpoint parameter handling for this optional field, `scope=` is treated as omitted and receives the cyspbot default scope. GitHub's installation-token API treats an omitted `permissions` object as the app installation's default permissions, and live testing showed that a present empty `permissions: {}` object receives the same default permissions. cyspbot therefore requires a non-empty explicit scope when the caller does not want the cyspbot default.
 
 OAuth client authentication is not supported at `/token`. Requests with an `Authorization` header or non-empty client-authentication form parameters are rejected rather than silently ignored.

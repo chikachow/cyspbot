@@ -27,6 +27,8 @@ export function googleServiceAccountInstallationTokenRule(options: {
       },
     },
     subject: { issuer: googleServiceAccountTrustedIssuer.issuer },
+    // Reassert the adapter-owned service-account binding at the authorization boundary.
+    // This keeps policy fail-closed if it is ever evaluated with a malformed context.
     when: [
       `claims["sub"] == ${celString(options.uniqueId)}`,
       `claims["azp"] == claims["sub"]`,
