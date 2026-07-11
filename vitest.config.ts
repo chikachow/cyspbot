@@ -4,6 +4,11 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   plugins: [
     cloudflareTest({
+      miniflare: {
+        bindings: {
+          GITHUB_APP_ID: "000000",
+        },
+      },
       remoteBindings: false,
       wrangler: {
         configPath: "./wrangler.jsonc",
