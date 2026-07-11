@@ -92,6 +92,7 @@ describe("InstallationAccessTokenRequest normalization", () => {
     "contents:write\npull_requests:write",
     "metadata:read",
     "actions:write actions:write",
+    "contents:read contents:write",
     "actions",
   ])("rejects unsupported scope %s", (scope) => {
     expect(

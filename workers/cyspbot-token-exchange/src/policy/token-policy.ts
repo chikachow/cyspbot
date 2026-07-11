@@ -1,6 +1,9 @@
-import { CelScalar, celEnv, isCelError, mapType, parse, plan, type CelInput } from "@bufbuild/cel";
 import { githubActionsTrustedIssuer } from "@cyspbot/oidc-issuer-github-actions";
 import type { VerifiedSubjectToken } from "../authentication.ts";
+import {
+  tokenPolicyConditionIsValid,
+  tokenPolicyConditionMatches,
+} from "./token-policy-condition.ts";
 
 type GitHubInstallationPermissions = Record<string, string>;
 
@@ -60,19 +63,6 @@ const supportedPermissionScopes = new Map<string, readonly [string, string]>([
 const supportedPermissionPairs = new Set(
   [...supportedPermissionScopes.values()].map(permissionPairKey),
 );
-const tokenPolicyCelEnv = celEnv({
-  variables: {
-    claims: mapType(CelScalar.STRING, CelScalar.DYN),
-    request: mapType(CelScalar.STRING, CelScalar.DYN),
-    subject: mapType(CelScalar.STRING, CelScalar.DYN),
-  },
-});
-const allowedCelRootIdentifiers = new Set(["claims", "request", "subject"]);
-const compiledTokenPolicyRules = new WeakMap<TokenPolicyRule, CompiledTokenPolicyRule>();
-
-interface CompiledTokenPolicyRule {
-  evaluate(bindings: Record<string, CelInput>): unknown;
-}
 
 export function normalizeInstallationAccessTokenRequest(
   subjectToken: VerifiedSubjectToken,
@@ -160,9 +150,7 @@ export function validateTokenPolicyRules(
       throw new Error("invalid token policy rule condition");
     }
 
-    const compiledRule = compileTokenPolicyRule(rule);
-
-    if (compiledRule === null) {
+    if (!tokenPolicyConditionIsValid(rule)) {
       throw new Error("invalid token policy rule condition");
     }
 
@@ -174,7 +162,6 @@ export function validateTokenPolicyRules(
 
     seenIds.add(rule.id);
     seenEffectiveGrants.add(effectiveGrantKey);
-    compiledTokenPolicyRules.set(rule, compiledRule);
   }
 
   return rules;
@@ -274,12 +261,6 @@ function tokenPolicyRuleMatches(rule: TokenPolicyRule, input: TokenPolicyInput):
   );
 }
 
-function tokenPolicyConditionMatches(rule: TokenPolicyRule, input: TokenPolicyInput): boolean {
-  const result = compiledTokenPolicyRule(rule).evaluate(tokenPolicyCelBindings(input));
-
-  return !isCelError(result) && result === true;
-}
-
 function tokenPolicyDenyReasons(
   input: TokenPolicyInput,
   rules: readonly TokenPolicyRule[],
@@ -320,204 +301,6 @@ function tokenPolicyDenyReasons(
   }
 
   return [...new Set(reasons.length === 0 ? ["token_policy_rule"] : reasons)];
-}
-
-function compileTokenPolicyRule(rule: TokenPolicyRule): CompiledTokenPolicyRule | null {
-  try {
-    const expression = parse(rule.when);
-
-    if (!celExpressionUsesOnlyAllowedRootIdentifiers(expression)) {
-      return null;
-    }
-
-    const compiledRule = {
-      evaluate: plan(tokenPolicyCelEnv, expression),
-    };
-
-    if (!tokenPolicyConditionHasBooleanResult(compiledRule, rule)) {
-      return null;
-    }
-
-    compiledTokenPolicyRules.set(rule, compiledRule);
-
-    return compiledRule;
-  } catch {
-    return null;
-  }
-}
-
-function compiledTokenPolicyRule(rule: TokenPolicyRule): CompiledTokenPolicyRule {
-  const compiledRule = compiledTokenPolicyRules.get(rule);
-
-  if (compiledRule !== undefined) {
-    return compiledRule;
-  }
-
-  const lazilyCompiledRule = compileTokenPolicyRule(rule);
-
-  if (lazilyCompiledRule === null) {
-    throw new Error("invalid token policy rule condition");
-  }
-
-  return lazilyCompiledRule;
-}
-
-function celExpressionUsesOnlyAllowedRootIdentifiers(expression: unknown): boolean {
-  for (const identifier of celRootIdentifiers(expression)) {
-    if (!allowedCelRootIdentifiers.has(identifier)) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-function tokenPolicyConditionHasBooleanResult(
-  compiledRule: CompiledTokenPolicyRule,
-  rule: TokenPolicyRule,
-): boolean {
-  const result = compiledRule.evaluate(tokenPolicyValidationBindings(rule));
-
-  return !isCelError(result) && typeof result === "boolean";
-}
-
-function tokenPolicyValidationBindings(rule: TokenPolicyRule): Record<string, CelInput> {
-  const claims = validationClaimBindings(rule.when);
-
-  return {
-    claims,
-    request: {
-      permissions: rule.issue.githubInstallationToken.permissions,
-      resource: rule.issue.githubInstallationToken.resource,
-      scope: Object.entries(rule.issue.githubInstallationToken.permissions)
-        .map(([permission, level]) => `${permission}:${level}`)
-        .sort()
-        .join(" "),
-    },
-    subject: {
-      claims,
-      issuer: rule.subject.issuer,
-      resolvedKeyId: "validation-key",
-      subjectTokenType: "id_token",
-    },
-  };
-}
-
-function validationClaimBindings(condition: string): Record<string, CelInput> {
-  const claims: Record<string, CelInput> = {};
-  const claimReferencePattern = /claims\["([^"]+)"\]/gu;
-
-  for (const match of condition.matchAll(claimReferencePattern)) {
-    const claim = match[1];
-
-    if (claim !== undefined) {
-      claims[claim] = validationClaimValue(claim);
-    }
-  }
-
-  return claims;
-}
-
-function validationClaimValue(claim: string): CelInput {
-  if (claim === "email_verified") {
-    return true;
-  }
-
-  if (claim === "exp" || claim === "iat" || claim === "nbf") {
-    return 1;
-  }
-
-  return "validation-value";
-}
-
-function celRootIdentifiers(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value.flatMap(celRootIdentifiers);
-  }
-
-  if (typeof value !== "object" || value === null) {
-    return [];
-  }
-
-  const record = value as Record<string, unknown>;
-  const exprKind = record["exprKind"];
-
-  if (isCelIdentExprKind(exprKind)) {
-    return [exprKind.value.name];
-  }
-
-  return Object.values(record).flatMap(celRootIdentifiers);
-}
-
-function isCelIdentExprKind(value: unknown): value is { value: { name: string } } {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    (value as { case?: unknown }).case === "identExpr" &&
-    typeof (value as { value?: { name?: unknown } }).value?.name === "string"
-  );
-}
-
-function tokenPolicyCelBindings(input: TokenPolicyInput): Record<string, CelInput> {
-  const claims = jsonLikeRecord(input.subjectToken.claims);
-
-  return {
-    claims,
-    request: {
-      permissions: input.tokenRequest.permissions,
-      resource: input.tokenRequest.resource.href,
-      scope: input.tokenRequest.scope,
-    },
-    subject: {
-      claims,
-      issuer: input.subjectToken.issuer,
-      resolvedKeyId: input.subjectToken.resolvedKeyId,
-      subjectTokenType: input.subjectToken.subjectTokenType,
-    },
-  };
-}
-
-function jsonLikeRecord(input: Record<string, unknown>): Record<string, CelInput> {
-  return Object.fromEntries(
-    Object.entries(input)
-      .filter(([, value]) => value !== undefined)
-      .map(([key, value]) => [key, jsonLikeValue(value)]),
-  );
-}
-
-function jsonLikeValue(value: unknown): CelInput {
-  if (Array.isArray(value)) {
-    return value.map(jsonLikeValue);
-  }
-
-  if (typeof value === "object" && value !== null) {
-    return jsonLikeRecord(value as Record<string, unknown>);
-  }
-
-  if (
-    value === null ||
-    typeof value === "boolean" ||
-    typeof value === "number" ||
-    typeof value === "string" ||
-    typeof value === "bigint" ||
-    value instanceof Uint8Array
-  ) {
-    return value;
-  }
-
-  if (value === undefined) {
-    return null;
-  }
-
-  if (typeof value === "symbol") {
-    return value.description ?? "";
-  }
-
-  if (typeof value === "function") {
-    return value.name;
-  }
-
-  return null;
 }
 
 function parseGitHubInstallationScope(

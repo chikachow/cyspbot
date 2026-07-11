@@ -2,7 +2,6 @@ import { githubActionsTrustedIssuer } from "@cyspbot/oidc-issuer-github-actions"
 import {
   normalizeInstallationAccessTokenRequest,
   type InstallationAccessTokenRequest,
-  type TokenPolicyRule,
 } from "@cyspbot/token-exchange/policy/token-policy";
 import type { VerifiedSubjectToken } from "@cyspbot/token-exchange/authentication";
 
@@ -64,41 +63,4 @@ export function mustNormalizeTokenRequest(
   }
 
   return result.tokenRequest;
-}
-
-export function subjectTokenForRule(
-  rule: TokenPolicyRule,
-  options: {
-    eventName?: string;
-    ref?: string;
-    repository?: string;
-    workflowRef?: string;
-  } = {},
-): VerifiedSubjectToken {
-  const ref = options.ref ?? claimStringFromCondition(rule.when, "ref") ?? fixtureRef;
-  const repository =
-    options.repository ??
-    claimStringFromCondition(rule.when, "repository") ??
-    fixtureSourceRepository;
-
-  return {
-    ...subjectToken,
-    claims: {
-      ...subjectToken.claims,
-      event_name: options.eventName ?? "workflow_dispatch",
-      ref,
-      repository,
-      sub: `repo:${repository}:ref:${ref}`,
-      workflow_ref:
-        options.workflowRef ??
-        claimStringFromCondition(rule.when, "workflow_ref") ??
-        `${repository}/.github/workflows/fixture-token-request.yml@${ref}`,
-    },
-  };
-}
-
-function claimStringFromCondition(condition: string, claim: string): string | null {
-  const match = new RegExp(`claims\\["${claim}"\\] == "([^"]+)"`, "u").exec(condition);
-
-  return match?.[1] ?? null;
 }

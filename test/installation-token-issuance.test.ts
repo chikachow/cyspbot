@@ -147,4 +147,99 @@ describe("installation token issuance", () => {
     });
     expect(JSON.stringify(consoleInfo.mock.calls)).not.toContain("ghs_test_token");
   });
+
+  it("logs an authorized request distinctly when GitHub issuance fails", async () => {
+    const originalError = console.error;
+    const consoleError = vi.fn();
+    console.error = consoleError;
+
+    try {
+      await expect(
+        issueInstallationTokenForContext(
+          testEnv,
+          { subjectToken },
+          {
+            permissions: {
+              contents: "write",
+              pull_requests: "write",
+            },
+            resource: new URL(
+              "https://api.github.com/repos/fixture-owner/fixture-source-repository",
+            ),
+            scope: "contents:write pull_requests:write",
+          },
+          {
+            fetch: async () => new Response("upstream failure", { status: 500 }),
+            tokenPolicyRules: testTokenPolicyRules,
+          },
+        ),
+      ).resolves.toEqual({ ok: false, status: 502 });
+    } finally {
+      console.error = originalError;
+    }
+
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "installation_token_issuance_failed",
+        subject_token: expect.objectContaining({
+          issuer: "https://token.actions.githubusercontent.com",
+          sub: "repo:fixture-owner/fixture-source-repository:ref:refs/heads/fixture-base-branch",
+        }),
+        token_policy: {
+          matched: true,
+          rule_id: "test-github-same-repository",
+        },
+      }),
+    );
+  });
+
+  it("logs policy claim mismatches as condition denials", async () => {
+    const originalError = console.error;
+    const consoleError = vi.fn();
+    console.error = consoleError;
+
+    try {
+      await expect(
+        issueInstallationTokenForContext(
+          testEnv,
+          {
+            subjectToken: {
+              ...subjectToken,
+              claims: {
+                ...subjectToken.claims,
+                event_name: "push",
+              },
+            },
+          },
+          {
+            permissions: {
+              contents: "write",
+              pull_requests: "write",
+            },
+            resource: new URL(
+              "https://api.github.com/repos/fixture-owner/fixture-source-repository",
+            ),
+            scope: "contents:write pull_requests:write",
+          },
+          { fetch: fetchGitHubTestDouble, tokenPolicyRules: testTokenPolicyRules },
+        ),
+      ).resolves.toEqual({ ok: false, status: 403 });
+    } finally {
+      console.error = originalError;
+    }
+
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "installation_token_issuance_failed",
+        subject_token: expect.objectContaining({
+          issuer: "https://token.actions.githubusercontent.com",
+          sub: "repo:fixture-owner/fixture-source-repository:ref:refs/heads/fixture-base-branch",
+        }),
+        token_policy: {
+          deny_reasons: ["condition"],
+          matched: false,
+        },
+      }),
+    );
+  });
 });
