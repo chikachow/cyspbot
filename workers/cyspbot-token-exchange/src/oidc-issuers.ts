@@ -1,5 +1,6 @@
 import { flyIssuerAdapter } from "@cyspbot/oidc-issuer-fly";
 import { githubActionsIssuerAdapter } from "@cyspbot/oidc-issuer-github-actions";
+import { googleServiceAccountIssuerAdapter } from "@cyspbot/oidc-issuer-google-service-account";
 import type { OidcIssuerAdapter } from "@cyspbot/oidc/issuer-adapter";
 
 const configuredAdapterSets = new Map<string, readonly OidcIssuerAdapter[]>();
@@ -14,7 +15,11 @@ export function configuredOidcIssuerAdapters(env: {
     return cachedAdapters;
   }
 
-  const adapters = [githubActionsIssuerAdapter, flyIssuerAdapter(configuration)];
+  const adapters = [
+    githubActionsIssuerAdapter,
+    flyIssuerAdapter(configuration),
+    googleServiceAccountIssuerAdapter,
+  ];
   configuredAdapterSets.set(configuration, adapters);
 
   return adapters;

@@ -13,6 +13,7 @@ cyspbot exchanges verified OIDC tokens for repository-scoped GitHub App installa
 - issuer trust is configured, not discovered from caller-controlled tokens
 - authorization evaluates only claims from a token verified by a configured issuer adapter
 - Fly Machine authentication requires non-empty immutable identity claims and a canonical subject consistent with the configured organization, app name, and Machine name
+- Google service-account authentication requires non-empty matching `sub` and `azp` claims, and email-based policy constraints require `email_verified=true`
 - the token-exchange form audience selects one configured GitHub App, and the verified subject token audience must match it exactly
 - callers may request one canonical repository resource and an exact GitHub App permission scope
 - Token Policy must explicitly allow the normalized caller, GitHub App, resource, and permission combination before a token is issued

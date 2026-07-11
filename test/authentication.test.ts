@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { flyIssuerAdapter } from "@cyspbot/oidc-issuer-fly";
 import { githubActionsIssuerAdapter } from "@cyspbot/oidc-issuer-github-actions";
+import { googleServiceAccountIssuerAdapter } from "@cyspbot/oidc-issuer-google-service-account";
 import type { OidcIssuerAdapter } from "@cyspbot/oidc/issuer-adapter";
 import { authenticateOidcToken } from "@cyspbot/token-exchange/authentication";
 import { configuredOidcIssuerAdapters } from "@cyspbot/token-exchange/oidc-issuers";
@@ -97,6 +98,24 @@ describe("OIDC authentication", () => {
     }
 
     expect(fetchJwks).toHaveBeenCalledTimes(1);
+  });
+
+  it("authenticates a Google service-account ID token", async () => {
+    const issuer = "https://accounts.google.com";
+    const uniqueId = "107517467455664443765";
+    const result = await authenticateOidcToken(
+      await createOidcToken({ azp: uniqueId, sub: uniqueId }, { issuer }),
+      "id_token",
+      request,
+      "cyspbot",
+      [googleServiceAccountIssuerAdapter],
+      fetchOidcJwksTestDouble,
+    );
+
+    expect(result).toMatchObject({
+      context: { subjectToken: { issuer, subjectTokenType: "id_token" } },
+      ok: true,
+    });
   });
 
   it.each([

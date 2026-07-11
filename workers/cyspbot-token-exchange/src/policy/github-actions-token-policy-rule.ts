@@ -1,4 +1,5 @@
 import { githubActionsTrustedIssuer } from "@cyspbot/oidc-issuer-github-actions";
+import { celString } from "./cel-literals.ts";
 import type { TokenPolicyRule } from "./token-policy.ts";
 
 export function githubActionsInstallationTokenRule(options: {
@@ -68,10 +69,6 @@ function githubActionsSubjectCondition(owner: string, repository: string, ref: s
 
 function escapeCelRegex(value: string): string {
   return value.replaceAll(/[\\^$.*+?()[\]{}|]/gu, "\\$&");
-}
-
-function celString(value: string): string {
-  return JSON.stringify(value);
 }
 
 function celStringList(values: readonly string[]): string {

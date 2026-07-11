@@ -19,6 +19,7 @@ Shared packages:
 - `packages/oidc` owns generic OIDC JWT verification and the issuer-adapter contract.
 - `packages/oidc-issuer-fly` owns configured Fly.io organization issuer adapters.
 - `packages/oidc-issuer-github-actions` owns the GitHub Actions issuer adapter and trusted issuer constants.
+- `packages/oidc-issuer-google-service-account` owns the Google Accounts issuer adapter and trusted issuer constants.
 
 The root `wrangler.jsonc` points at `test/support/root-test-harness.ts`. It is a local/test binding harness, not a deployable product Worker.
 
@@ -39,7 +40,7 @@ The Worker factory is `createTokenExchangeWorker` in `workers/cyspbot-token-exch
 5. Require `requested_token_type=urn:chikachow:github-app-installation-access-token`.
 6. Treat exactly empty optional `scope` and `resource` form values as omitted, and preserve non-empty values for normalization after authentication.
 7. Reject unsupported or ambiguous fields, including non-empty RFC 8693 `audience`, malformed `scope` or `resource`, duplicate consumed fields, actor-token fields, and multi-resource forms. Non-empty `audience` maps to `invalid_target`; actor-token parameters map to `invalid_request`.
-8. Select a configured issuer adapter from the token's unverified `iss` claim, verify the subject token with that adapter's trusted issuer, signing algorithm, and JWKS URI, then validate that the verified token `aud` claim is the internal service audience `cyspbot` and that any `azp` claim matches it. Unconfigured issuers are rejected before any JWKS fetch.
+8. Select a configured issuer adapter from the token's unverified `iss` claim, verify the subject token with that adapter's trusted issuer, signing algorithm, and JWKS URI, then validate that the verified token `aud` claim is the internal service audience `cyspbot` and apply provider-specific subject binding. Unconfigured issuers are rejected before any JWKS fetch.
 9. Retain the verified subject-token claims, issuer, resolved key ID, and declared subject-token type as the authenticated context.
 10. Normalize an `InstallationAccessTokenRequest` from `scope` and `resource`.
 11. Evaluate static Token Policy over `{ subjectToken, tokenRequest }`.
@@ -50,7 +51,7 @@ The token policy in `workers/cyspbot-token-exchange/src/policy/token-policy.ts` 
 
 cyspbot does not accept a public GitHub App selector. It constrains this profile to cyspbot's configured GitHub App credentials, one signed subject-token `aud` string equal to `cyspbot`, one canonical GitHub repository API `resource`, and one normalized permission set. Plural subject-token audiences are rejected rather than interpreted by containment.
 
-Omitted `scope` and `resource` normalize to a same-repository PR-authoring token request:
+For GitHub Actions only, omitted `scope` and `resource` normalize to a same-repository PR-authoring token request. Fly.io and Google callers must provide `resource` explicitly:
 
 ```json
 {
@@ -84,6 +85,8 @@ Fly.io trusted issuers are derived from the comma-delimited `FLY_OIDC_ORG_SLUGS`
 The Fly adapter requires non-empty `org_id`, `org_name`, `app_id`, `app_name`, `machine_id`, `machine_name`, and `machine_version` claims. It binds `org_name` to the configured issuer slug and requires `sub` to equal `org_name:app_name:machine_name`. These checks establish a consistent authenticated Machine identity before policy evaluation.
 
 `workers/cyspbot-token-exchange/src/policy/fly-machine-token-policy-rule.ts` builds Fly allow rules using the configured issuer plus immutable organization and app IDs. A rule may also require one immutable Machine ID. Every rule still specifies an exact GitHub repository resource and permission map; there is no default Fly resource and no implicit production Fly grant.
+
+The Google service-account adapter trusts `https://accounts.google.com`, Google OAuth JWKS at `https://www.googleapis.com/oauth2/v3/certs`, and `RS256`. It requires non-empty `sub` and `azp` claims that exactly match. `workers/cyspbot-token-exchange/src/policy/google-service-account-token-policy-rule.ts` builds Google allow rules around the immutable service-account unique ID and can additionally require a signed email with `email_verified=true`. Every rule specifies an exact GitHub repository resource and permission map; there is no default Google resource and no implicit production Google grant.
 
 `packages/oidc/src/verifier.ts` verifies tokens with `jose.jwtVerify` and `jose.createRemoteJWKSet`. The generic verifier owns issuer, allowed-algorithm, signature, expiry, and JWKS checks. `packages/oidc/src/issuer-adapter.ts` defines how authentication recognizes a configured issuer and validates subject-token binding. Token-exchange authentication selects only from adapters composed in `workers/cyspbot-token-exchange/src/oidc-issuers.ts`; the unverified `iss` claim never supplies a JWKS URI. The GitHub Actions adapter owns the exact match between any signed optional authorized-party claim and cyspbot's internal service audience, while authentication validates the signed `aud` claim.
 

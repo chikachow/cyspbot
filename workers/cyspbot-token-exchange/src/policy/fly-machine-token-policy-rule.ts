@@ -1,4 +1,5 @@
 import { flyIssuerForOrgSlug } from "@cyspbot/oidc-issuer-fly";
+import { celString } from "./cel-literals.ts";
 import type { TokenPolicyRule } from "./token-policy.ts";
 
 export function flyMachineInstallationTokenRule(options: {
@@ -42,8 +43,4 @@ export function flyMachineInstallationTokenRule(options: {
         : [`claims["machine_id"] == ${celString(options.machineId)}`]),
     ].join(" && "),
   };
-}
-
-function celString(value: string): string {
-  return JSON.stringify(value);
 }

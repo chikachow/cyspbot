@@ -22,6 +22,10 @@ _Avoid_: Derived principal fields, caller-provided attributes
 The internally consistent organization, app, and Machine identity authenticated from a Fly.io subject token. It requires immutable IDs, binds the organization name to the configured issuer slug, and binds the subject to the organization, app, and Machine names.
 _Avoid_: Fly user, app secret, unverified Machine metadata
 
+**Google Service Account Identity**:
+The immutable service-account unique ID authenticated when a Google Accounts ID token has matching non-empty `sub` and `azp` claims. Policy may additionally require a signed email only when `email_verified` is true.
+_Avoid_: Google user, unverified email, service-account key
+
 **Installation Token Issuance**:
 The cyspbot capability that exchanges a trusted OIDC token for a short-lived GitHub App installation access token for callers that satisfy cyspbot's checked-in OIDC trust policy.
 _Avoid_: cyspbot itself, app login
@@ -68,6 +72,7 @@ _Avoid_: Permanent key store, token cache, caller-controlled key source
 - A **Caller** authenticates to **cyspbot** with an OIDC token from a configured issuer.
 - A verified **Caller** is represented internally as a **Verified Subject Token**.
 - A Fly.io **Verified Subject Token** must carry a canonical **Fly Machine Identity** before its claims can reach **Token Policy**.
+- A Google **Verified Subject Token** must carry a canonical **Google Service Account Identity** before its claims can reach **Token Policy**.
 - cyspbot verifies a **Caller** only against a **Trusted OIDC Issuer**.
 - **cyspbot** normalizes exactly one **Installation Token Request** from token-exchange `scope`, token-exchange `resource`, and, for GitHub Actions defaulting only, the verified `repository` claim.
 - **Installation Token Issuance** in **cyspbot** issues at most one **Installation Token** for one **Repository Resource**.

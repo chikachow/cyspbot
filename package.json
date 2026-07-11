@@ -37,6 +37,7 @@
     "@cyspbot/oidc": "workspace:*",
     "@cyspbot/oidc-issuer-fly": "workspace:*",
     "@cyspbot/oidc-issuer-github-actions": "workspace:*",
+    "@cyspbot/oidc-issuer-google-service-account": "workspace:*",
     "@cyspbot/token-exchange": "workspace:*",
     "@tsconfig/recommended": "1.0.13",
     "@tsconfig/strictest": "2.0.8",

@@ -1,6 +1,6 @@
 # cyspbot
 
-cyspbot is a hosted Security Token Service for trusted automation workloads. It verifies OIDC tokens from configured GitHub Actions and Fly.io issuers and exchanges allowed caller contexts for short-lived, repository-scoped GitHub App installation access tokens without exposing the GitHub App private key outside Cloudflare.
+cyspbot is a hosted Security Token Service for trusted automation workloads. It verifies OIDC tokens from configured GitHub Actions, Fly.io, and Google service-account issuers and exchanges allowed caller contexts for short-lived, repository-scoped GitHub App installation access tokens without exposing the GitHub App private key outside Cloudflare.
 
 Implemented public endpoints:
 
@@ -14,10 +14,11 @@ The primary service contract is [docs/service-contract.md](docs/service-contract
 - Two deployable Worker packages under `workers/*`: `@cyspbot/token-exchange` and `@cyspbot/github-webhook-receiver`.
 - Worker names are consistently prefixed: `cyspbot-token-exchange` and `cyspbot-github-webhook-receiver`.
 - Each Worker package owns its runtime composition, HTTP route, dependency defaults, and Wrangler config. Shared implementation code lives under `packages/*`. The root Wrangler config is only the local/test binding harness.
-- `jose`-backed OIDC verification behind provider-owned issuer adapters for GitHub Actions and configured Fly.io organizations.
+- `jose`-backed OIDC verification behind provider-owned issuer adapters for GitHub Actions, configured Fly.io organizations, and Google service accounts.
 - GitHub App private key in a Cloudflare Worker secret binding.
 - Checked-in Token Policy code that allows Installation Token Issuance only for explicit verified subject-token issuer, CEL claim condition, resource, and permission combinations.
 - A Fly Machine policy-rule builder that requires immutable organization and app IDs and can optionally narrow a grant to one immutable Machine ID.
+- A Google service-account policy-rule builder that requires the immutable account unique ID and can additionally require a verified email.
 
 ## Current Public Surface
 
@@ -33,9 +34,9 @@ subject_token_type=urn:ietf:params:oauth:token-type:id_token
 ```
 
 `subject_token_type` may also be `urn:ietf:params:oauth:token-type:jwt`. `requested_token_type` is required and must be the cyspbot GitHub App installation token URN.
-The subject token's verified OIDC `aud` claim must be the internal cyspbot service audience `cyspbot`, and any `azp` claim must also match `cyspbot`. cyspbot uses its service-owned GitHub App credential profile to resolve the target installation and evaluate Token Policy. Non-empty `audience` form parameters are rejected as unsupported target selectors.
+The subject token's verified OIDC `aud` claim must be the internal cyspbot service audience `cyspbot`. GitHub Actions and Fly.io accept an absent `azp` or require it to match `cyspbot`; Google service-account ID tokens require `azp` to equal the immutable service-account `sub`. cyspbot uses its service-owned GitHub App credential profile to resolve the target installation and evaluate Token Policy. Non-empty `audience` form parameters are rejected as unsupported target selectors.
 
-Requests may include RFC 8693 `scope` and `resource` fields to request a concrete GitHub App installation token shape. `resource` must be one canonical GitHub repository API URI in the form `https://api.github.com/repos/{owner}/{repo}` with no leading or trailing whitespace. `scope` is a single-ASCII-space-delimited list of exact GitHub App permission requests, such as `actions:read`, `actions:write`, or `contents:read pull_requests:read`; scope order is not significant. Omitted or exactly empty `resource` defaults to the verified GitHub Actions principal repository. Omitted or exactly empty `scope` defaults to `contents:write pull_requests:write`. Whitespace-only, padded, duplicate, or multi-value `scope` and `resource` fields are rejected.
+Requests may include RFC 8693 `scope` and `resource` fields to request a concrete GitHub App installation token shape. `resource` must be one canonical GitHub repository API URI in the form `https://api.github.com/repos/{owner}/{repo}` with no leading or trailing whitespace. `scope` is a single-ASCII-space-delimited list of exact GitHub App permission requests, such as `actions:read`, `actions:write`, or `contents:read pull_requests:read`; scope order is not significant. Omitted or exactly empty `resource` defaults to the verified GitHub Actions token's repository claim; Fly.io and Google callers must provide it explicitly. Omitted or exactly empty `scope` defaults to `contents:write pull_requests:write`. Whitespace-only, padded, duplicate, or multi-value `scope` and `resource` fields are rejected.
 
 Empty `scope` is not a no-permissions request. Following OAuth token endpoint parameter handling for this optional field, `scope=` is treated as omitted and receives the cyspbot default scope. GitHub's installation-token API treats an omitted `permissions` object as the app installation's default permissions, and live testing showed that a present empty `permissions: {}` object receives the same default permissions. cyspbot therefore requires a non-empty explicit scope when the caller does not want the cyspbot default.
 
@@ -80,6 +81,8 @@ Repository identity in policy is intentionally based on GitHub owner/repository 
 The exact policy entries are intentionally not documented here. They are service-owned authorization data and may move from checked-in code to live configuration. The durable contract is deny-by-default: unlisted principal, resource, and permission combinations do not receive tokens.
 
 Fly Machine authentication does not create an implicit grant. A Fly rule must be added with `flyMachineInstallationTokenRule`, including the configured organization slug, signed immutable organization and app IDs, exact repository resource, and permissions. Use `machineId` when only one Machine should receive the grant.
+
+Google service-account authentication does not create an implicit grant. A Google rule must be added with `googleServiceAccountInstallationTokenRule`, including the immutable account unique ID, exact repository resource, and permissions. An optional email constraint is accepted only with `email_verified=true`.
 
 cyspbot denies forked pull request contexts, unconfigured refs, unconfigured workflow files, tag refs, unsupported event names, unsupported scopes, and non-canonical resource forms.
 

@@ -32,13 +32,13 @@ Requests are rate limited by the `TOKEN_EXCHANGE_RATE_LIMIT` Cloudflare binding 
 https://api.github.com/repos/{owner}/{repo}
 ```
 
-Repository shorthand, GitHub HTML URLs, endpoint URLs, duplicate resource fields, query strings, fragments, userinfo, encoded slashes, dot segments, leading or trailing whitespace, arrays, and multi-resource forms are rejected. When `resource` is omitted or exactly empty, cyspbot normalizes it to the verified GitHub Actions subject token's signed repository claim. A whitespace-only `resource` field is rejected as `invalid_target`; omission and `resource=` are equivalent.
+Repository shorthand, GitHub HTML URLs, endpoint URLs, duplicate resource fields, query strings, fragments, userinfo, encoded slashes, dot segments, leading or trailing whitespace, arrays, and multi-resource forms are rejected. When `resource` is omitted or exactly empty, cyspbot normalizes it to the verified GitHub Actions subject token's signed repository claim. Fly.io and Google service-account callers must provide `resource`. A whitespace-only `resource` field is rejected as `invalid_target`; omission and `resource=` are equivalent.
 
 `scope`, when present, is a single-ASCII-space-delimited list of exact GitHub App permission requests, such as `actions:read`, `actions:write`, or `contents:read pull_requests:read`. Scope order is not significant, but leading whitespace, trailing whitespace, repeated spaces, tabs, newlines, and other non-`0x20` separators are rejected. When `scope` is omitted or exactly empty, cyspbot normalizes it to `contents:write pull_requests:write`. A whitespace-only `scope` field is rejected as `invalid_scope`; omission and `scope=` are equivalent.
 
 An empty `scope` is not a no-permissions request. Following OAuth token endpoint parameter handling for this optional field, `scope=` is treated as omitted and receives the cyspbot default scope. GitHub documents that an omitted installation-token `permissions` object receives the app installation's granted permissions, and live testing showed that a present empty `permissions: {}` object receives the same default permissions. cyspbot therefore never translates an empty scope to an empty GitHub permissions object.
 
-The GitHub Actions OIDC subject token's `aud` claim must be the internal service audience `cyspbot`. cyspbot rejects missing `aud`, plural `aud`, and any other `aud` value as invalid subject tokens with `400 {"error":"invalid_request"}`. If the subject token has an `azp` claim, cyspbot accepts it only when it also matches `cyspbot`.
+The OIDC subject token's `aud` claim must be the internal service audience `cyspbot`. cyspbot rejects missing `aud`, plural `aud`, and any other `aud` value as invalid subject tokens with `400 {"error":"invalid_request"}`. GitHub Actions and Fly.io tokens accept an absent `azp` or require it to match `cyspbot`; Google service-account ID tokens require `azp` to equal `sub`.
 
 cyspbot does not support RFC 8693 `audience`, `actor_token`, or `actor_token_type` form parameters. Non-empty `audience` parameters are rejected with `invalid_target` because this profile uses `resource` for the issued token target and service-owned GitHub App credentials. Actor-token parameters are rejected as malformed for this profile with `invalid_request`.
 
@@ -91,6 +91,8 @@ Installation Token Issuance is allowed only when the normalized installation tok
 
 Fly.io Machine tokens may authenticate only from organization issuers explicitly configured by the service. Authentication requires non-empty immutable organization, app, and Machine identity claims; `org_name` must match the configured issuer slug; and `sub` must equal `org_name:app_name:machine_name`. They remain denied unless an issuer-guarded Token Policy rule also matches immutable organization and app IDs, an optional Machine ID, the resource, and requested permissions.
 
+Google service-account ID tokens authenticate only from `https://accounts.google.com` and require matching non-empty `sub` and `azp` claims. They remain denied unless an issuer-guarded Token Policy rule also matches the immutable service-account unique ID, the resource, and requested permissions. A rule may additionally require the signed email only when `email_verified=true`.
+
 The caller cannot supply arbitrary GitHub Apps, GitHub permissions, or repository ids. The validated `scope` and validated `resource` are normalized into one installation token request. Token Policy answers whether the verified subject token may receive exactly that token request, including cross-owner requests when explicit policy allows them. cyspbot denies unconfigured issuer/condition/resource/permission combinations with `invalid_target`. The [GitHub App installation](https://docs.github.com/en/rest/apps/apps#create-an-installation-access-token-for-an-app) remains the upper-bound permission authority.
 
 Policy evaluates only facts present in the verified token. For the common legacy subject form, the rule requires `sub` to contain the same repository name as the signed `repository` claim; `repository_id` and `repository_owner_id` are not inputs to that authorization decision. For GitHub's immutable subject form, `repository_id` must be present and consistent with `sub`. When the optional `repository_owner_id` claim is present, it must also be a string consistent with `sub`; when it is absent or null, policy accepts any owner ID embedded in the otherwise matching immutable subject. These IDs check internal subject consistency but are not independent policy keys.
@@ -99,7 +101,7 @@ Missing or incorrectly typed claims used by a configured policy condition authen
 
 Token Policy intentionally uses GitHub owner/repository names as the externally meaningful repository identifier, even though [GitHub Actions OIDC](https://docs.github.com/en/actions/reference/security/oidc) also exposes immutable repository and owner IDs and GitHub's installation-token API can scope by `repository_ids`. Those IDs participate in the immutable-subject consistency condition but are not independent policy keys. A repository that is deleted and recreated with the same owner/name can continue to match policy for that name when the GitHub App installation still grants sufficient permissions.
 
-The omitted `scope` and `resource` default produces this normalized permission request for cyspbot's service-owned GitHub App and the verified principal repository:
+For GitHub Actions only, omitted `scope` and `resource` produce this normalized permission request for cyspbot's service-owned GitHub App and the signed repository claim:
 
 ```json
 {

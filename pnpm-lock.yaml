@@ -36,6 +36,9 @@ importers:
       '@cyspbot/oidc-issuer-github-actions':
         specifier: workspace:*
         version: link:packages/oidc-issuer-github-actions
+      '@cyspbot/oidc-issuer-google-service-account':
+        specifier: workspace:*
+        version: link:packages/oidc-issuer-google-service-account
       '@cyspbot/token-exchange':
         specifier: workspace:*
         version: link:workers/cyspbot-token-exchange
@@ -99,6 +102,12 @@ importers:
         specifier: workspace:*
         version: link:../oidc
 
+  packages/oidc-issuer-google-service-account:
+    dependencies:
+      '@cyspbot/oidc':
+        specifier: workspace:*
+        version: link:../oidc
+
   workers/cyspbot-github-webhook-receiver:
     dependencies:
       '@cyspbot/github':
@@ -131,6 +140,9 @@ importers:
       '@cyspbot/oidc-issuer-github-actions':
         specifier: workspace:*
         version: link:../../packages/oidc-issuer-github-actions
+      '@cyspbot/oidc-issuer-google-service-account':
+        specifier: workspace:*
+        version: link:../../packages/oidc-issuer-google-service-account
       jose:
         specifier: 6.2.3
         version: 6.2.3
