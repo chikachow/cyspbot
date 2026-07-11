@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/verifier.ts",
+    "./issuer-adapter": "./src/issuer-adapter.ts",
     "./verifier": "./src/verifier.ts"
   },
   "dependencies": {

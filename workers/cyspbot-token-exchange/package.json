@@ -7,6 +7,7 @@
     ".": "./src/index.ts",
     "./authentication": "./src/authentication.ts",
     "./dependencies": "./src/dependencies.ts",
+    "./oidc-issuers": "./src/oidc-issuers.ts",
     "./policy/token-policy": "./src/policy/token-policy.ts",
     "./policy/token-policy-rules": "./src/policy/token-policy-rules.ts",
     "./worker": "./src/worker.ts"
@@ -20,6 +21,7 @@
     "@cyspbot/github": "workspace:*",
     "@cyspbot/github-actions-oidc": "workspace:*",
     "@cyspbot/http": "workspace:*",
-    "@cyspbot/oidc": "workspace:*"
+    "@cyspbot/oidc": "workspace:*",
+    "jose": "6.2.3"
   }
 }

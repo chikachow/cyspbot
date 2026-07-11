@@ -6,7 +6,7 @@ import type { TokenExchangeDependencies } from "@cyspbot/token-exchange/dependen
 
 import { testNow } from "./constants.ts";
 import { fetchGitHubTestDouble } from "./github-api.ts";
-import { testOidcVerifier } from "./oidc.ts";
+import { fetchOidcJwksTestDouble } from "./oidc.ts";
 import { testTokenPolicyRules } from "./token-policy.ts";
 import { testEnv } from "./worker-env.ts";
 
@@ -23,8 +23,14 @@ type TestDependencies = GitHubWebhookReceiverDependencies & TokenExchangeDepende
 type TestBindings = GitHubWebhookReceiverBindings & TokenExchangeBindings;
 
 const baseTestDependencies = {
-  authenticateOidcToken: (token, request, expectedAudience) =>
-    authenticateOidcToken(token, request, expectedAudience, testOidcVerifier),
+  authenticateOidcToken: (token, request, expectedAudience, issuerAdapters) =>
+    authenticateOidcToken(
+      token,
+      request,
+      expectedAudience,
+      issuerAdapters,
+      fetchOidcJwksTestDouble,
+    ),
   fetch: fetchGitHubTestDouble,
   now: () => testNow,
   tokenPolicyRules: testTokenPolicyRules,

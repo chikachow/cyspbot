@@ -4,6 +4,7 @@ import { cyspbotOidcAudience } from "./authentication.ts";
 import { issueInstallationTokenForContext } from "./policy/installation-token-issuance.ts";
 import { normalizeInstallationAccessTokenRequest } from "./policy/token-policy.ts";
 import type { TokenExchangeDependencies } from "./dependencies.ts";
+import { configuredOidcIssuerAdapters } from "./dependencies.ts";
 
 const maxTokenExchangeBodyBytes = 64 * 1024;
 const tokenExchangeGrantType = "urn:ietf:params:oauth:grant-type:token-exchange";
@@ -90,6 +91,7 @@ export async function handleTokenExchangeRequest(
     subjectToken,
     request,
     cyspbotOidcAudience,
+    configuredOidcIssuerAdapters,
   );
 
   if (!authentication.ok) {
