@@ -1,5 +1,6 @@
 import { flyIssuerAdapter, flyIssuerIdentifierForOrganizationSlug } from "@cyspbot/oidc-issuer-fly";
 import { githubActionsIssuerAdapter } from "@cyspbot/oidc-issuer-github-actions";
+import { googleServiceAccountIssuerAdapter } from "@cyspbot/oidc-issuer-google-service-account";
 import type { OidcIssuerAdapter } from "@cyspbot/oidc/issuer-adapter";
 
 const configuredAdapterSets = new Map<string | undefined, readonly OidcIssuerAdapter[]>();
@@ -19,7 +20,7 @@ export function configuredOidcIssuerAdapters(env: {
       binding: "FLY_OIDC_ORG_SLUGS",
     });
 
-    const adapters = Object.freeze([githubActionsIssuerAdapter]);
+    const adapters = Object.freeze([githubActionsIssuerAdapter, googleServiceAccountIssuerAdapter]);
     configuredAdapterSets.set(configuration, adapters);
 
     return adapters;
@@ -49,7 +50,11 @@ export function configuredOidcIssuerAdapters(env: {
     flyAdapters.push(flyIssuerAdapter(orgSlug));
   }
 
-  const adapters = Object.freeze([...flyAdapters, githubActionsIssuerAdapter]);
+  const adapters = Object.freeze([
+    ...flyAdapters,
+    githubActionsIssuerAdapter,
+    googleServiceAccountIssuerAdapter,
+  ]);
   configuredAdapterSets.set(configuration, adapters);
 
   return adapters;

@@ -14,6 +14,7 @@ cyspbot accepts Caller-supplied OpenID Connect ID Tokens from configured issuers
 - the Verified Subject Token is derived only from signed claims in an ID Token issued by a configured issuer and accepted by that issuer's adapter
 - the ID Token audience must be the exact single string `cyspbot`; the unsupported token-exchange `audience` parameter grants nothing
 - each configured Fly.io organization has its own issuer adapter and Trusted OIDC Issuer; Fly Machine authentication binds the configured organization to the signed organization, Fly App, and Machine names in the canonical Subject, while Token Policy separately selects any provider-assigned IDs needed for authorization
+- Google service account identity requires a service account ID Token from the Google Cloud IAM authorization server with Issuer Identifier `https://accounts.google.com`; its Authorized Party must equal its non-empty Subject; policy compares the service account unique ID as an opaque string and may additionally require a verified email
 - callers may request one canonical repository resource and an exact GitHub App permission scope
 - Token Policy must explicitly allow the Verified Subject Token, GitHub App, resource, and permission combination before a token is issued
 - the GitHub App installation remains the upper-bound authority for repositories and permissions

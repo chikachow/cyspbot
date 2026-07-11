@@ -1,6 +1,6 @@
 # cyspbot
 
-cyspbot is a hosted Security Token Service for trusted automation workloads. It authenticates Fly Machine and GitHub Actions workflow-job identities using OpenID Connect ID Tokens from configured issuers, then exchanges authorized identities for short-lived, repository-scoped GitHub App installation access tokens without exposing the GitHub App private key outside Cloudflare.
+cyspbot is a hosted Security Token Service for trusted automation workloads. It authenticates Fly Machine, GitHub Actions workflow-job, and Google service account identities using OpenID Connect ID Tokens from configured issuers, then exchanges authorized identities for short-lived, repository-scoped GitHub App installation access tokens without exposing the GitHub App private key outside Cloudflare.
 
 Implemented public endpoints:
 
@@ -54,10 +54,11 @@ Successful responses use OAuth token response shape with `Cache-Control: no-stor
 
 #### Supported issuers
 
-| Issuer         | Issuer Identifier (`iss`)                     | Additional subject binding                        | Omitted `resource`        |
-| -------------- | --------------------------------------------- | ------------------------------------------------- | ------------------------- |
-| Fly.io         | `https://oidc.fly.io/{org-slug}`              | Issuer organization and canonical Subject binding | Rejected                  |
-| GitHub Actions | `https://token.actions.githubusercontent.com` | `azp` is absent or equals `cyspbot`               | Signed `repository` claim |
+| Token provider/profile           | Issuer Identifier (`iss`)                     | Additional subject binding                        | Omitted `resource`        |
+| -------------------------------- | --------------------------------------------- | ------------------------------------------------- | ------------------------- |
+| Fly.io                           | `https://oidc.fly.io/{org-slug}`              | Issuer organization and canonical Subject binding | Rejected                  |
+| GitHub Actions                   | `https://token.actions.githubusercontent.com` | `azp` is absent or equals `cyspbot`               | Signed `repository` claim |
+| Google service account ID Tokens | `https://accounts.google.com`                 | `azp` equals `sub`                                | Rejected                  |
 
 ##### Fly.io
 
@@ -79,6 +80,22 @@ Fly callers must explicitly supply `resource`; it is not inferred from Fly claim
 
 A GitHub Actions OIDC token is an ID Token issued by `https://token.actions.githubusercontent.com`. An absent Authorized Party (`azp`) claim is accepted; when present, it must equal `cyspbot`. An omitted or exactly empty `resource` defaults to the token's signed `repository` claim. Authentication does not create a grant: Token Policy must still match the signed workflow identity, repository resource, and exact permissions.
 
+##### Google service account ID Tokens
+
+A Google service account caller presents a service account ID Token issued by the Google Cloud IAM authorization server. Its Issuer Identifier (`iss`) is `https://accounts.google.com`, and its signature is verified with the Google JWKS.
+
+The value supplied as an acquisition method's target audience becomes the ID Token Audience (`aud`) claim and must be `cyspbot`. This acquisition value and signed claim are distinct from the RFC 8693 `audience` parameter in the later request to cyspbot; cyspbot rejects a non-empty RFC 8693 `audience` parameter.
+
+**Direct IAM Credentials API request.** A caller can invoke [`projects.serviceAccounts.generateIdToken`](https://cloud.google.com/iam/docs/reference/credentials/rest/v1/projects.serviceAccounts/generateIdToken) for the target service account with request field `audience` set to `cyspbot`. The caller needs `iam.serviceAccounts.getOpenIdToken` on that target service account. When only OIDC ID Tokens are required, use the least-privilege [Service Account OpenID Connect Identity Token Creator role](https://cloud.google.com/iam/docs/service-account-permissions#service_account_openid_connect_identity_token_creator_role) (`roles/iam.serviceAccountOpenIdTokenCreator`).
+
+**Delegated IAM Credentials API request.** A [delegated request](https://cloud.google.com/iam/docs/create-short-lived-credentials-delegated) names an ordered chain of intermediary service accounts. The caller needs the Service Account Token Creator role (`roles/iam.serviceAccountTokenCreator`) on the first delegate; each delegate needs that role on the next service account; and the last delegate needs it on the target service account. The resulting ID Token represents only the target service account, not the caller or intermediary delegates. Do not substitute the narrower OpenID Connect Identity Token Creator role along delegation edges because delegation also requires the Token Creator role's implicit-delegation capability.
+
+**Attached service account and metadata server.** Code running on a supported Google Cloud resource with an attached service account can [request an ID Token for that attached service account from the resource's metadata server](https://cloud.google.com/docs/authentication/get-id-token#metadata-server), setting the metadata identity endpoint's `audience` query parameter to `cyspbot`. This path does not call `generateIdToken` as the workload, so the direct-caller `iam.serviceAccounts.getOpenIdToken` grant above is not a prerequisite for the workload's metadata-server request. At provisioning time, the identity that attaches the service account needs the permissions required to create or update that kind of resource plus `iam.serviceAccounts.actAs` on the service account; the Service Account User role (`roles/iam.serviceAccountUser`) provides `actAs`. Those provisioning permissions are separate from the workload's runtime metadata request. Prefer this path when the workload already runs as the intended service account.
+
+The Google adapter accepts only ID Tokens whose Authorized Party (`azp`) exactly equals their non-empty Subject (`sub`). For Google's service account ID Token profile, both claims contain the service account unique ID. This binding rejects Google user ID Tokens, whose Authorized Party is an OAuth client ID, while the configured Issuer Identifier rejects self-signed service account JWTs. Google callers must explicitly supply `resource`; it is not inferred from Google claims. Authentication does not create a grant: Token Policy must exactly match the unique ID, repository resource, and permissions.
+
+A policy rule may additionally require the service account email, but the unique ID remains the primary authorization key. IAM Credentials API callers using an email-selecting rule must set `includeEmail` to `true`; Google then includes both `email` and `email_verified`, and the rule requires the signed `email_verified` claim to be `true`.
+
 ### `POST /github/webhooks`
 
 Accepts signed JSON GitHub App webhook deliveries up to `256 KiB`. Webhook target headers must identify the configured GitHub App. Raw webhook bodies are not retained.
@@ -93,7 +110,7 @@ Installation Token Issuance is allowed only when a normalized token request matc
 
 cyspbot supports Fly allow-rule semantics, but the current checked-in Token Policy contains no Fly allow rule. When a Fly allow rule is checked in, Installation Token Issuance requires:
 
-- the **Verified Subject Token** was derived from a Fly OIDC token issued by an organization-specific configured issuer
+- the **Verified Subject Token** is derived from a Fly OIDC token issued by an organization-specific configured issuer
 - the provider-assigned organization and Fly App IDs match that rule
 - the organization slug agrees with the Issuer Identifier and the signed `org_name` claim
 - the signed Subject (`sub`) agrees with the signed organization, Fly App, and Machine names
@@ -104,7 +121,7 @@ Fly policy can use provider-assigned organization and Fly App IDs as authorizati
 
 ### GitHub Actions
 
-- the **Verified Subject Token** was derived from an ID Token issued by the configured GitHub Actions issuer
+- the **Verified Subject Token** is derived from an ID Token issued by the configured GitHub Actions issuer
 - the signed subject token audience is `cyspbot`, and any `azp` claim is accepted only if it also matches `cyspbot`
 - `event_name` matches the checked-in rule
 - the signed Subject (`sub`) claim uses a `ref` context
@@ -117,6 +134,16 @@ Fly policy can use provider-assigned organization and Fly App IDs as authorizati
 Repository identity in policy is intentionally based on GitHub owner/repository names rather than repository IDs. GitHub Actions OIDC tokens may carry repository IDs as separate signed claims, and immutable subject formats may repeat those IDs inside `sub`; the CEL condition requires the immutable `sub` IDs to agree with the corresponding signed claims, but policy matching itself remains name-based. A repository that is deleted and recreated with the same owner/name can match existing policy for that name, and token issuance still depends on the GitHub App being installed with sufficient permissions.
 
 cyspbot denies forked pull request contexts, unconfigured refs, unconfigured workflow files, tag refs, and unsupported event names.
+
+### Google service account ID Tokens
+
+- the **Verified Subject Token** is derived from a service account ID Token issued by the Google Cloud IAM authorization server with Issuer Identifier `https://accounts.google.com`
+- the signed Authorized Party (`azp`) equals the non-empty Subject (`sub`)
+- the unique ID matches the checked-in rule
+- when configured by the rule, the signed service account email matches and `email_verified` is `true`
+- the normalized token request `resource` and `permissions` exactly match the checked-in rule
+
+Google policy treats the service account unique ID as an opaque string and compares it exactly. Email is an optional additional constraint, not the primary identity key.
 
 ### Enforcement
 
@@ -197,6 +224,12 @@ The reusable GitHub Action for this hosted service lives in the separate `cyspbo
 - [Fly.io OpenID Connect](https://fly.io/docs/security/openid-connect/)
 - [Fly Machines API Tokens resource](https://fly.io/docs/machines/api/tokens-resource/)
 - [GitHub Actions OpenID Connect](https://docs.github.com/en/actions/concepts/security/openid-connect)
+- [Google Cloud authentication token types](https://cloud.google.com/docs/authentication/token-types#service_account_id_tokens)
+- [Google IAM service account resource](https://cloud.google.com/iam/docs/reference/rest/v1/projects.serviceAccounts)
+- [Google IAM Credentials `generateIdToken`](https://cloud.google.com/iam/docs/reference/credentials/rest/v1/projects.serviceAccounts/generateIdToken)
+- [Google IAM roles for service account authentication](https://cloud.google.com/iam/docs/service-account-permissions)
+- [Google IAM delegated short-lived credentials](https://cloud.google.com/iam/docs/create-short-lived-credentials-delegated)
+- [Google Cloud: Get an ID token](https://cloud.google.com/docs/authentication/get-id-token)
 - [GitHub App installation access tokens](https://docs.github.com/en/rest/apps/apps#create-an-installation-access-token-for-an-app)
 - [GitHub webhook signature validation](https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries)
 - [Cloudflare Workers secrets](https://developers.cloudflare.com/workers/configuration/secrets/)

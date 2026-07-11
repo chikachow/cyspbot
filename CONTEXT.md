@@ -18,6 +18,10 @@ _Avoid_: Principal, VM identity, caller-supplied Machine metadata
 The provider-defined slug used in a Fly organization's OIDC Issuer Identifier and in the signed `org_name` claim. It selects one configured **Trusted OIDC Issuer** but is not the provider-assigned organization ID (`org_id`) or, by itself, an authorization grant.
 _Avoid_: Organization ID, tenant ID, authorization boundary
 
+**Google Service Account Identity**:
+The Google service account identity authenticated from a service account ID Token issued by the Google Cloud IAM authorization server. Its authorization key is the service account unique ID asserted as the Subject with an equal Authorized Party; a verified email can be an additional constraint.
+_Avoid_: Principal, service account email as the primary key, downloaded service account key
+
 **Verified Subject Token**:
 The cyspbot-internal authentication result after an OpenID Connect ID Token has been cryptographically verified against a **Trusted OIDC Issuer**, checked for the cyspbot audience, and accepted by issuer-specific subject-binding checks.
 _Avoid_: Principal, raw JWT, unverified subject
@@ -76,7 +80,7 @@ _Avoid_: Permanent key store, token cache, caller-controlled key source
 - **cyspbot** normalizes exactly one **Installation Token Request** from token-exchange `scope`, token-exchange `resource`, and, for GitHub Actions defaulting only, the verified `repository` claim.
 - **Installation Token Issuance** in **cyspbot** issues at most one **Installation Token** for one **Repository Resource**.
 - The **Token Policy** is fixed by **cyspbot** for subject-token issuer, repository resource, GitHub permission request, and CEL claim condition, while the GitHub App configuration remains the upper bound.
-- The **Token Policy** evaluates only verified **Subject Token Claims** named by a checked-in CEL condition, such as Fly `org_id`, `app_id`, and `machine_id`, or GitHub `repository`, `sub`, `ref`, `event_name`, and `workflow_ref`.
+- The **Token Policy** evaluates only verified **Subject Token Claims** named by a checked-in CEL condition, such as Fly `org_id`, `app_id`, and `machine_id`; GitHub `repository`, `sub`, `ref`, `event_name`, and `workflow_ref`; or Google `sub`, `email`, and `email_verified`.
 - The **Token Exchange Endpoint** is the only public interface for **Installation Token Issuance**.
 - The **JWKS Cache** supplies verification keys for a **Trusted OIDC Issuer**, but never stores issued **Installation Tokens**.
 - A **GitHub App Installation** is the GitHub-side authority that allows **cyspbot** to issue an **Installation Token**.

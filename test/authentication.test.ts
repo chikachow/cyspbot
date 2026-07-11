@@ -5,6 +5,7 @@ import {
   githubActionsIssuerAdapter,
   githubActionsTrustedIssuer,
 } from "@cyspbot/oidc-issuer-github-actions";
+import { googleServiceAccountIssuerAdapter } from "@cyspbot/oidc-issuer-google-service-account";
 import type { OidcIssuerAdapter } from "@cyspbot/oidc/issuer-adapter";
 import { authenticateOidcToken } from "@cyspbot/token-exchange/authentication";
 import { configuredOidcIssuerAdapters } from "@cyspbot/token-exchange/oidc-issuers";
@@ -283,6 +284,115 @@ describe("OIDC authentication", () => {
     } finally {
       consoleError.mockRestore();
     }
+  });
+
+  it("authenticates a Google service account ID Token", async () => {
+    const issuer = "https://accounts.google.com";
+    const uniqueId = "107517467455664443765";
+    const result = await authenticateOidcToken(
+      await createOidcToken({ azp: uniqueId, sub: uniqueId }, { issuer }),
+      "id_token",
+      request,
+      "cyspbot",
+      [googleServiceAccountIssuerAdapter],
+      fetchOidcJwksTestDouble,
+    );
+
+    expect(result).toMatchObject({
+      context: { subjectToken: { issuer, subjectTokenType: "id_token" } },
+      ok: true,
+    });
+  });
+
+  it("rejects a Google service account ID Token whose Authorized Party differs from its Subject", async () => {
+    const issuer = "https://accounts.google.com";
+    const result = await authenticateOidcToken(
+      await createOidcToken(
+        { azp: "107517467455664443766", sub: "107517467455664443765" },
+        { issuer },
+      ),
+      "id_token",
+      request,
+      "cyspbot",
+      [googleServiceAccountIssuerAdapter],
+      fetchOidcJwksTestDouble,
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      reason: "invalid_token",
+      responseHeaders: { "www-authenticate": "Bearer" },
+    });
+  });
+
+  it("rejects a Google user ID Token shape", async () => {
+    const result = await authenticateOidcToken(
+      await createOidcToken(
+        {
+          azp: "1234567890-123456789abcdef.apps.googleusercontent.com",
+          sub: "12345678901234567890",
+        },
+        { issuer: "https://accounts.google.com" },
+      ),
+      "id_token",
+      request,
+      "cyspbot",
+      [googleServiceAccountIssuerAdapter],
+      fetchOidcJwksTestDouble,
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      reason: "invalid_token",
+      responseHeaders: { "www-authenticate": "Bearer" },
+    });
+  });
+
+  it("treats matching Google Subject and Authorized Party claims as opaque strings", async () => {
+    const subject = "opaque-service-account-id";
+    const result = await authenticateOidcToken(
+      await createOidcToken(
+        { azp: subject, sub: subject },
+        { issuer: "https://accounts.google.com" },
+      ),
+      "id_token",
+      request,
+      "cyspbot",
+      [googleServiceAccountIssuerAdapter],
+      fetchOidcJwksTestDouble,
+    );
+
+    expect(result).toMatchObject({
+      context: {
+        subjectToken: {
+          claims: { azp: subject, sub: subject },
+          issuer: "https://accounts.google.com",
+          subjectTokenType: "id_token",
+        },
+      },
+      ok: true,
+    });
+  });
+
+  it("rejects a self-signed service account JWT shape before fetching Google's JWKS", async () => {
+    const fetchJwks = vi.fn(fetchOidcJwksTestDouble);
+    const serviceAccountEmail = "fixture@fixture-project.iam.gserviceaccount.com";
+
+    await expect(
+      authenticateOidcToken(
+        await createOidcToken({ sub: serviceAccountEmail }, { issuer: serviceAccountEmail }),
+        "id_token",
+        request,
+        "cyspbot",
+        [googleServiceAccountIssuerAdapter],
+        fetchJwks,
+      ),
+    ).resolves.toEqual({
+      ok: false,
+      reason: "invalid_token",
+      responseHeaders: { "www-authenticate": "Bearer" },
+    });
+    expect(fetchJwks).not.toHaveBeenCalled();
   });
 
   it.each([

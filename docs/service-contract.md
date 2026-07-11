@@ -81,10 +81,11 @@ Issuer JWKS unavailability means cyspbot cannot obtain a usable trusted key set:
 
 ### Supported issuers
 
-| Issuer         | Issuer Identifier (`iss`)                     | Additional subject binding                        | Omitted `resource`        |
-| -------------- | --------------------------------------------- | ------------------------------------------------- | ------------------------- |
-| Fly.io         | `https://oidc.fly.io/{org-slug}`              | Issuer organization and canonical Subject binding | Rejected                  |
-| GitHub Actions | `https://token.actions.githubusercontent.com` | `azp` is absent or equals `cyspbot`               | Signed `repository` claim |
+| Token provider/profile           | Issuer Identifier (`iss`)                     | Additional subject binding                        | Omitted `resource`        |
+| -------------------------------- | --------------------------------------------- | ------------------------------------------------- | ------------------------- |
+| Fly.io                           | `https://oidc.fly.io/{org-slug}`              | Issuer organization and canonical Subject binding | Rejected                  |
+| GitHub Actions                   | `https://token.actions.githubusercontent.com` | `azp` is absent or equals `cyspbot`               | Signed `repository` claim |
+| Google service account ID Tokens | `https://accounts.google.com`                 | `azp` equals `sub`                                | Rejected                  |
 
 #### Fly.io
 
@@ -97,6 +98,12 @@ Fly callers must provide an explicit repository `resource`; omission or `resourc
 #### GitHub Actions
 
 GitHub Actions callers present a [GitHub Actions OIDC token](https://docs.github.com/en/actions/concepts/security/openid-connect), which is an ID Token issued by `https://token.actions.githubusercontent.com`. An absent Authorized Party (`azp`) claim is accepted; when present, it must equal `cyspbot`. When `resource` is omitted or exactly empty, cyspbot derives it from the signed `repository` claim. Authentication produces a Verified Subject Token but does not create a grant: the matching Token Policy rule must still authorize the signed workflow identity, normalized repository resource, and exact permissions.
+
+#### Google service account ID Tokens
+
+Google service account callers present a [service account ID Token](https://cloud.google.com/docs/authentication/token-types#service_account_id_tokens) issued by the Google Cloud IAM authorization server with Issuer Identifier `https://accounts.google.com`. The shared verifier requires a non-empty string Subject (`sub`), and the adapter requires the Authorized Party (`azp`) to equal that Subject. Google documents both claims as the service account unique ID for this token type; cyspbot treats that identifier as an opaque string. Optional `email` and `email_verified` claims do not affect authentication.
+
+Google callers must provide an explicit repository `resource`; omission or `resource=` receives `invalid_target`. Authentication produces a Verified Subject Token but does not create a grant: the matching Token Policy rule must still authorize the service account unique ID, normalized repository resource, and exact permissions. A rule may additionally require an exact email only when the signed `email_verified` claim is `true`.
 
 ### Token Policy
 
@@ -153,6 +160,22 @@ The omitted `scope` and `resource` default produces this normalized permission r
 
 cyspbot denies forked pull request contexts, unconfigured refs, unconfigured workflow files, tag refs, and unsupported event names.
 
+#### Google service account ID Tokens
+
+Google service account authentication additionally requires:
+
+- the Caller presents a service account ID Token from the Google Cloud IAM authorization server with Issuer Identifier `https://accounts.google.com`
+- the signed subject token audience is `cyspbot`
+- the signed Authorized Party (`azp`) equals the non-empty Subject (`sub`)
+
+After authentication, Google service account policy rules require:
+
+- the service account unique ID exactly matches the rule
+- when the rule names an email, `email` matches exactly and `email_verified` is `true`
+- normalized `resource` and `permissions` exactly match the rule
+
+Missing or incorrectly typed standard claims or a failed Authorized Party/Subject binding remain an invalid subject token. A valid Google service account identity that does not match configured Token Policy fails with `invalid_target`.
+
 #### Shared enforcement and issuance
 
 The Caller cannot supply arbitrary GitHub Apps, GitHub permissions, or repository IDs. The validated `scope` and `resource` are normalized into one Installation Token Request. Token Policy answers whether the Verified Subject Token may receive exactly that request, including cross-owner requests when explicit policy allows them. cyspbot denies unconfigured issuer, condition, resource, or permission combinations with `invalid_target`. The [GitHub App installation](https://docs.github.com/en/rest/apps/apps#create-an-installation-access-token-for-an-app) remains the upper-bound permission authority.
@@ -183,6 +206,12 @@ cyspbot denies unsupported scopes and non-canonical resource forms.
 - [Fly.io OpenID Connect](https://fly.io/docs/security/openid-connect/): organization-specific issuers, Machine identity claims, canonical Subject, and custom Audience.
 - [Fly Machines API Tokens resource](https://fly.io/docs/machines/api/tokens-resource/): obtaining a Fly OIDC token and setting its `aud` claim.
 - [GitHub Actions OIDC reference](https://docs.github.com/en/actions/reference/security/oidc): GitHub Actions OIDC claims, including `aud`, `repository`, `repository_id`, `repository_owner_id`, and `workflow_ref`.
+- [Google Cloud authentication token types](https://cloud.google.com/docs/authentication/token-types#service_account_id_tokens): service account ID Token issuer, signing, lifetime, and claim meanings.
+- [Google IAM service account resource](https://cloud.google.com/iam/docs/reference/rest/v1/projects.serviceAccounts): service account unique ID.
+- [Google IAM Credentials `generateIdToken`](https://cloud.google.com/iam/docs/reference/credentials/rest/v1/projects.serviceAccounts/generateIdToken): service account ID Token generation, required permission, audience, delegation, and optional email claims.
+- [Google IAM roles for service account authentication](https://cloud.google.com/iam/docs/service-account-permissions): direct ID Token and delegation permissions.
+- [Google IAM delegated short-lived credentials](https://cloud.google.com/iam/docs/create-short-lived-credentials-delegated): delegation-chain role relationships.
+- [Google Cloud: Get an ID token](https://cloud.google.com/docs/authentication/get-id-token): supported service account ID Token acquisition methods and audience selection.
 - [GitHub App installation access token API](https://docs.github.com/en/rest/apps/apps#create-an-installation-access-token-for-an-app): GitHub installation tokens are narrowed with `repositories` or `repository_ids` and `permissions`, subject to the app installation's grants.
 
 ## GitHub Webhook Receiver
@@ -246,5 +275,11 @@ cyspbot does not implement:
 - [Fly.io OpenID Connect](https://fly.io/docs/security/openid-connect/)
 - [Fly Machines API Tokens resource](https://fly.io/docs/machines/api/tokens-resource/)
 - [GitHub Actions OpenID Connect](https://docs.github.com/en/actions/concepts/security/openid-connect)
+- [Google Cloud authentication token types](https://cloud.google.com/docs/authentication/token-types#service_account_id_tokens)
+- [Google IAM service account resource](https://cloud.google.com/iam/docs/reference/rest/v1/projects.serviceAccounts)
+- [Google IAM Credentials `generateIdToken`](https://cloud.google.com/iam/docs/reference/credentials/rest/v1/projects.serviceAccounts/generateIdToken)
+- [Google IAM roles for service account authentication](https://cloud.google.com/iam/docs/service-account-permissions)
+- [Google IAM delegated short-lived credentials](https://cloud.google.com/iam/docs/create-short-lived-credentials-delegated)
+- [Google Cloud: Get an ID token](https://cloud.google.com/docs/authentication/get-id-token)
 - [GitHub App installation access tokens](https://docs.github.com/en/rest/apps/apps#create-an-installation-access-token-for-an-app)
 - [GitHub webhook signature validation](https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries)
