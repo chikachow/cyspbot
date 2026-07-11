@@ -43,7 +43,7 @@ export async function authenticateOidcToken(
   subjectTokenType: SubjectTokenType,
   request: Request,
   expectedAudience: string,
-  issuerAdapters: readonly OidcIssuerAdapter<unknown>[],
+  issuerAdapters: readonly OidcIssuerAdapter[],
   fetchJwks?: typeof fetch,
 ): Promise<AuthenticateRequestResult> {
   const trustedIssuer = trustedIssuerForSubjectToken(token, issuerAdapters);
@@ -117,10 +117,10 @@ const oidcVerifiers = new WeakMap<TrustedOidcIssuer, OidcTokenVerifier>();
 
 function trustedIssuerForSubjectToken(
   token: string,
-  issuerAdapters: readonly OidcIssuerAdapter<unknown>[],
+  issuerAdapters: readonly OidcIssuerAdapter[],
 ):
   | {
-      adapter: OidcIssuerAdapter<unknown>;
+      adapter: OidcIssuerAdapter;
       issuer: TrustedOidcIssuer;
       ok: true;
     }

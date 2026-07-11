@@ -17,7 +17,7 @@ Shared packages:
 - `packages/http` owns framework-free JSON responses, problem details, and bounded request-body reading.
 - `packages/github` owns GitHub App JWT signing, GitHub REST calls, installation lookup, installation token creation, and secret binding resolution.
 - `packages/oidc` owns generic OIDC JWT verification and the issuer-adapter contract.
-- `packages/github-actions-oidc` owns the GitHub Actions issuer adapter, issuer constants, claim validation, and principal derivation.
+- `packages/oidc-issuer-github-actions` owns the GitHub Actions issuer adapter and trusted issuer constants.
 
 The root `wrangler.jsonc` points at `test/support/root-test-harness.ts`. It is a local/test binding harness, not a deployable product Worker.
 
@@ -70,13 +70,13 @@ cyspbot does not support OAuth client authentication at `/token`. Non-empty `cli
 
 ## OIDC Verification
 
-The GitHub Actions trusted issuer is defined in `packages/github-actions-oidc/src/issuer.ts`:
+The GitHub Actions trusted issuer is defined in `packages/oidc-issuer-github-actions/src/issuer.ts`:
 
 - issuer: `https://token.actions.githubusercontent.com`
 - JWKS URI: `https://token.actions.githubusercontent.com/.well-known/jwks`
 - allowed signing algorithm: `RS256`
 
-`packages/oidc/src/verifier.ts` verifies tokens with `jose.jwtVerify` and `jose.createRemoteJWKSet`. The generic verifier owns issuer, allowed-algorithm, signature, expiry, and JWKS checks. `packages/oidc/src/issuer-adapter.ts` defines how authentication recognizes a configured issuer, derives its principal, and validates subject-token binding. Token-exchange authentication selects only from adapters composed in `workers/cyspbot-token-exchange/src/oidc-issuers.ts`; the unverified `iss` claim never supplies a JWKS URI. The GitHub Actions adapter owns the exact match between any signed optional authorized-party claim and cyspbot's internal service audience, while authentication validates the signed `aud` claim. GitHub Actions claim parsing and subject interpretation live in `packages/github-actions-oidc/src/github-actions-principal.ts`.
+`packages/oidc/src/verifier.ts` verifies tokens with `jose.jwtVerify` and `jose.createRemoteJWKSet`. The generic verifier owns issuer, allowed-algorithm, signature, expiry, and JWKS checks. `packages/oidc/src/issuer-adapter.ts` defines how authentication recognizes a configured issuer and validates subject-token binding. Token-exchange authentication selects only from adapters composed in `workers/cyspbot-token-exchange/src/oidc-issuers.ts`; the unverified `iss` claim never supplies a JWKS URI. The GitHub Actions adapter owns the exact match between any signed optional authorized-party claim and cyspbot's internal service audience, while authentication validates the signed `aud` claim.
 
 OIDC/JWKS failures are classified at the verifier boundary:
 

@@ -1,4 +1,4 @@
-import { githubActionsTrustedIssuer } from "@cyspbot/github-actions-oidc/issuer";
+import { githubActionsTrustedIssuer } from "@cyspbot/oidc-issuer-github-actions";
 import {
   normalizeInstallationAccessTokenRequest,
   type InstallationAccessTokenRequest,

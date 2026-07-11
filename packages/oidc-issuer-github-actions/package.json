@@ -1,0 +1,13 @@
+{
+  "name": "@cyspbot/oidc-issuer-github-actions",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/issuer.ts",
+    "./issuer": "./src/issuer.ts"
+  },
+  "dependencies": {
+    "@cyspbot/oidc": "workspace:*"
+  }
+}

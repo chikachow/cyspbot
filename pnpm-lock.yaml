@@ -21,9 +21,6 @@ importers:
       '@cloudflare/workers-types':
         specifier: 4.20260702.1
         version: 4.20260702.1
-      '@cyspbot/github-actions-oidc':
-        specifier: workspace:*
-        version: link:packages/github-actions-oidc
       '@cyspbot/github-webhook-receiver':
         specifier: workspace:*
         version: link:workers/cyspbot-github-webhook-receiver
@@ -33,6 +30,9 @@ importers:
       '@cyspbot/oidc':
         specifier: workspace:*
         version: link:packages/oidc
+      '@cyspbot/oidc-issuer-github-actions':
+        specifier: workspace:*
+        version: link:packages/oidc-issuer-github-actions
       '@cyspbot/token-exchange':
         specifier: workspace:*
         version: link:workers/cyspbot-token-exchange
@@ -76,15 +76,6 @@ importers:
         specifier: 6.2.3
         version: 6.2.3
 
-  packages/github-actions-oidc:
-    dependencies:
-      '@cyspbot/oidc':
-        specifier: workspace:*
-        version: link:../oidc
-      zod:
-        specifier: 4.4.3
-        version: 4.4.3
-
   packages/http: {}
 
   packages/oidc:
@@ -92,6 +83,12 @@ importers:
       jose:
         specifier: 6.2.3
         version: 6.2.3
+
+  packages/oidc-issuer-github-actions:
+    dependencies:
+      '@cyspbot/oidc':
+        specifier: workspace:*
+        version: link:../oidc
 
   workers/cyspbot-github-webhook-receiver:
     dependencies:
@@ -113,15 +110,15 @@ importers:
       '@cyspbot/github':
         specifier: workspace:*
         version: link:../../packages/github
-      '@cyspbot/github-actions-oidc':
-        specifier: workspace:*
-        version: link:../../packages/github-actions-oidc
       '@cyspbot/http':
         specifier: workspace:*
         version: link:../../packages/http
       '@cyspbot/oidc':
         specifier: workspace:*
         version: link:../../packages/oidc
+      '@cyspbot/oidc-issuer-github-actions':
+        specifier: workspace:*
+        version: link:../../packages/oidc-issuer-github-actions
       jose:
         specifier: 6.2.3
         version: 6.2.3

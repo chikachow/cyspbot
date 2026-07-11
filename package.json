@@ -32,10 +32,10 @@
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "0.18.2",
     "@cloudflare/workers-types": "4.20260702.1",
-    "@cyspbot/github-actions-oidc": "workspace:*",
     "@cyspbot/github-webhook-receiver": "workspace:*",
     "@cyspbot/http": "workspace:*",
     "@cyspbot/oidc": "workspace:*",
+    "@cyspbot/oidc-issuer-github-actions": "workspace:*",
     "@cyspbot/token-exchange": "workspace:*",
     "@tsconfig/recommended": "1.0.13",
     "@tsconfig/strictest": "2.0.8",
