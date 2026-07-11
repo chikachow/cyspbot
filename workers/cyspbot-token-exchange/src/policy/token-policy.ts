@@ -1,5 +1,5 @@
 import { CelScalar, celEnv, isCelError, mapType, parse, plan, type CelInput } from "@bufbuild/cel";
-import { githubActionsTrustedIssuer } from "@cyspbot/github-actions-oidc/issuer";
+import { githubActionsTrustedIssuer } from "@cyspbot/oidc-issuer-github-actions";
 import type { VerifiedSubjectToken } from "../authentication.ts";
 
 type GitHubInstallationPermissions = Record<string, string>;

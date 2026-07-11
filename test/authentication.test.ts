@@ -1,8 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { githubActionsIssuerAdapter } from "@cyspbot/github-actions-oidc/issuer";
+import { githubActionsIssuerAdapter } from "@cyspbot/oidc-issuer-github-actions";
 import type { OidcIssuerAdapter } from "@cyspbot/oidc/issuer-adapter";
-import type { GitHubActionsPrincipal } from "@cyspbot/github-actions-oidc/principals";
 import { authenticateOidcToken } from "@cyspbot/token-exchange/authentication";
 
 import { createOidcToken, fetchOidcJwksTestDouble } from "./support/oidc.ts";
@@ -60,7 +59,7 @@ describe("OIDC authentication", () => {
   });
 
   it("reports a configured issuer with invalid trust configuration as a verifier failure", async () => {
-    const invalidAdapter: OidcIssuerAdapter<GitHubActionsPrincipal> = {
+    const invalidAdapter: OidcIssuerAdapter = {
       ...githubActionsIssuerAdapter,
       resolveIssuer: () => ({ status: "unavailable" }),
     };
@@ -84,7 +83,7 @@ describe("OIDC authentication", () => {
   });
 
   it("does not select an adapter that declines the token issuer", async () => {
-    const decliningAdapter: OidcIssuerAdapter<GitHubActionsPrincipal> = {
+    const decliningAdapter: OidcIssuerAdapter = {
       ...githubActionsIssuerAdapter,
       resolveIssuer: () => ({ status: "unhandled" }),
     };

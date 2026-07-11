@@ -5,8 +5,7 @@ type OidcIssuerResolution =
   | { status: "unavailable" }
   | { status: "unhandled" };
 
-export interface OidcIssuerAdapter<TPrincipal> {
-  derivePrincipal(claims: VerifiedOidcToken["claims"]): TPrincipal | null;
+export interface OidcIssuerAdapter {
   resolveIssuer(issuer: string): OidcIssuerResolution;
   validateSubjectTokenBinding(input: {
     claims: VerifiedOidcToken["claims"];

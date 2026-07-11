@@ -1,7 +1,7 @@
 import { SignJWT } from "jose";
 import { describe, expect, it } from "vitest";
 
-import { githubActionsTrustedIssuer } from "@cyspbot/github-actions-oidc/issuer";
+import { githubActionsTrustedIssuer } from "@cyspbot/oidc-issuer-github-actions";
 import { OidcTokenVerifier } from "@cyspbot/oidc/verifier";
 import { createOidcToken, testPublicJwk } from "./support/worker.ts";
 
