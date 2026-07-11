@@ -6,9 +6,9 @@ type OidcIssuerResolution =
   | { status: "unhandled" };
 
 export interface OidcIssuerAdapter {
-  resolveIssuer(issuer: string): OidcIssuerResolution;
+  resolveIssuer(unverifiedIssuer: string): OidcIssuerResolution;
   validateSubjectTokenBinding(input: {
-    claims: VerifiedOidcToken["claims"];
     expectedAudience: string;
+    verifiedToken: VerifiedOidcToken;
   }): boolean;
 }

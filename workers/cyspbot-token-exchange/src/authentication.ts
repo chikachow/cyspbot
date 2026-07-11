@@ -46,23 +46,24 @@ export async function authenticateOidcToken(
   issuerAdapters: readonly OidcIssuerAdapter[],
   fetchJwks?: typeof fetch,
 ): Promise<AuthenticateRequestResult> {
-  const trustedIssuer = trustedIssuerForSubjectToken(token, issuerAdapters);
+  const issuerResolution = trustedIssuerForSubjectToken(token, issuerAdapters);
 
-  if (!trustedIssuer.ok) {
-    logAuthFailure(request, trustedIssuer.reason);
+  if (!issuerResolution.ok) {
+    logAuthFailure(request, issuerResolution.reason);
 
     return {
       ok: false,
-      reason: trustedIssuer.reason,
+      reason: issuerResolution.reason,
       responseHeaders: {
         "www-authenticate": "Bearer",
       },
     };
   }
 
-  const verified = await oidcVerifierForTrustedIssuer(trustedIssuer.issuer, fetchJwks).verify(
-    token,
-  );
+  const verified = await oidcVerifierForTrustedIssuer(
+    issuerResolution.trustedIssuer,
+    fetchJwks,
+  ).verify(token);
 
   if (!verified.ok) {
     const reason = authenticationFailureReasonForVerifierFailure(verified.reason);
@@ -84,9 +85,9 @@ export async function authenticateOidcToken(
 
   if (
     !hasMatchingAudience(verified.token.claims.aud, expectedAudience) ||
-    !trustedIssuer.adapter.validateSubjectTokenBinding({
-      claims: verified.token.claims,
+    !issuerResolution.adapter.validateSubjectTokenBinding({
       expectedAudience,
+      verifiedToken: verified.token,
     })
   ) {
     logAuthFailure(request, "invalid_token");
@@ -121,18 +122,18 @@ function trustedIssuerForSubjectToken(
 ):
   | {
       adapter: OidcIssuerAdapter;
-      issuer: TrustedOidcIssuer;
+      trustedIssuer: TrustedOidcIssuer;
       ok: true;
     }
   | { ok: false; reason: AuthenticateRequestFailureReason } {
-  const issuer = unverifiedIssuer(token);
+  const unverifiedTokenIssuer = unverifiedIssuer(token);
 
-  if (issuer === null) {
+  if (unverifiedTokenIssuer === null) {
     return { ok: false, reason: "invalid_token" };
   }
 
   for (const adapter of issuerAdapters) {
-    const resolution = adapter.resolveIssuer(issuer);
+    const resolution = adapter.resolveIssuer(unverifiedTokenIssuer);
 
     if (resolution.status === "unavailable") {
       return { ok: false, reason: "oidc_verifier_failure" };
@@ -142,7 +143,7 @@ function trustedIssuerForSubjectToken(
       continue;
     }
 
-    return { adapter, issuer: resolution.trustedIssuer, ok: true };
+    return { adapter, ok: true, trustedIssuer: resolution.trustedIssuer };
   }
 
   return { ok: false, reason: "invalid_token" };

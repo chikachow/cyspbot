@@ -13,13 +13,13 @@ export const githubActionsTrustedIssuer = {
 } satisfies TrustedOidcIssuer;
 
 export const githubActionsIssuerAdapter: OidcIssuerAdapter = {
-  resolveIssuer: (issuer) =>
-    issuer === githubActionsTrustedIssuer.issuer
+  resolveIssuer: (unverifiedIssuer) =>
+    unverifiedIssuer === githubActionsTrustedIssuer.issuer
       ? { status: "configured", trustedIssuer: githubActionsTrustedIssuer }
       : { status: "unhandled" },
-  validateSubjectTokenBinding: ({ claims, expectedAudience }) =>
-    typeof claims.sub === "string" &&
-    claims.sub.length > 0 &&
-    typeof claims.exp === "number" &&
-    (claims["azp"] === undefined || claims["azp"] === expectedAudience),
+  validateSubjectTokenBinding: ({ expectedAudience, verifiedToken }) =>
+    typeof verifiedToken.claims.sub === "string" &&
+    verifiedToken.claims.sub.length > 0 &&
+    typeof verifiedToken.claims.exp === "number" &&
+    (verifiedToken.claims["azp"] === undefined || verifiedToken.claims["azp"] === expectedAudience),
 };

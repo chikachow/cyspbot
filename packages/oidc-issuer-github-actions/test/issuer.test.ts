@@ -16,12 +16,16 @@ describe("GitHub Actions OIDC issuer adapter", () => {
   it("accepts subject tokens bound to the expected audience", () => {
     expect(
       githubActionsIssuerAdapter.validateSubjectTokenBinding({
-        claims: {
-          azp: "cyspbot",
-          exp: 1,
-          sub: "repo:fixture-owner/fixture-repository:ref:refs/heads/main",
-        },
         expectedAudience: "cyspbot",
+        verifiedToken: {
+          claims: {
+            azp: "cyspbot",
+            exp: 1,
+            sub: "repo:fixture-owner/fixture-repository:ref:refs/heads/main",
+          },
+          issuer: githubActionsTrustedIssuer.issuer,
+          resolvedKeyId: "fixture-key",
+        },
       }),
     ).toBe(true);
   });
@@ -29,18 +33,26 @@ describe("GitHub Actions OIDC issuer adapter", () => {
   it("rejects missing subjects and mismatched authorized parties", () => {
     expect(
       githubActionsIssuerAdapter.validateSubjectTokenBinding({
-        claims: { exp: 1, sub: "" },
         expectedAudience: "cyspbot",
+        verifiedToken: {
+          claims: { exp: 1, sub: "" },
+          issuer: githubActionsTrustedIssuer.issuer,
+          resolvedKeyId: "fixture-key",
+        },
       }),
     ).toBe(false);
     expect(
       githubActionsIssuerAdapter.validateSubjectTokenBinding({
-        claims: {
-          azp: "other-service",
-          exp: 1,
-          sub: "repo:fixture-owner/fixture-repository:ref:refs/heads/main",
-        },
         expectedAudience: "cyspbot",
+        verifiedToken: {
+          claims: {
+            azp: "other-service",
+            exp: 1,
+            sub: "repo:fixture-owner/fixture-repository:ref:refs/heads/main",
+          },
+          issuer: githubActionsTrustedIssuer.issuer,
+          resolvedKeyId: "fixture-key",
+        },
       }),
     ).toBe(false);
   });
