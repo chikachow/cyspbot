@@ -139,6 +139,7 @@ export async function fetchOidcJwksTestDouble(input: RequestInfo | URL, init?: R
     "https://oidc.fly.io/example-org/.well-known/jwks",
     "https://oidc.fly.io/first-org/.well-known/jwks",
     "https://oidc.fly.io/second-org/.well-known/jwks",
+    "https://www.googleapis.com/oauth2/v3/certs",
   ]);
 
   if (request.method !== "GET" || !supportedJwksUrls.has(request.url)) {

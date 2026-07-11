@@ -9,6 +9,7 @@
     "./dependencies": "./src/dependencies.ts",
     "./oidc-issuers": "./src/oidc-issuers.ts",
     "./policy/fly-machine-token-policy-rule": "./src/policy/fly-machine-token-policy-rule.ts",
+    "./policy/google-service-account-token-policy-rule": "./src/policy/google-service-account-token-policy-rule.ts",
     "./policy/token-policy": "./src/policy/token-policy.ts",
     "./policy/token-policy-rules": "./src/policy/token-policy-rules.ts",
     "./token-exchange": "./src/token-exchange.ts",
@@ -27,6 +28,7 @@
     "@cyspbot/oidc": "workspace:*",
     "@cyspbot/oidc-issuer-fly": "workspace:*",
     "@cyspbot/oidc-issuer-github-actions": "workspace:*",
+    "@cyspbot/oidc-issuer-google-service-account": "workspace:*",
     "jose": "6.2.3"
   }
 }

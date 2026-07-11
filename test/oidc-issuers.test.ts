@@ -5,7 +5,7 @@ import type { OidcIssuerAdapter } from "@cyspbot/oidc/issuer-adapter";
 import { configuredOidcIssuerAdapters } from "@cyspbot/token-exchange/oidc-issuers";
 
 describe("configured OIDC issuer adapters", () => {
-  it("logs a missing Fly binding once without disabling GitHub Actions", () => {
+  it("logs a missing Fly binding once without disabling static issuers", () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     try {
@@ -17,6 +17,7 @@ describe("configured OIDC issuer adapters", () => {
       expect(
         resolveTrustedIssuer(first, "https://token.actions.githubusercontent.com"),
       ).toBeDefined();
+      expect(resolveTrustedIssuer(first, "https://accounts.google.com")).toBeDefined();
       expect(consoleError).toHaveBeenCalledOnce();
       expect(consoleError).toHaveBeenCalledWith("oidc_issuer_configuration_binding_missing", {
         binding: "FLY_OIDC_ORG_SLUGS",
@@ -36,6 +37,7 @@ describe("configured OIDC issuer adapters", () => {
       expect(
         resolveTrustedIssuer(adapters, "https://token.actions.githubusercontent.com"),
       ).toBeDefined();
+      expect(resolveTrustedIssuer(adapters, "https://accounts.google.com")).toBeDefined();
       expect(consoleError).not.toHaveBeenCalled();
     } finally {
       consoleError.mockRestore();
@@ -87,6 +89,7 @@ describe("configured OIDC issuer adapters", () => {
       expect(
         resolveTrustedIssuer(adapters, "https://token.actions.githubusercontent.com"),
       ).toBeDefined();
+      expect(resolveTrustedIssuer(adapters, "https://accounts.google.com")).toBeDefined();
       expect(consoleError).toHaveBeenCalledOnce();
       expect(consoleError).toHaveBeenCalledWith("oidc_issuer_configuration_entry_invalid", {
         binding: "FLY_OIDC_ORG_SLUGS",
@@ -115,6 +118,7 @@ describe("configured OIDC issuer adapters", () => {
       expect(
         resolveTrustedIssuer(adapters, "https://token.actions.githubusercontent.com"),
       ).toBeDefined();
+      expect(resolveTrustedIssuer(adapters, "https://accounts.google.com")).toBeDefined();
       expect(consoleError).toHaveBeenCalledTimes(2);
     } finally {
       consoleError.mockRestore();
@@ -151,6 +155,20 @@ describe("configured OIDC issuer adapters", () => {
   it("does not share adapters across different Fly configurations", () => {
     expect(configuredOidcIssuerAdapters({ FLY_OIDC_ORG_SLUGS: "example-org" })).not.toBe(
       configuredOidcIssuerAdapters({ FLY_OIDC_ORG_SLUGS: "other-org" }),
+    );
+  });
+
+  it("composes valid Fly, GitHub Actions, and Google service account issuers", () => {
+    const adapters = configuredOidcIssuerAdapters({ FLY_OIDC_ORG_SLUGS: "example-org" });
+
+    expect(resolveTrustedIssuer(adapters, "https://oidc.fly.io/example-org")?.issuer).toBe(
+      "https://oidc.fly.io/example-org",
+    );
+    expect(
+      resolveTrustedIssuer(adapters, "https://token.actions.githubusercontent.com")?.issuer,
+    ).toBe("https://token.actions.githubusercontent.com");
+    expect(resolveTrustedIssuer(adapters, "https://accounts.google.com")?.issuer).toBe(
+      "https://accounts.google.com",
     );
   });
 });
