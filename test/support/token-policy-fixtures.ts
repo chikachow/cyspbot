@@ -1,59 +1,60 @@
-import type { GitHubActionsPrincipal } from "@cyspbot/github-actions-oidc/principals";
+import { githubActionsTrustedIssuer } from "@cyspbot/github-actions-oidc/issuer";
 import {
   normalizeInstallationAccessTokenRequest,
   type InstallationAccessTokenRequest,
   type TokenPolicyRule,
 } from "@cyspbot/token-exchange/policy/token-policy";
+import type { VerifiedSubjectToken } from "@cyspbot/token-exchange/authentication";
 
 export const fixtureRef = "refs/heads/fixture-base-branch";
 export const fixtureSourceRepository = "fixture-owner/fixture-source-repository";
-const fixtureWorkflowRef = `${fixtureSourceRepository}/.github/workflows/fixture-token-request.yml@${fixtureRef}`;
 export const fixtureSourceResource = `https://api.github.com/repos/${fixtureSourceRepository}`;
 export const fixtureTargetResource =
   "https://api.github.com/repos/fixture-target-owner/fixture-target-repository";
 
-export const principal: GitHubActionsPrincipal = {
-  actor: "dependabot[bot]",
-  eventName: "workflow_dispatch",
-  rawSubject: `repo:${fixtureSourceRepository}:ref:${fixtureRef}`,
-  ref: fixtureRef,
-  refType: "branch",
-  repository: fixtureSourceRepository,
-  repositoryId: "123456789",
-  repositoryOwnerId: "555555",
-  repositoryVisibility: "private",
-  runAttempt: "1",
-  runId: "987654321",
-  sha: "0123456789abcdef0123456789abcdef01234567",
-  subject: {
-    kind: "ref",
-    raw: `repo:${fixtureSourceRepository}:ref:${fixtureRef}`,
+const fixtureWorkflowRef = `${fixtureSourceRepository}/.github/workflows/fixture-token-request.yml@${fixtureRef}`;
+
+export const subjectToken: VerifiedSubjectToken = {
+  claims: {
+    actor: "dependabot[bot]",
+    event_name: "workflow_dispatch",
     ref: fixtureRef,
-    repositorySubject: fixtureSourceRepository,
+    ref_type: "branch",
+    repository: fixtureSourceRepository,
+    repository_id: "123456789",
+    repository_owner_id: "555555",
+    repository_visibility: "private",
+    run_attempt: "1",
+    run_id: "987654321",
+    sha: "0123456789abcdef0123456789abcdef01234567",
+    sub: `repo:${fixtureSourceRepository}:ref:${fixtureRef}`,
+    workflow: "fixture token request",
+    workflow_ref: fixtureWorkflowRef,
   },
-  workflow: "fixture token request",
-  workflowRef: fixtureWorkflowRef,
+  issuer: githubActionsTrustedIssuer.issuer,
+  resolvedKeyId: "fixture-key",
+  subjectTokenType: "id_token",
 };
 
 export function sameRepositoryTokenRequest(): InstallationAccessTokenRequest {
-  return mustNormalizeTokenRequest(principal, {
+  return mustNormalizeTokenRequest(subjectToken, {
     resource: null,
     scope: null,
   });
 }
 
 export function crossOwnerActionsTokenRequest(): InstallationAccessTokenRequest {
-  return mustNormalizeTokenRequest(principal, {
+  return mustNormalizeTokenRequest(subjectToken, {
     resource: fixtureTargetResource,
     scope: "actions:write",
   });
 }
 
 export function mustNormalizeTokenRequest(
-  testPrincipal: GitHubActionsPrincipal,
+  testSubjectToken: VerifiedSubjectToken,
   options: { resource: string | null; scope: string | null },
 ): InstallationAccessTokenRequest {
-  const result = normalizeInstallationAccessTokenRequest(testPrincipal, {
+  const result = normalizeInstallationAccessTokenRequest(testSubjectToken, {
     resource: options.resource,
     scope: options.scope,
   });
@@ -65,101 +66,39 @@ export function mustNormalizeTokenRequest(
   return result.tokenRequest;
 }
 
-export function principalWithRef(ref: string): GitHubActionsPrincipal {
-  const rawSubject = `repo:${fixtureSourceRepository}:ref:${ref}`;
-
-  return {
-    ...principal,
-    rawSubject,
-    ref,
-    subject: {
-      kind: "ref",
-      raw: rawSubject,
-      ref,
-      repositorySubject: fixtureSourceRepository,
-    },
-  };
-}
-
-export function unconfiguredWorkflowRef(): string {
-  return `${fixtureSourceRepository}/.github/workflows/fixture-unconfigured.yml@${fixtureRef}`;
-}
-
-export function principalForRule(
+export function subjectTokenForRule(
   rule: TokenPolicyRule,
-  eventName = requiredFirstEventName(rule),
-  ref = rule.principalRef,
-): GitHubActionsPrincipal {
-  const rawSubject = `repo:${rule.principalRepository}:ref:${ref}`;
+  options: {
+    eventName?: string;
+    ref?: string;
+    repository?: string;
+    workflowRef?: string;
+  } = {},
+): VerifiedSubjectToken {
+  const ref = options.ref ?? claimStringFromCondition(rule.when, "ref") ?? fixtureRef;
+  const repository =
+    options.repository ??
+    claimStringFromCondition(rule.when, "repository") ??
+    fixtureSourceRepository;
 
   return {
-    actor: "fixture-production-rule-actor",
-    eventName,
-    rawSubject,
-    ref,
-    refType: "branch",
-    repository: rule.principalRepository,
-    repositoryId: "123456789",
-    repositoryOwnerId: "555555",
-    repositoryVisibility: "private",
-    runAttempt: "1",
-    runId: "987654321",
-    sha: "0123456789abcdef0123456789abcdef01234567",
-    subject: {
-      kind: "ref",
-      raw: rawSubject,
+    ...subjectToken,
+    claims: {
+      ...subjectToken.claims,
+      event_name: options.eventName ?? "workflow_dispatch",
       ref,
-      repositorySubject: rule.principalRepository,
+      repository,
+      sub: `repo:${repository}:ref:${ref}`,
+      workflow_ref:
+        options.workflowRef ??
+        claimStringFromCondition(rule.when, "workflow_ref") ??
+        `${repository}/.github/workflows/fixture-token-request.yml@${ref}`,
     },
-    workflow: "fixture production rule workflow",
-    workflowRef: rule.principalWorkflowRef,
   };
 }
 
-export function tokenRequestForRule(rule: TokenPolicyRule): InstallationAccessTokenRequest {
-  return mustNormalizeTokenRequest(principalForRule(rule), {
-    resource: rule.resource,
-    scope: scopeForPermissions(rule.permissions),
-  });
-}
+function claimStringFromCondition(condition: string, claim: string): string | null {
+  const match = new RegExp(`claims\\["${claim}"\\] == "([^"]+)"`, "u").exec(condition);
 
-function scopeForPermissions(permissions: Record<string, string>): string {
-  return Object.entries(permissions)
-    .map(([name, level]) => {
-      const scope = permissionScopeForRulePermission(name, level);
-
-      if (scope === null) {
-        throw new Error(`unsupported token policy rule permission: ${name}:${level}`);
-      }
-
-      return scope;
-    })
-    .sort()
-    .join(" ");
-}
-
-function permissionScopeForRulePermission(name: string, level: string): string | null {
-  if (name === "actions" && (level === "read" || level === "write")) {
-    return `actions:${level}`;
-  }
-
-  if (name === "contents" && (level === "read" || level === "write")) {
-    return `contents:${level}`;
-  }
-
-  if (name === "pull_requests" && (level === "read" || level === "write")) {
-    return `pull_requests:${level}`;
-  }
-
-  return null;
-}
-
-function requiredFirstEventName(rule: TokenPolicyRule): string {
-  const eventName = rule.principalEventNames[0];
-
-  if (eventName === undefined) {
-    throw new Error("production token policy rule must contain at least one event");
-  }
-
-  return eventName;
+  return match?.[1] ?? null;
 }

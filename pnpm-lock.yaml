@@ -104,6 +104,12 @@ importers:
 
   workers/cyspbot-token-exchange:
     dependencies:
+      '@bufbuild/cel':
+        specifier: 0.6.0
+        version: 0.6.0(@bufbuild/protobuf@2.12.1)
+      '@bufbuild/protobuf':
+        specifier: ^2.12.1
+        version: 2.12.1
       '@cyspbot/github':
         specifier: workspace:*
         version: link:../../packages/github
@@ -188,6 +194,22 @@ packages:
   '@babel/types@7.29.7':
     resolution: {integrity: sha512-4zBIxpPzowiZpusoFkyGVwakdRJUyuH5PxQ/PrqghfdFWWasvnCdPfQXHrenDai+gyLARulZjZowCOj6fjT4pA==}
     engines: {node: '>=6.9.0'}
+
+  '@bufbuild/cel-spec@0.6.0':
+    resolution: {integrity: sha512-tgatB83sggFj5f5JY9UqLKFnQqzvAv+fO3/PbbS+gDOq6liYPdKqIeRRh5C7UqZnvaveZiwvotnrbCey54U4wQ==}
+    peerDependencies:
+      '@bufbuild/protobuf': ^2.6.2
+
+  '@bufbuild/cel@0.6.0':
+    resolution: {integrity: sha512-P01tn9nx134W4ODz1mGbeS0fHCb8Cq/iF4teLrS2qQSp1qnRPQ8tReWjLZBpLPCQjN8oTkVs2oJFaEk8AvyH1Q==}
+    peerDependencies:
+      '@bufbuild/protobuf': ^2.6.2
+
+  '@bufbuild/protobuf@2.12.1':
+    resolution: {integrity: sha512-BvAMfS6LrgZiryOAZ4pBYucu4wG/Ei/9o9DZ9akbREnMLbPJiom2i8b9C8IsKErQoiKqVhrerzt3kOT/RrzLHg==}
+
+  '@bufbuild/re2@0.6.0':
+    resolution: {integrity: sha512-HrSjnBjk71LpKDlUnbxdN9DD24Hr5O92kCxRVHA0sEa35z6tEUjBS7YQVYBMS9npbllLtPW7tGSAWwfUKBs1Hw==}
 
   '@cloudflare/kv-asset-handler@0.5.0':
     resolution: {integrity: sha512-jxQYkj8dSIzc0cD6cMMNdOc1UVjqSqu8BZdor5s8cGjW2I8BjODt/kWPVdY+u9zj3ms75Q5qaZgnxUad83+eAg==}
@@ -1933,6 +1955,20 @@ snapshots:
     dependencies:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
+
+  '@bufbuild/cel-spec@0.6.0(@bufbuild/protobuf@2.12.1)':
+    dependencies:
+      '@bufbuild/protobuf': 2.12.1
+
+  '@bufbuild/cel@0.6.0(@bufbuild/protobuf@2.12.1)':
+    dependencies:
+      '@bufbuild/cel-spec': 0.6.0(@bufbuild/protobuf@2.12.1)
+      '@bufbuild/protobuf': 2.12.1
+      '@bufbuild/re2': 0.6.0
+
+  '@bufbuild/protobuf@2.12.1': {}
+
+  '@bufbuild/re2@0.6.0': {}
 
   '@cloudflare/kv-asset-handler@0.5.0': {}
 

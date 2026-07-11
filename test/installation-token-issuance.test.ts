@@ -1,40 +1,26 @@
-import type { GitHubActionsPrincipal } from "@cyspbot/github-actions-oidc/principals";
 import { describe, expect, it, vi } from "vitest";
+import type { VerifiedSubjectToken } from "@cyspbot/token-exchange/authentication";
 
 import { issueInstallationTokenForContext } from "../workers/cyspbot-token-exchange/src/policy/installation-token-issuance.ts";
-import {
-  testRepository,
-  testInstallationId,
-  testRepositoryId,
-  testRepositoryOwnerId,
-  testRepositoryVisibility,
-} from "./support/constants.ts";
+import { testRepository, testInstallationId } from "./support/constants.ts";
 import { fetchGitHubTestDouble } from "./support/github-api.ts";
 import { testTokenPolicyRules } from "./support/token-policy.ts";
 import { testEnv } from "./support/worker-env.ts";
 
-const principal: GitHubActionsPrincipal = {
-  actor: "dependabot[bot]",
-  eventName: "workflow_dispatch",
-  rawSubject: "repo:fixture-owner/fixture-source-repository:ref:refs/heads/fixture-base-branch",
-  ref: "refs/heads/fixture-base-branch",
-  refType: "branch",
-  repository: testRepository,
-  repositoryId: testRepositoryId,
-  repositoryOwnerId: testRepositoryOwnerId,
-  repositoryVisibility: testRepositoryVisibility,
-  runAttempt: "1",
-  runId: "987654321",
-  sha: "0123456789abcdef0123456789abcdef01234567",
-  subject: {
-    kind: "ref",
-    raw: "repo:fixture-owner/fixture-source-repository:ref:refs/heads/fixture-base-branch",
+const subjectToken: VerifiedSubjectToken = {
+  claims: {
+    actor: "dependabot[bot]",
+    event_name: "workflow_dispatch",
     ref: "refs/heads/fixture-base-branch",
-    repositorySubject: testRepository,
+    ref_type: "branch",
+    repository: testRepository,
+    sub: "repo:fixture-owner/fixture-source-repository:ref:refs/heads/fixture-base-branch",
+    workflow_ref:
+      "fixture-owner/fixture-source-repository/.github/workflows/fixture-token-request.yml@refs/heads/fixture-base-branch",
   },
-  workflow: "fixture token request",
-  workflowRef:
-    "fixture-owner/fixture-source-repository/.github/workflows/fixture-token-request.yml@refs/heads/fixture-base-branch",
+  issuer: "https://token.actions.githubusercontent.com",
+  resolvedKeyId: "test-key-1",
+  subjectTokenType: "id_token",
 };
 
 describe("installation token issuance", () => {
@@ -68,9 +54,7 @@ describe("installation token issuance", () => {
       issueInstallationTokenForContext(
         testEnv,
         {
-          issuer: "https://token.actions.githubusercontent.com",
-          principal,
-          resolvedKeyId: "test-key-1",
+          subjectToken,
         },
         {
           permissions: {
@@ -113,9 +97,7 @@ describe("installation token issuance", () => {
         issueInstallationTokenForContext(
           testEnv,
           {
-            issuer: "https://token.actions.githubusercontent.com",
-            principal,
-            resolvedKeyId: "test-key-1",
+            subjectToken,
           },
           {
             permissions: {
@@ -140,16 +122,11 @@ describe("installation token issuance", () => {
     expect(consoleInfo).toHaveBeenCalledWith({
       event: "installation_token_issuance_succeeded",
       expires_at: "2030-01-01T00:00:00Z",
-      principal: expect.objectContaining({
-        actor: "dependabot[bot]",
-        event_name: "workflow_dispatch",
+      subject_token: expect.objectContaining({
         issuer: "https://token.actions.githubusercontent.com",
-        repository: testRepository,
-        repository_id: testRepositoryId,
-        repository_owner_id: testRepositoryOwnerId,
-        repository_visibility: testRepositoryVisibility,
         resolved_key_id: "test-key-1",
         sub: "repo:fixture-owner/fixture-source-repository:ref:refs/heads/fixture-base-branch",
+        subject_token_type: "id_token",
       }),
       target_installation: {
         id: 67890,
@@ -157,10 +134,7 @@ describe("installation token issuance", () => {
       },
       token_policy: {
         matched: true,
-        rule: expect.objectContaining({
-          principalRepository: testRepository,
-          resource: "https://api.github.com/repos/fixture-owner/fixture-source-repository",
-        }),
+        rule_id: "test-github-same-repository",
       },
       token_request: {
         permissions: {

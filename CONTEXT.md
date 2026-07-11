@@ -10,13 +10,13 @@ The service contract is [docs/service-contract.md](docs/service-contract.md). Th
 A GitHub Actions workflow invocation that presents a GitHub-issued OIDC token to **cyspbot**.
 _Avoid_: User, human, consumer
 
-**Authenticated Principal**:
-The cyspbot-internal identity shape produced after an OIDC token has been cryptographically verified, issuer policy has been applied, and the claims have been mapped to a trusted caller model.
-_Avoid_: Raw JWT claims, unverified subject
+**Verified Subject Token**:
+The cyspbot-internal authentication result after an OIDC/JWT subject token has been cryptographically verified against a **Trusted OIDC Issuer**, checked for the cyspbot audience, and accepted by issuer-adapter token-binding checks.
+_Avoid_: Principal, raw JWT, unverified subject
 
-**GitHub Actions Principal**:
-The concrete **Authenticated Principal** implementation for a **Caller**. It contains the verified GitHub Actions OIDC claims and parsed subject context used by the **Token Policy**.
-_Avoid_: GitHub user, repository owner
+**Subject Token Claims**:
+The verified JWT claims carried by a **Verified Subject Token**. **Token Policy** may read these through CEL as `claims["..."]`, but cyspbot does not require issuer-specific claims unless a checked-in policy condition names them.
+_Avoid_: Derived principal fields, caller-provided attributes
 
 **Installation Token Issuance**:
 The cyspbot capability that exchanges a trusted GitHub Actions OIDC token for a short-lived GitHub App installation access token for workflow runs that satisfy cyspbot's checked-in OIDC trust policy.
@@ -39,8 +39,8 @@ Project shorthand for the short-lived GitHub App installation access token issue
 _Avoid_: PAT, app JWT, repository secret
 
 **Token Policy**:
-The cyspbot-enforced static allow-list that decides whether a verified **GitHub Actions Principal** may receive exactly the normalized **Installation Token Request**.
-_Avoid_: Profile selector, grant builder, ad hoc caller-defined permissions, event-name-only policy, separate policy engine
+The cyspbot-enforced static allow-list that decides whether a **Verified Subject Token** may receive exactly the normalized **Installation Token Request**. Each rule has a typed issuer guard, a typed GitHub installation-token grant, and a CEL condition over verified subject-token claims and normalized request fields.
+_Avoid_: Profile selector, grant builder, ad hoc caller-defined permissions, event-name-only policy, provider-specific principal mapper
 
 **Webhook Receiver**:
 A cyspbot Worker that validates GitHub webhook authenticity and envelope fields, acknowledges valid signed deliveries, and does not retain raw payloads or run product-specific event handling.
@@ -62,12 +62,12 @@ _Avoid_: Permanent key store, token cache, caller-controlled key source
 
 - The product surface is `POST /token` and `POST /github/webhooks`.
 - A **Caller** authenticates to **cyspbot** with a GitHub OIDC token.
-- A verified **Caller** is represented internally as a **GitHub Actions Principal**, which is the **Authenticated Principal** type.
+- A verified **Caller** is represented internally as a **Verified Subject Token**.
 - cyspbot verifies a **Caller** only against a **Trusted OIDC Issuer**.
-- **cyspbot** normalizes exactly one **Installation Token Request** from the verified **GitHub Actions Principal** and token-exchange `scope` and `resource`.
+- **cyspbot** normalizes exactly one **Installation Token Request** from token-exchange `scope`, token-exchange `resource`, and, for GitHub Actions defaulting only, the verified `repository` claim.
 - **Installation Token Issuance** in **cyspbot** issues at most one **Installation Token** for one **Repository Resource**.
-- The **Token Policy** is fixed by **cyspbot** for principal context, repository resource, and GitHub permission request, while the GitHub App configuration remains the upper bound.
-- The **Token Policy** evaluates verified GitHub OIDC principal facts such as `repository`, parsed subject context, `ref`, `event_name`, and `workflow_ref`.
+- The **Token Policy** is fixed by **cyspbot** for subject-token issuer, repository resource, GitHub permission request, and CEL claim condition, while the GitHub App configuration remains the upper bound.
+- The **Token Policy** evaluates only verified **Subject Token Claims** named by a checked-in CEL condition, such as GitHub `repository`, `sub`, `ref`, `event_name`, and `workflow_ref`.
 - The **Token Exchange Endpoint** is the only public interface for **Installation Token Issuance**.
 - The **JWKS Cache** supplies verification keys for a **Trusted OIDC Issuer**, but never stores issued **Installation Tokens**.
 - A **GitHub App Installation** is the GitHub-side authority that allows **cyspbot** to issue an **Installation Token**.
@@ -78,7 +78,7 @@ _Avoid_: Permanent key store, token cache, caller-controlled key source
 ## Example dialogue
 
 > **Dev:** "Can this workflow ask for a token for another repository?"
-> **Domain expert:** "Only when a checked-in **Token Policy** rule allows that exact **Repository Resource** and permission request for the verified workflow identity."
+> **Domain expert:** "Only when a checked-in **Token Policy** rule allows that exact **Repository Resource** and permission request for the verified **Subject Token Claims**."
 
 > **Dev:** "Can the workflow ask for broader permissions when it needs them?"
 > **Domain expert:** "The workflow can request exact GitHub permission scopes, but **Token Policy** must explicitly allow the normalized **Installation Token Request**. GitHub also caps the request to the permissions granted to the GitHub App installation."
@@ -87,4 +87,4 @@ _Avoid_: Permanent key store, token cache, caller-controlled key source
 > **Domain expert:** "No. **cyspbot** does not cache issued **Installation Tokens**."
 
 > **Dev:** "What decides whether a workflow run is trusted enough for Installation Token Issuance?"
-> **Domain expert:** "The **Token Policy** evaluates the verified GitHub OIDC principal and the normalized **Installation Token Request**. Policy permits only explicit workflow refs and repository resources configured by the service."
+> **Domain expert:** "The **Token Policy** evaluates the **Verified Subject Token** and the normalized **Installation Token Request**. Policy permits only explicit issuer, claim, repository resource, and permission combinations configured by the service."

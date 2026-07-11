@@ -1,4 +1,6 @@
-import type { GitHubActionsPrincipal } from "@cyspbot/github-actions-oidc/principals";
+import { CelScalar, celEnv, isCelError, mapType, parse, plan, type CelInput } from "@bufbuild/cel";
+import { githubActionsTrustedIssuer } from "@cyspbot/github-actions-oidc/issuer";
+import type { VerifiedSubjectToken } from "../authentication.ts";
 
 type GitHubInstallationPermissions = Record<string, string>;
 
@@ -9,17 +11,23 @@ export interface InstallationAccessTokenRequest {
 }
 
 export interface TokenPolicyInput {
-  principal: GitHubActionsPrincipal;
+  subjectToken: VerifiedSubjectToken;
   tokenRequest: InstallationAccessTokenRequest;
 }
 
 export interface TokenPolicyRule {
-  permissions: GitHubInstallationPermissions;
-  principalEventNames: readonly string[];
-  principalRef: string;
-  principalRepository: string;
-  principalWorkflowRef: string;
-  resource: string;
+  effect: "allow";
+  id: string;
+  issue: {
+    githubInstallationToken: {
+      permissions: GitHubInstallationPermissions;
+      resource: string;
+    };
+  };
+  subject: {
+    issuer: string;
+  };
+  when: string;
 }
 
 interface TokenPolicyAllowDecision {
@@ -40,6 +48,7 @@ export interface ParsedGitHubRepositoryResource {
   resource: URL;
 }
 
+const maxCelConditionLength = 4096;
 const supportedPermissionScopes = new Map<string, readonly [string, string]>([
   ["actions:read", ["actions", "read"]],
   ["actions:write", ["actions", "write"]],
@@ -51,16 +60,31 @@ const supportedPermissionScopes = new Map<string, readonly [string, string]>([
 const supportedPermissionPairs = new Set(
   [...supportedPermissionScopes.values()].map(permissionPairKey),
 );
+const tokenPolicyCelEnv = celEnv({
+  variables: {
+    claims: mapType(CelScalar.STRING, CelScalar.DYN),
+    request: mapType(CelScalar.STRING, CelScalar.DYN),
+    subject: mapType(CelScalar.STRING, CelScalar.DYN),
+  },
+});
+const allowedCelRootIdentifiers = new Set(["claims", "request", "subject"]);
+const compiledTokenPolicyRules = new WeakMap<TokenPolicyRule, CompiledTokenPolicyRule>();
+
+interface CompiledTokenPolicyRule {
+  evaluate(bindings: Record<string, CelInput>): unknown;
+}
 
 export function normalizeInstallationAccessTokenRequest(
-  principal: GitHubActionsPrincipal,
+  subjectToken: VerifiedSubjectToken,
   options: { resource: string | null; scope: string | null },
 ): { ok: true; tokenRequest: InstallationAccessTokenRequest } | { error: string; ok: false } {
-  const resourceValue = options.resource ?? `https://api.github.com/repos/${principal.repository}`;
-  const parsedResource = parseGitHubRepositoryResource(resourceValue);
+  const normalizedResource = normalizeInstallationAccessTokenResource(
+    subjectToken,
+    options.resource,
+  );
 
-  if (parsedResource === null) {
-    return { error: "invalid_target", ok: false };
+  if (!normalizedResource.ok) {
+    return { error: normalizedResource.error, ok: false };
   }
 
   const scope = parseGitHubInstallationScope(options.scope ?? "contents:write pull_requests:write");
@@ -73,7 +97,7 @@ export function normalizeInstallationAccessTokenRequest(
     ok: true,
     tokenRequest: {
       permissions: scope.permissions,
-      resource: parsedResource.resource,
+      resource: normalizedResource.resource,
       scope: scope.scope,
     },
   };
@@ -101,30 +125,56 @@ export function evaluateConfiguredTokenPolicy(
 export function validateTokenPolicyRules(
   rules: readonly TokenPolicyRule[],
 ): readonly TokenPolicyRule[] {
-  const seen = new Set<string>();
+  const seenIds = new Set<string>();
+  const seenEffectiveGrants = new Set<string>();
 
   for (const rule of rules) {
-    const key = tokenPolicyRuleKey(rule);
-
-    if (seen.has(key)) {
-      throw new Error("duplicate token policy rule");
+    if (!requiredRuleFieldsArePresent(rule.id, rule.subject.issuer)) {
+      throw new Error("invalid token policy rule id");
     }
 
-    const parsedResource = parseGitHubRepositoryResource(rule.resource);
+    if (seenIds.has(rule.id)) {
+      throw new Error("duplicate token policy rule id");
+    }
 
-    if (parsedResource === null || parsedResource.resource.href !== rule.resource) {
+    if (rule.effect !== "allow") {
+      throw new Error("invalid token policy rule effect");
+    }
+
+    const parsedResource = parseGitHubRepositoryResource(
+      rule.issue.githubInstallationToken.resource,
+    );
+
+    if (
+      parsedResource === null ||
+      parsedResource.resource.href !== rule.issue.githubInstallationToken.resource
+    ) {
       throw new Error("invalid token policy rule resource");
     }
 
-    if (rule.principalEventNames.length === 0) {
-      throw new Error("invalid token policy rule events");
-    }
-
-    if (!rulePermissionsAreSupported(rule.permissions)) {
+    if (!rulePermissionsAreSupported(rule.issue.githubInstallationToken.permissions)) {
       throw new Error("invalid token policy rule permissions");
     }
 
-    seen.add(key);
+    if (rule.when.length === 0 || rule.when.length > maxCelConditionLength) {
+      throw new Error("invalid token policy rule condition");
+    }
+
+    const compiledRule = compileTokenPolicyRule(rule);
+
+    if (compiledRule === null) {
+      throw new Error("invalid token policy rule condition");
+    }
+
+    const effectiveGrantKey = tokenPolicyRuleEffectiveGrantKey(rule);
+
+    if (seenEffectiveGrants.has(effectiveGrantKey)) {
+      throw new Error("duplicate token policy rule");
+    }
+
+    seenIds.add(rule.id);
+    seenEffectiveGrants.add(effectiveGrantKey);
+    compiledTokenPolicyRules.set(rule, compiledRule);
   }
 
   return rules;
@@ -177,96 +227,297 @@ export function parseGitHubRepositoryResource(
   };
 }
 
+function normalizeInstallationAccessTokenResource(
+  subjectToken: VerifiedSubjectToken,
+  resource: string | null,
+):
+  | {
+      ok: true;
+      resource: URL;
+    }
+  | { error: string; ok: false } {
+  if (resource !== null) {
+    const parsedResource = parseGitHubRepositoryResource(resource);
+
+    return parsedResource === null
+      ? { error: "invalid_target", ok: false }
+      : { ok: true, resource: parsedResource.resource };
+  }
+
+  const repository = subjectToken.claims["repository"];
+
+  if (
+    subjectToken.issuer !== githubActionsTrustedIssuer.issuer ||
+    typeof repository !== "string" ||
+    repository.length === 0
+  ) {
+    return { error: "invalid_target", ok: false };
+  }
+
+  const parsedResource = parseGitHubRepositoryResource(
+    `https://api.github.com/repos/${repository}`,
+  );
+
+  return parsedResource === null
+    ? { error: "invalid_target", ok: false }
+    : { ok: true, resource: parsedResource.resource };
+}
+
 function tokenPolicyRuleMatches(rule: TokenPolicyRule, input: TokenPolicyInput): boolean {
-  const { principal, tokenRequest } = input;
+  const grant = rule.issue.githubInstallationToken;
 
   return (
-    principal.repository === rule.principalRepository &&
-    rule.principalEventNames.includes(principal.eventName) &&
-    principal.refType === "branch" &&
-    principal.ref === rule.principalRef &&
-    principal.subject.kind === "ref" &&
-    principal.subject.ref === rule.principalRef &&
-    principal.workflowRef === rule.principalWorkflowRef &&
-    tokenRequest.resource.href === rule.resource &&
-    permissionsEqual(tokenRequest.permissions, rule.permissions)
+    input.subjectToken.issuer === rule.subject.issuer &&
+    input.tokenRequest.resource.href === grant.resource &&
+    permissionsEqual(input.tokenRequest.permissions, grant.permissions) &&
+    tokenPolicyConditionMatches(rule, input)
   );
+}
+
+function tokenPolicyConditionMatches(rule: TokenPolicyRule, input: TokenPolicyInput): boolean {
+  const result = compiledTokenPolicyRule(rule).evaluate(tokenPolicyCelBindings(input));
+
+  return !isCelError(result) && result === true;
 }
 
 function tokenPolicyDenyReasons(
   input: TokenPolicyInput,
   rules: readonly TokenPolicyRule[],
 ): string[] {
-  const { principal, tokenRequest } = input;
+  const resourceRules = rules.filter(
+    (rule) => input.tokenRequest.resource.href === rule.issue.githubInstallationToken.resource,
+  );
   const reasons: string[] = [];
-  const repositoryRules = rules.filter((rule) => rule.principalRepository === principal.repository);
 
-  if (repositoryRules.length === 0) {
-    reasons.push("repository");
-  }
-
-  const eventRules = repositoryRules.filter((rule) =>
-    rule.principalEventNames.includes(principal.eventName),
-  );
-
-  if (repositoryRules.length > 0 && eventRules.length === 0) {
-    reasons.push("event_name");
-  }
-
-  if (principal.refType !== "branch") {
-    reasons.push("ref_type");
-  }
-
-  if (principal.subject.kind !== "ref") {
-    reasons.push("sub");
-  }
-
-  const refRules = eventRules.filter(
-    (rule) =>
-      principal.ref === rule.principalRef &&
-      principal.subject.kind === "ref" &&
-      principal.subject.ref === rule.principalRef,
-  );
-
-  if (eventRules.length > 0 && refRules.length === 0) {
-    if (principal.ref === null || eventRules.every((rule) => principal.ref !== rule.principalRef)) {
-      reasons.push("ref");
-    }
-
-    if (
-      principal.subject.kind !== "ref" ||
-      eventRules.every(
-        (rule) => principal.subject.kind === "ref" && principal.subject.ref !== rule.principalRef,
-      )
-    ) {
-      reasons.push("sub");
-    }
-  }
-
-  const workflowRules = refRules.filter(
-    (rule) => principal.workflowRef === rule.principalWorkflowRef,
-  );
-
-  if (refRules.length > 0 && workflowRules.length === 0) {
-    reasons.push("workflow_ref");
-  }
-
-  const resourceRules = workflowRules.filter(
-    (rule) => tokenRequest.resource.href === rule.resource,
-  );
-
-  if (workflowRules.length > 0 && resourceRules.length === 0) {
+  if (resourceRules.length === 0) {
     reasons.push("resource");
   }
 
-  if (
-    resourceRules.length > 0 &&
-    resourceRules.every((rule) => !permissionsEqual(tokenRequest.permissions, rule.permissions))
-  ) {
+  const issuerRules = resourceRules.filter(
+    (rule) => input.subjectToken.issuer === rule.subject.issuer,
+  );
+
+  if (resourceRules.length > 0 && issuerRules.length === 0) {
+    reasons.push("subject_issuer");
+  }
+
+  const permissionRules = issuerRules.filter((rule) =>
+    permissionsEqual(
+      input.tokenRequest.permissions,
+      rule.issue.githubInstallationToken.permissions,
+    ),
+  );
+
+  if (issuerRules.length > 0 && permissionRules.length === 0) {
     reasons.push("permissions");
   }
 
+  if (
+    permissionRules.length > 0 &&
+    permissionRules.every((rule) => !tokenPolicyConditionMatches(rule, input))
+  ) {
+    reasons.push("condition");
+  }
+
   return [...new Set(reasons.length === 0 ? ["token_policy_rule"] : reasons)];
+}
+
+function compileTokenPolicyRule(rule: TokenPolicyRule): CompiledTokenPolicyRule | null {
+  try {
+    const expression = parse(rule.when);
+
+    if (!celExpressionUsesOnlyAllowedRootIdentifiers(expression)) {
+      return null;
+    }
+
+    const compiledRule = {
+      evaluate: plan(tokenPolicyCelEnv, expression),
+    };
+
+    if (!tokenPolicyConditionHasBooleanResult(compiledRule, rule)) {
+      return null;
+    }
+
+    compiledTokenPolicyRules.set(rule, compiledRule);
+
+    return compiledRule;
+  } catch {
+    return null;
+  }
+}
+
+function compiledTokenPolicyRule(rule: TokenPolicyRule): CompiledTokenPolicyRule {
+  const compiledRule = compiledTokenPolicyRules.get(rule);
+
+  if (compiledRule !== undefined) {
+    return compiledRule;
+  }
+
+  const lazilyCompiledRule = compileTokenPolicyRule(rule);
+
+  if (lazilyCompiledRule === null) {
+    throw new Error("invalid token policy rule condition");
+  }
+
+  return lazilyCompiledRule;
+}
+
+function celExpressionUsesOnlyAllowedRootIdentifiers(expression: unknown): boolean {
+  for (const identifier of celRootIdentifiers(expression)) {
+    if (!allowedCelRootIdentifiers.has(identifier)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function tokenPolicyConditionHasBooleanResult(
+  compiledRule: CompiledTokenPolicyRule,
+  rule: TokenPolicyRule,
+): boolean {
+  const result = compiledRule.evaluate(tokenPolicyValidationBindings(rule));
+
+  return !isCelError(result) && typeof result === "boolean";
+}
+
+function tokenPolicyValidationBindings(rule: TokenPolicyRule): Record<string, CelInput> {
+  const claims = validationClaimBindings(rule.when);
+
+  return {
+    claims,
+    request: {
+      permissions: rule.issue.githubInstallationToken.permissions,
+      resource: rule.issue.githubInstallationToken.resource,
+      scope: Object.entries(rule.issue.githubInstallationToken.permissions)
+        .map(([permission, level]) => `${permission}:${level}`)
+        .sort()
+        .join(" "),
+    },
+    subject: {
+      claims,
+      issuer: rule.subject.issuer,
+      resolvedKeyId: "validation-key",
+      subjectTokenType: "id_token",
+    },
+  };
+}
+
+function validationClaimBindings(condition: string): Record<string, CelInput> {
+  const claims: Record<string, CelInput> = {};
+  const claimReferencePattern = /claims\["([^"]+)"\]/gu;
+
+  for (const match of condition.matchAll(claimReferencePattern)) {
+    const claim = match[1];
+
+    if (claim !== undefined) {
+      claims[claim] = validationClaimValue(claim);
+    }
+  }
+
+  return claims;
+}
+
+function validationClaimValue(claim: string): CelInput {
+  if (claim === "email_verified") {
+    return true;
+  }
+
+  if (claim === "exp" || claim === "iat" || claim === "nbf") {
+    return 1;
+  }
+
+  return "validation-value";
+}
+
+function celRootIdentifiers(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.flatMap(celRootIdentifiers);
+  }
+
+  if (typeof value !== "object" || value === null) {
+    return [];
+  }
+
+  const record = value as Record<string, unknown>;
+  const exprKind = record["exprKind"];
+
+  if (isCelIdentExprKind(exprKind)) {
+    return [exprKind.value.name];
+  }
+
+  return Object.values(record).flatMap(celRootIdentifiers);
+}
+
+function isCelIdentExprKind(value: unknown): value is { value: { name: string } } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { case?: unknown }).case === "identExpr" &&
+    typeof (value as { value?: { name?: unknown } }).value?.name === "string"
+  );
+}
+
+function tokenPolicyCelBindings(input: TokenPolicyInput): Record<string, CelInput> {
+  const claims = jsonLikeRecord(input.subjectToken.claims);
+
+  return {
+    claims,
+    request: {
+      permissions: input.tokenRequest.permissions,
+      resource: input.tokenRequest.resource.href,
+      scope: input.tokenRequest.scope,
+    },
+    subject: {
+      claims,
+      issuer: input.subjectToken.issuer,
+      resolvedKeyId: input.subjectToken.resolvedKeyId,
+      subjectTokenType: input.subjectToken.subjectTokenType,
+    },
+  };
+}
+
+function jsonLikeRecord(input: Record<string, unknown>): Record<string, CelInput> {
+  return Object.fromEntries(
+    Object.entries(input)
+      .filter(([, value]) => value !== undefined)
+      .map(([key, value]) => [key, jsonLikeValue(value)]),
+  );
+}
+
+function jsonLikeValue(value: unknown): CelInput {
+  if (Array.isArray(value)) {
+    return value.map(jsonLikeValue);
+  }
+
+  if (typeof value === "object" && value !== null) {
+    return jsonLikeRecord(value as Record<string, unknown>);
+  }
+
+  if (
+    value === null ||
+    typeof value === "boolean" ||
+    typeof value === "number" ||
+    typeof value === "string" ||
+    typeof value === "bigint" ||
+    value instanceof Uint8Array
+  ) {
+    return value;
+  }
+
+  if (value === undefined) {
+    return null;
+  }
+
+  if (typeof value === "symbol") {
+    return value.description ?? "";
+  }
+
+  if (typeof value === "function") {
+    return value.name;
+  }
+
+  return null;
 }
 
 function parseGitHubInstallationScope(
@@ -321,14 +572,20 @@ function permissionsEqual(
   );
 }
 
-function tokenPolicyRuleKey(rule: TokenPolicyRule): string {
+function tokenPolicyRuleEffectiveGrantKey(rule: TokenPolicyRule): string {
   return JSON.stringify({
-    permissions: Object.fromEntries(Object.entries(rule.permissions).sort(comparePermissionEntry)),
-    principalEventNames: [...rule.principalEventNames].sort(),
-    principalRef: rule.principalRef,
-    principalRepository: rule.principalRepository,
-    principalWorkflowRef: rule.principalWorkflowRef,
-    resource: rule.resource,
+    issue: {
+      githubInstallationToken: {
+        permissions: Object.fromEntries(
+          Object.entries(rule.issue.githubInstallationToken.permissions).sort(
+            comparePermissionEntry,
+          ),
+        ),
+        resource: rule.issue.githubInstallationToken.resource,
+      },
+    },
+    subject: rule.subject,
+    when: rule.when,
   });
 }
 
@@ -337,6 +594,10 @@ function comparePermissionEntry(
   [right]: readonly [string, string],
 ): number {
   return left.localeCompare(right);
+}
+
+function requiredRuleFieldsArePresent(...values: readonly unknown[]): boolean {
+  return values.every((value) => typeof value === "string" && value.length > 0);
 }
 
 function rulePermissionsAreSupported(permissions: GitHubInstallationPermissions): boolean {

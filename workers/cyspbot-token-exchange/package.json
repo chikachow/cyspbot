@@ -19,6 +19,8 @@
     "wrangler:check": "WRANGLER_LOG=none WRANGLER_LOG_PATH=../../.wrangler/logs WRANGLER_REGISTRY_PATH=../../.wrangler/registry wrangler deploy --dry-run --config wrangler.jsonc"
   },
   "dependencies": {
+    "@bufbuild/cel": "0.6.0",
+    "@bufbuild/protobuf": "^2.12.1",
     "@cyspbot/github": "workspace:*",
     "@cyspbot/github-actions-oidc": "workspace:*",
     "@cyspbot/http": "workspace:*",
