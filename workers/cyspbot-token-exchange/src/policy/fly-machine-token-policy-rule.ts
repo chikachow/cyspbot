@@ -33,6 +33,8 @@ export function flyMachineInstallationTokenRule(options: {
       },
     },
     subject: { issuer },
+    // Reassert adapter-owned identity consistency at the authorization boundary.
+    // This keeps policy fail-closed if it is ever evaluated with a malformed context.
     when: [
       `claims["org_id"] == ${celString(options.orgId)}`,
       `claims["org_name"] == ${celString(options.orgSlug)}`,

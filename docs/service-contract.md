@@ -89,7 +89,7 @@ Installation Token Issuance is allowed only when the normalized installation tok
 - `repository`, `ref`, `sub`, and `workflow_ref` exactly satisfy the matching rule's CEL condition
 - normalized `resource` and `permissions` exactly match the matching rule
 
-Fly.io Machine tokens may authenticate only from organization issuers explicitly configured by the service. Authentication requires non-empty immutable organization, app, and Machine identity claims; `org_name` must match the configured issuer slug; and `sub` must equal `org_name:app_name:machine_name`. They remain denied unless an issuer-guarded Token Policy rule also matches immutable organization and app IDs, an optional Machine ID, the resource, and requested permissions.
+Fly.io Machine tokens may authenticate only from organization issuers explicitly configured by the service. Authentication requires non-empty immutable organization, app, and Machine identity claims; `org_name` must match the configured issuer slug; and `sub` must equal `org_name:app_name:machine_name`. They remain denied unless an issuer-guarded Token Policy rule also matches immutable organization and app IDs, an optional Machine ID, the resource, and requested permissions. Fly rules do not require GitHub Actions claims such as `repository`, `event_name`, `ref`, or `workflow_ref`.
 
 Google service-account ID tokens authenticate only from `https://accounts.google.com` and require matching non-empty `sub` and `azp` claims. They remain denied unless an issuer-guarded Token Policy rule also matches the immutable service-account unique ID, the resource, and requested permissions. A rule may additionally require the signed email only when `email_verified=true`.
 

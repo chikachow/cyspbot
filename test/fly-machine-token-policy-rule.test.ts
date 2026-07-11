@@ -40,6 +40,16 @@ describe("Fly Machine installation-token policy rules", () => {
     });
   });
 
+  it.each([
+    ["issuer organization", { org_name: "other-org" }],
+    ["canonical subject", { sub: "example-org:other-app:fixture-machine" }],
+  ])("reasserts the %s binding at the policy boundary", (_name, changedClaims) => {
+    expect(evaluate(flyRule(), { ...claims, ...changedClaims })).toEqual({
+      decision: "deny",
+      reasons: ["condition"],
+    });
+  });
+
   it("optionally narrows a rule to one immutable Machine ID", () => {
     const rule = flyRule({ machineId: "fly-machine-id" });
 
