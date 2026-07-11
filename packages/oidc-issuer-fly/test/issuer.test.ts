@@ -47,35 +47,35 @@ describe("Fly.io OIDC issuer adapter", () => {
       adapter.validateSubjectTokenBinding({
         claims,
         expectedAudience: "cyspbot",
-        issuer: "https://oidc.fly.io/example-org",
+        verifiedIssuer: "https://oidc.fly.io/example-org",
       }),
     ).toBe(true);
     expect(
       adapter.validateSubjectTokenBinding({
         claims: { ...claims, sub: "example-org:other-app:fixture-machine" },
         expectedAudience: "cyspbot",
-        issuer: "https://oidc.fly.io/example-org",
+        verifiedIssuer: "https://oidc.fly.io/example-org",
       }),
     ).toBe(false);
     expect(
       adapter.validateSubjectTokenBinding({
         claims: { ...claims, org_name: "other-org" },
         expectedAudience: "cyspbot",
-        issuer: "https://oidc.fly.io/example-org",
+        verifiedIssuer: "https://oidc.fly.io/example-org",
       }),
     ).toBe(false);
     expect(
       adapter.validateSubjectTokenBinding({
         claims: { ...claims, machine_id: "" },
         expectedAudience: "cyspbot",
-        issuer: "https://oidc.fly.io/example-org",
+        verifiedIssuer: "https://oidc.fly.io/example-org",
       }),
     ).toBe(false);
     expect(
       adapter.validateSubjectTokenBinding({
         claims: { ...claims, azp: "other-service" },
         expectedAudience: "cyspbot",
-        issuer: "https://oidc.fly.io/example-org",
+        verifiedIssuer: "https://oidc.fly.io/example-org",
       }),
     ).toBe(false);
   });

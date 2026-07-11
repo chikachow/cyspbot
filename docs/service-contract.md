@@ -78,7 +78,9 @@ OIDC/JWKS provider unavailability means cyspbot cannot obtain a usable trusted k
 
 ### Token Policy
 
-Installation Token Issuance is allowed only when the normalized installation token request matches an explicit checked-in Token Policy rule. Each rule binds a verified subject-token issuer, exact resource and permissions, and a fail-closed CEL condition over signed `claims`, `subject`, and normalized `request` data:
+Installation Token Issuance is allowed only when the normalized installation token request matches an explicit checked-in Token Policy rule. Every rule binds a verified subject-token issuer, exact resource and permissions, and a fail-closed CEL condition over signed `claims`, `subject`, and normalized `request` data.
+
+GitHub Actions policy rules additionally require:
 
 - the caller presents a verified [GitHub Actions OIDC](https://docs.github.com/en/actions/concepts/security/openid-connect) subject token from `https://token.actions.githubusercontent.com`
 - the signed subject token audience is `cyspbot`

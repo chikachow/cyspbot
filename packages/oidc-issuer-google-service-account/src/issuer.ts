@@ -12,8 +12,8 @@ export const googleServiceAccountIssuerAdapter = {
     issuer === googleServiceAccountTrustedIssuer.issuer
       ? { status: "configured" as const, trustedIssuer: googleServiceAccountTrustedIssuer }
       : { status: "unhandled" as const },
-  validateSubjectTokenBinding: ({ claims, issuer }) =>
-    issuer === googleServiceAccountTrustedIssuer.issuer &&
+  validateSubjectTokenBinding: ({ claims, verifiedIssuer }) =>
+    verifiedIssuer === googleServiceAccountTrustedIssuer.issuer &&
     typeof claims["azp"] === "string" &&
     claims["azp"].length > 0 &&
     typeof claims.sub === "string" &&

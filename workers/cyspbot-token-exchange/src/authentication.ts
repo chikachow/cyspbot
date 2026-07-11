@@ -87,7 +87,7 @@ export async function authenticateOidcToken(
     !trustedIssuer.adapter.validateSubjectTokenBinding({
       claims: verified.token.claims,
       expectedAudience,
-      issuer: verified.token.issuer,
+      verifiedIssuer: verified.token.issuer,
     })
   ) {
     logAuthFailure(request, "invalid_token");

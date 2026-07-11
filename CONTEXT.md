@@ -15,7 +15,7 @@ The cyspbot-internal authentication result after an OIDC/JWT subject token has b
 _Avoid_: Principal, raw JWT, unverified subject
 
 **Subject Token Claims**:
-The verified JWT claims carried by a **Verified Subject Token**. **Token Policy** may read these through CEL as `claims["..."]`, but cyspbot does not require issuer-specific claims unless a checked-in policy condition names them.
+The verified JWT claims carried by a **Verified Subject Token**. An issuer adapter may require provider-specific claims to establish an internally consistent identity before policy evaluation. **Token Policy** may then read verified claims through CEL as `claims["..."]` to authorize a specific grant. Adapter-level identity requirements are authentication constraints; they do not authorize **Installation Token Issuance**.
 _Avoid_: Derived principal fields, caller-provided attributes
 
 **Fly Machine Identity**:

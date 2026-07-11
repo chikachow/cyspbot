@@ -22,7 +22,7 @@ describe("GitHub Actions OIDC issuer adapter", () => {
           sub: "repo:fixture-owner/fixture-repository:ref:refs/heads/main",
         },
         expectedAudience: "cyspbot",
-        issuer: githubActionsTrustedIssuer.issuer,
+        verifiedIssuer: githubActionsTrustedIssuer.issuer,
       }),
     ).toBe(true);
   });
@@ -32,7 +32,7 @@ describe("GitHub Actions OIDC issuer adapter", () => {
       githubActionsIssuerAdapter.validateSubjectTokenBinding({
         claims: { exp: 1, sub: "" },
         expectedAudience: "cyspbot",
-        issuer: githubActionsTrustedIssuer.issuer,
+        verifiedIssuer: githubActionsTrustedIssuer.issuer,
       }),
     ).toBe(false);
     expect(
@@ -43,7 +43,7 @@ describe("GitHub Actions OIDC issuer adapter", () => {
           sub: "repo:fixture-owner/fixture-repository:ref:refs/heads/main",
         },
         expectedAudience: "cyspbot",
-        issuer: githubActionsTrustedIssuer.issuer,
+        verifiedIssuer: githubActionsTrustedIssuer.issuer,
       }),
     ).toBe(false);
   });

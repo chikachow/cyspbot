@@ -78,9 +78,9 @@ function isNonEmptyString(value: unknown): value is string {
 function validateFlySubjectTokenBinding(input: {
   claims: VerifiedOidcToken["claims"];
   expectedAudience: string;
-  issuer: string;
+  verifiedIssuer: string;
 }): boolean {
-  const { claims, expectedAudience, issuer } = input;
+  const { claims, expectedAudience, verifiedIssuer } = input;
   const appId = claims["app_id"];
   const appName = claims["app_name"];
   const machineId = claims["machine_id"];
@@ -100,7 +100,7 @@ function validateFlySubjectTokenBinding(input: {
     isNonEmptyString(machineVersion) &&
     isNonEmptyString(orgId) &&
     isNonEmptyString(orgName) &&
-    orgName === flyOrgSlugForIssuer(issuer) &&
+    orgName === flyOrgSlugForIssuer(verifiedIssuer) &&
     claims.sub === `${orgName}:${appName}:${machineName}` &&
     (claims["azp"] === undefined || claims["azp"] === expectedAudience)
   );

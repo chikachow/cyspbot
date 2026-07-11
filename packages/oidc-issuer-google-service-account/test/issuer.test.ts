@@ -27,7 +27,7 @@ describe("Google service-account OIDC issuer adapter", () => {
       googleServiceAccountIssuerAdapter.validateSubjectTokenBinding({
         claims: validClaims,
         expectedAudience: "cyspbot",
-        issuer: googleServiceAccountTrustedIssuer.issuer,
+        verifiedIssuer: googleServiceAccountTrustedIssuer.issuer,
       }),
     ).toBe(true);
 
@@ -47,7 +47,7 @@ describe("Google service-account OIDC issuer adapter", () => {
           // Deliberately exercise malformed runtime JWT payloads that the static type excludes.
           claims: claims as unknown as VerifiedOidcToken["claims"],
           expectedAudience: "cyspbot",
-          issuer: googleServiceAccountTrustedIssuer.issuer,
+          verifiedIssuer: googleServiceAccountTrustedIssuer.issuer,
         }),
       ).toBe(false);
     }
@@ -56,7 +56,7 @@ describe("Google service-account OIDC issuer adapter", () => {
       googleServiceAccountIssuerAdapter.validateSubjectTokenBinding({
         claims: validClaims,
         expectedAudience: "cyspbot",
-        issuer: "https://issuer.example",
+        verifiedIssuer: "https://issuer.example",
       }),
     ).toBe(false);
   });
