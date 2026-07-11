@@ -1,10 +1,8 @@
-import {
-  deriveGitHubActionsPrincipal,
-  parseGitHubActionsClaims,
-} from "@cyspbot/github-actions-oidc/github-actions-principal";
-import { githubActionsTrustedIssuer } from "@cyspbot/github-actions-oidc/issuer";
 import type { GitHubActionsPrincipal } from "@cyspbot/github-actions-oidc/principals";
+import type { OidcIssuerAdapter } from "@cyspbot/oidc/issuer-adapter";
+import type { TrustedOidcIssuer } from "@cyspbot/oidc";
 import { OidcTokenVerifier } from "@cyspbot/oidc/verifier";
+import { decodeJwt } from "jose";
 
 export const cyspbotOidcAudience = "cyspbot";
 
@@ -38,9 +36,26 @@ export async function authenticateOidcToken(
   token: string,
   request: Request,
   expectedAudience: string,
-  verifier: OidcTokenVerifier = githubActionsOidcVerifier,
+  issuerAdapters: readonly OidcIssuerAdapter<GitHubActionsPrincipal>[],
+  fetchJwks?: typeof fetch,
 ): Promise<AuthenticateRequestResult> {
-  const verified = await verifier.verify(token);
+  const trustedIssuer = trustedIssuerForSubjectToken(token, issuerAdapters);
+
+  if (!trustedIssuer.ok) {
+    logAuthFailure(request, trustedIssuer.reason);
+
+    return {
+      ok: false,
+      reason: trustedIssuer.reason,
+      responseHeaders: {
+        "www-authenticate": "Bearer",
+      },
+    };
+  }
+
+  const verified = await oidcVerifierForTrustedIssuer(trustedIssuer.issuer, fetchJwks).verify(
+    token,
+  );
 
   if (!verified.ok) {
     const reason = authenticationFailureReasonForVerifierFailure(verified.reason);
@@ -60,8 +75,7 @@ export async function authenticateOidcToken(
     };
   }
 
-  const claims = parseGitHubActionsClaims(verified.token.claims);
-  const principal = claims === null ? null : deriveGitHubActionsPrincipal(claims);
+  const principal = trustedIssuer.adapter.derivePrincipal(verified.token.claims);
 
   if (principal === null) {
     logAuthFailure(request, "invalid_token");
@@ -77,7 +91,10 @@ export async function authenticateOidcToken(
 
   if (
     !hasMatchingAudience(verified.token.claims.aud, expectedAudience) ||
-    !hasMatchingAuthorizedParty(verified.token.claims["azp"], expectedAudience)
+    !trustedIssuer.adapter.validateSubjectTokenBinding({
+      claims: verified.token.claims,
+      expectedAudience,
+    })
   ) {
     logAuthFailure(request, "invalid_token");
 
@@ -100,16 +117,73 @@ export async function authenticateOidcToken(
   };
 }
 
-const githubActionsOidcVerifier = new OidcTokenVerifier({
-  issuer: githubActionsTrustedIssuer,
-});
+const oidcVerifiers = new WeakMap<TrustedOidcIssuer, OidcTokenVerifier>();
+
+function trustedIssuerForSubjectToken(
+  token: string,
+  issuerAdapters: readonly OidcIssuerAdapter<GitHubActionsPrincipal>[],
+):
+  | {
+      adapter: OidcIssuerAdapter<GitHubActionsPrincipal>;
+      issuer: TrustedOidcIssuer;
+      ok: true;
+    }
+  | { ok: false; reason: AuthenticateRequestFailureReason } {
+  const issuer = unverifiedIssuer(token);
+
+  if (issuer === null) {
+    return { ok: false, reason: "invalid_token" };
+  }
+
+  for (const adapter of issuerAdapters) {
+    const resolution = adapter.resolveIssuer(issuer);
+
+    if (resolution.status === "unavailable") {
+      return { ok: false, reason: "oidc_verifier_failure" };
+    }
+
+    if (resolution.status === "unhandled") {
+      continue;
+    }
+
+    return { adapter, issuer: resolution.trustedIssuer, ok: true };
+  }
+
+  return { ok: false, reason: "invalid_token" };
+}
+
+function oidcVerifierForTrustedIssuer(
+  issuer: TrustedOidcIssuer,
+  fetchJwks: typeof fetch | undefined,
+): OidcTokenVerifier {
+  if (fetchJwks !== undefined) {
+    return new OidcTokenVerifier({ fetchJwks, issuer });
+  }
+
+  const cachedVerifier = oidcVerifiers.get(issuer);
+
+  if (cachedVerifier !== undefined) {
+    return cachedVerifier;
+  }
+
+  const verifier = new OidcTokenVerifier({ issuer });
+  oidcVerifiers.set(issuer, verifier);
+
+  return verifier;
+}
+
+function unverifiedIssuer(token: string): string | null {
+  try {
+    const issuer = decodeJwt(token).iss;
+
+    return typeof issuer === "string" && issuer.length > 0 ? issuer : null;
+  } catch {
+    return null;
+  }
+}
 
 function hasMatchingAudience(audienceClaim: unknown, expectedAudience: string): boolean {
   return typeof audienceClaim === "string" && audienceClaim === expectedAudience;
-}
-
-function hasMatchingAuthorizedParty(authorizedParty: unknown, audience: string): boolean {
-  return authorizedParty === undefined || authorizedParty === audience;
 }
 
 function logAuthFailure(

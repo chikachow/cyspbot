@@ -114,7 +114,7 @@ export async function createOidcToken(
   return jwt.sign(privateKey);
 }
 
-async function fetchOidcJwksTestDouble(input: RequestInfo | URL, init?: RequestInit) {
+export async function fetchOidcJwksTestDouble(input: RequestInfo | URL, init?: RequestInit) {
   const request = new Request(input, init);
 
   if (

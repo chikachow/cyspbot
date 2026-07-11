@@ -16,8 +16,8 @@ Shared packages:
 
 - `packages/http` owns framework-free JSON responses, problem details, and bounded request-body reading.
 - `packages/github` owns GitHub App JWT signing, GitHub REST calls, installation lookup, installation token creation, and secret binding resolution.
-- `packages/oidc` owns generic OIDC JWT verification for a configured trusted issuer.
-- `packages/github-actions-oidc` owns GitHub Actions OIDC issuer constants, claim validation, and principal derivation.
+- `packages/oidc` owns generic OIDC JWT verification and the issuer-adapter contract.
+- `packages/github-actions-oidc` owns the GitHub Actions issuer adapter, issuer constants, claim validation, and principal derivation.
 
 The root `wrangler.jsonc` points at `test/support/root-test-harness.ts`. It is a local/test binding harness, not a deployable product Worker.
 
@@ -38,7 +38,7 @@ The Worker factory is `createTokenExchangeWorker` in `workers/cyspbot-token-exch
 5. Require `requested_token_type=urn:chikachow:github-app-installation-access-token`.
 6. Treat exactly empty optional `scope` and `resource` form values as omitted, and preserve non-empty values for normalization after authentication.
 7. Reject unsupported or ambiguous fields, including non-empty RFC 8693 `audience`, malformed `scope` or `resource`, duplicate consumed fields, actor-token fields, and multi-resource forms. Non-empty `audience` maps to `invalid_target`; actor-token parameters map to `invalid_request`.
-8. Verify the GitHub Actions OIDC subject token with the configured issuer, signing algorithm, and JWKS URI, then validate that the verified token `aud` claim is the internal service audience `cyspbot` and that any `azp` claim matches it.
+8. Select the configured GitHub Actions issuer adapter from the token's unverified `iss` claim, verify the subject token with that adapter's trusted issuer, signing algorithm, and JWKS URI, then validate that the verified token `aud` claim is the internal service audience `cyspbot` and that any `azp` claim matches it. Unconfigured issuers are rejected before any JWKS fetch.
 9. Derive a GitHub Actions Principal from validated GitHub OIDC claims.
 10. Normalize an `InstallationAccessTokenRequest` from `scope` and `resource`.
 11. Evaluate static Token Policy over `{ principal, tokenRequest }`.
@@ -76,7 +76,7 @@ The GitHub Actions trusted issuer is defined in `packages/github-actions-oidc/sr
 - JWKS URI: `https://token.actions.githubusercontent.com/.well-known/jwks`
 - allowed signing algorithm: `RS256`
 
-`packages/oidc/src/verifier.ts` verifies tokens with `jose.jwtVerify` and `jose.createRemoteJWKSet`. The generic verifier owns issuer, allowed-algorithm, signature, expiry, and JWKS checks. Token-exchange authentication owns the exact match between the signed subject-token audience, optional authorized-party claim, and cyspbot's internal service audience. GitHub Actions claim parsing and subject interpretation live in `packages/github-actions-oidc/src/github-actions-principal.ts`.
+`packages/oidc/src/verifier.ts` verifies tokens with `jose.jwtVerify` and `jose.createRemoteJWKSet`. The generic verifier owns issuer, allowed-algorithm, signature, expiry, and JWKS checks. `packages/oidc/src/issuer-adapter.ts` defines how authentication recognizes a configured issuer, derives its principal, and validates subject-token binding. Token-exchange authentication selects only from adapters composed in `workers/cyspbot-token-exchange/src/oidc-issuers.ts`; the unverified `iss` claim never supplies a JWKS URI. The GitHub Actions adapter owns the exact match between any signed optional authorized-party claim and cyspbot's internal service audience, while authentication validates the signed `aud` claim. GitHub Actions claim parsing and subject interpretation live in `packages/github-actions-oidc/src/github-actions-principal.ts`.
 
 OIDC/JWKS failures are classified at the verifier boundary:
 

@@ -116,6 +116,9 @@ importers:
       '@cyspbot/oidc':
         specifier: workspace:*
         version: link:../../packages/oidc
+      jose:
+        specifier: 6.2.3
+        version: 6.2.3
 
 packages:
 
