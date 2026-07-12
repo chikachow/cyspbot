@@ -1,0 +1,7 @@
+<environment_context>
+  <cwd>/Users/cysp/src/cyspbot</cwd>
+  <shell>zsh</shell>
+  <current_date>2026-07-12</current_date>
+  <timezone>Australia/Sydney</timezone>
+  <filesystem><workspace_roots><root>/Users/cysp/src/cyspbot</root></workspace_roots><permission_profile type="managed"><file_system type="restricted"><entry access="read"><special>:root</special></entry><entry access="write"><path>/Users/cysp/src/cyspbot</path></entry><entry access="write"><special>:slash_tmp</special></entry><entry access="write"><special>:tmpdir</special></entry><entry access="write"><path>/Users/cysp/.codex/visualizations/2026/07/12/019f5500-0feb-79c0-a61c-f45ef5610725</path></entry><entry access="read"><path>/Users/cysp/src/cyspbot/.git</path></entry><entry access="read"><path>/Users/cysp/src/cyspbot/.agents</path></entry><entry access="read"><path>/Users/cysp/src/cyspbot/.codex</path></entry></file_system></permission_profile></filesystem>
+</environment_context>
