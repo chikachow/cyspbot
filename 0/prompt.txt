@@ -1,0 +1,5 @@
+carefully consider this new semantics we are using for the audience value in  token-exchange form parameters
+use authoritative documentation and guidance from oauth specifications
+research semantics and meaning of this parameter
+
+determine whether these semantics are appropriate and in-line with the specification's intent
