@@ -1,0 +1,7 @@
+<environment_context>
+  <cwd>/Users/cysp/src/cyspbot</cwd>
+  <shell>zsh</shell>
+  <current_date>2026-07-10</current_date>
+  <timezone>Australia/Sydney</timezone>
+  <filesystem><workspace_roots><root>/Users/cysp/src/cyspbot</root></workspace_roots><permission_profile type="managed"><file_system type="restricted"><entry access="read"><special>:root</special></entry></file_system></permission_profile></filesystem>
+</environment_context>
