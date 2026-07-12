@@ -1,0 +1,1 @@
+Raise clean pull requests for each change, using conventional commit titles and the same for pull request titles, omitting any reference to codex. Include a concise but detailed description in plan request message body
