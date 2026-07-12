@@ -1,0 +1,6 @@
+thoroughly investigate the root cause of this error:
+[https://github.com/cysp/terraform-provider-contentful/actions/runs/28574332746/job/84719196235](https://github.com/cysp/terraform-provider-contentful/actions/runs/28574332746/job/84719196235)
+
+use github documentation or reported issues as guidance
+do not make assumptions
+search for authorittative documentation or references
