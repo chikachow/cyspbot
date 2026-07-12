@@ -1,0 +1,4 @@
+Split this top commit into between two and three commits:
+- a base commit that clarifies wording and boundaries of the implementation as it exists prior to introducing either fly or google 
+- a commit that builds on that, related to the fly introduction
+- a commit that further builds on the above, related to the google introduction
