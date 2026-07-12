@@ -1,0 +1,1 @@
+Can you configure git/ssh to use the gh cli as an auth provider?
