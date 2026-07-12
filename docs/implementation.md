@@ -38,7 +38,7 @@ The Worker factory is `createTokenExchangeWorker` in `workers/cyspbot-token-exch
 5. Require `requested_token_type=urn:chikachow:github-app-installation-access-token`.
 6. Treat exactly empty optional `scope` and `resource` form values as omitted, and preserve non-empty values for normalization after authentication.
 7. Reject unsupported or ambiguous fields, including non-empty RFC 8693 `audience`, malformed `scope` or `resource`, duplicate consumed fields, actor-token fields, and multi-resource forms. Non-empty `audience` maps to `invalid_target`; actor-token parameters map to `invalid_request`.
-8. Select the configured GitHub Actions issuer adapter from the token's unverified `iss` claim, verify the subject token with that adapter's trusted issuer, signing algorithm, and JWKS URI, then validate that the verified token `aud` claim is the internal service audience `cyspbot` and that any `azp` claim matches it. Unconfigured issuers are rejected before any JWKS fetch.
+8. Select a configured issuer adapter from the token's unverified `iss` claim, verify the subject token with that adapter's trusted issuer, signing algorithm, and JWKS URI, then validate that the verified token `aud` claim is the internal service audience `cyspbot` and apply provider-specific subject binding. Unconfigured issuers are rejected before any JWKS fetch.
 9. Retain the verified subject-token claims, issuer, resolved key ID, and declared subject-token type as the authenticated context.
 10. Normalize an `InstallationAccessTokenRequest` from `scope` and `resource`.
 11. Evaluate static Token Policy over `{ subjectToken, tokenRequest }`.
@@ -49,7 +49,9 @@ The token policy in `workers/cyspbot-token-exchange/src/policy/token-policy.ts` 
 
 cyspbot does not accept a public GitHub App selector. It constrains this profile to cyspbot's configured GitHub App credentials, one signed subject-token `aud` string equal to `cyspbot`, one canonical GitHub repository API `resource`, and one normalized permission set. Plural subject-token audiences are rejected rather than interpreted by containment.
 
-Omitted `scope` and `resource` normalize to a same-repository PR-authoring token request:
+### Token request normalization
+
+An omitted `scope` normalizes to a PR-authoring permission request. For GitHub Actions, an omitted `resource` defaults to the repository named by the verified token's signed `repository` claim. Omitting both produces:
 
 ```json
 {
@@ -57,6 +59,8 @@ Omitted `scope` and `resource` normalize to a same-repository PR-authoring token
   "pull_requests": "write"
 }
 ```
+
+### GitHub Actions authorization
 
 That token request is allowed only when an issuer-guarded rule's CEL condition matches the signed GitHub Actions `repository`, event, `ref`, `sub`, and exact `workflow_ref` claims and the rule's canonical resource URI and permissions match the normalized request. The condition accepts the expected legacy GitHub subject or its immutable owner/repository-ID form; inconsistent names or IDs therefore do not match. Rule order is not semantically meaningful; authorization is `allow` if any rule matches and `deny` otherwise. Exact policy entries are intentionally not documented here because they may move to live configuration.
 
@@ -72,13 +76,17 @@ cyspbot does not support OAuth client authentication at `/token`. Non-empty `cli
 
 ## OIDC Verification
 
+`packages/oidc/src/verifier.ts` verifies tokens with `jose.jwtVerify` and `jose.createRemoteJWKSet`. The generic verifier owns issuer, allowed-algorithm, signature, expiry, and JWKS checks. `packages/oidc/src/issuer-adapter.ts` defines how authentication recognizes a configured issuer and applies provider-specific subject-token binding to the complete centrally verified token. Token-exchange authentication selects only from adapters composed in `workers/cyspbot-token-exchange/src/oidc-issuers.ts`; the unverified `iss` claim selects configured trust material but never supplies a JWKS URI.
+
+### GitHub Actions
+
 The GitHub Actions trusted issuer is defined in `packages/oidc-issuer-github-actions/src/issuer.ts`:
 
 - issuer: `https://token.actions.githubusercontent.com`
 - JWKS URI: `https://token.actions.githubusercontent.com/.well-known/jwks`
 - allowed signing algorithm: `RS256`
 
-`packages/oidc/src/verifier.ts` verifies tokens with `jose.jwtVerify` and `jose.createRemoteJWKSet`. The generic verifier owns issuer, allowed-algorithm, signature, expiry, and JWKS checks. `packages/oidc/src/issuer-adapter.ts` defines how authentication recognizes a configured issuer and validates subject-token binding; its binding input carries the complete centrally verified token so claims cannot be paired with an issuer from another source. Token-exchange authentication selects only from adapters composed in `workers/cyspbot-token-exchange/src/oidc-issuers.ts`; the unverified `iss` claim is used only to select configured trust material and never supplies a JWKS URI. The GitHub Actions adapter owns the exact match between any signed optional authorized-party claim and cyspbot's internal service audience, while authentication validates the signed `aud` claim.
+The adapter requires non-empty Subject (`sub`) and numeric Expiration Time (`exp`) claims. An absent Authorized Party (`azp`) claim is accepted; when present, `azp` must equal the expected audience `cyspbot`.
 
 OIDC/JWKS failures are classified at the verifier boundary:
 
@@ -139,6 +147,7 @@ The public GitHub Actions `ci` workflow runs the same classes of checks as separ
 ## External References
 
 - [RFC 8693: OAuth 2.0 Token Exchange](https://www.rfc-editor.org/rfc/rfc8693)
+- [OpenID Connect Core 1.0: ID Token validation](https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation)
 - [GitHub Actions OpenID Connect](https://docs.github.com/en/actions/concepts/security/openid-connect)
 - [GitHub Actions OIDC security hardening](https://docs.github.com/en/actions/how-tos/security-for-github-actions/security-hardening-your-deployments/about-security-hardening-with-openid-connect)
 - [GitHub App installation access tokens](https://docs.github.com/en/rest/apps/apps#create-an-installation-access-token-for-an-app)
