@@ -1,0 +1,1 @@
+Carefully and thoroughly review the token exchange specification proposal with these new requirements and details. Consider the api holistically, and ground decisions and recommendations in authoritative specifications or documentation
