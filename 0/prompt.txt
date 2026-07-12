@@ -1,0 +1,2 @@
+Update this branch to the current remote mainline branch
+Thoroughly audit the implementation holistically, carefully identifying any opportunities to improve readability, maintainability, reliability or improve the architecture and structure of this codebase
