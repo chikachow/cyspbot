@@ -1,0 +1,2 @@
+I greatly value spec compliance, both in the letter of the spec as well as the spec’s intent
+If we need to introduce a custom parameter to select the app, I would name it github_app and consider using the app slug as its value rather than the url-shaped identifier
