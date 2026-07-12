@@ -21,7 +21,7 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - uses: chikachow/cyspbot-app-token-action@a70b4b3212ad874677e6c676cb6bc502cce09ced # v0.0.8
+      - uses: chikachow/cyspbot-app-token-action@3ea722e716c165db3ed77ade9a0a0ca49ec2f8a0 # v0.0.9
         id: cyspbot
         with:
           resource: https://api.github.com/repos/chikachow/cyspbot-deploy
