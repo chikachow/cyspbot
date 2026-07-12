@@ -1,0 +1,2 @@
+Update the commit title and pr title for the pr above to be `feat(token-exchange): allow cyspbot-deploy’s update workflow`
+Also trim that commit to only include the update-cyspbot.yml policy clause, the other will be applied later so keep it unstaged here
