@@ -1,0 +1,1 @@
+What if we consider the cyspbot receiver to be the GitHub app itself, since the receiving logic does act as the app when obtaining an app token from GitHub?
