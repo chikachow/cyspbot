@@ -1,0 +1,3 @@
+I intend to use this extracted application from other gcp-deployed services, with requests towards the token-broker being authorised with a gcp oidc token. Update the implementation plan and design to accommodate this use case
+Consider this revised use case as part of holistic design
+Include specific design of the gcp native platform services like secret manager
