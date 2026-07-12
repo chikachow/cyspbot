@@ -1,0 +1,3 @@
+Create a detailed plan for the extraction of this token exchange functionality into a new separate service deployed to cloud run and making use of gcp native capabilities 
+This extracted service should avoid the use of “cyspbot” as naming, instead being named a generic service name that describes the functionality implemented 
+Be thorough but concise
