@@ -1,0 +1,1 @@
+do not add oidc-audience as an external configuration option since it can only have one valid value
