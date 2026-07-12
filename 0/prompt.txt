@@ -1,0 +1,2 @@
+Agreed, I think we need the caller policy implementation for Google oidc tokens much the same as we have it for GitHub actions oidc tokens 
+Can this be a single combined policy for both issuers without becoming too unwieldy?
