@@ -1,0 +1,1 @@
+Will we need in-application Google oidc token verification or at least policy in order to implement permissions for different calling service accounts?
