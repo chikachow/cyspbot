@@ -1,0 +1,3 @@
+Thoroughly and carefully explore and research the current implementation of this application on this branch. Compare it to the mainline implementation 
+Review this implementation and design compared with oauth specifications and relevant authoritative sources
+Conduct an adversarial analysis of this implementation
