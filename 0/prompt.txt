@@ -1,0 +1,16 @@
+<codex_delegation>
+  <source_thread_id>019f0445-0717-7931-89bc-dc9ce790f788</source_thread_id>
+  <input>Implement the cyspbot prerequisites for the cyspbot-deploy submodule updater.
+
+Context:
+- This repo is /Users/cysp/src/cyspbot (chikachow/cyspbot).
+- The sibling deployment repo /Users/cysp/src/cyspbot-deploy will add .github/workflows/update-cyspbot.yml, which needs a cyspbot installation token for chikachow/cyspbot-deploy with contents:write and pull_requests:write.
+- The deployment repo also needs this cyspbot repo to trigger that workflow after pushes to main, using actions:write on chikachow/cyspbot-deploy.
+- Follow the existing GitHub Actions style in this repo: minimal permissions, pinned actions by full SHA with version comments, concise shell, no unnecessary logic.
+
+Please implement:
+1. In workers/cyspbot-token-exchange/src/policy/token-policy-rules.ts, add a policy rule for principalRepository chikachow/cyspbot-deploy, principalWorkflowRef chikachow/cyspbot-deploy/.github/workflows/update-cyspbot.yml@refs/heads/main, principalRef refs/heads/main, principalEventNames ["workflow_dispatch"], resource https://api.github.com/repos/chikachow/cyspbot-deploy, permissions contents: write and pull_requests: write.
+2. Add .github/workflows/trigger-cyspbot-deploy-update.yml with name trigger-cyspbot-deploy-update. It should run on push to main and workflow_dispatch, have permissions contents: read and id-token: write, mint a token using chikachow/cyspbot-app-token-action@e46d6f86fc4f6dee6b7682be3a837859b1b42667 # v0.0.5 with resource https://api.github.com/repos/chikachow/cyspbot-deploy and scope actions:write, then run gh workflow run update-cyspbot.yml --repo chikachow/cyspbot-deploy --ref main with GH_TOKEN from the action output.
+3. Add the matching policy rule for that new workflow: principalRepository chikachow/cyspbot, principalWorkflowRef chikachow/cyspbot/.github/workflows/trigger-cyspbot-deploy-update.yml@refs/heads/main, principalRef refs/heads/main, principalEventNames ["push", "workflow_dispatch"], resource https://api.github.com/repos/chikachow/cyspbot-deploy, permissions actions: write.
+4. Run the appropriate checks, at minimum node --run format:check and targeted tests/typecheck if available. Do not commit unless explicitly asked.</input>
+</codex_delegation>
