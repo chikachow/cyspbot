@@ -1,0 +1,1 @@
+That can’t be right, any single request will only pertain to one of those principals, either a github actions principal or a Google service account principal
