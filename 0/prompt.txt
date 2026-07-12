@@ -1,0 +1,60 @@
+PLEASE IMPLEMENT THIS PLAN:
+# Fix cyspbot OIDC Audience Handling
+
+## Summary
+
+Fix the audience bug by making the OIDC audience an internal cyspbot protocol constant, not caller configuration. GitHub Actions should mint the OIDC token with `aud=cyspbot`; the `/token` form `audience` should continue to select the GitHub App with a canonical URL such as `https://github.com/apps/cyspbot`.
+
+Deploy service support first, then release a fixed `cyspbot-app-token-action`, then update workflows.
+
+## Key Changes
+
+- In `cyspbot`:
+  - Replace “OIDC `aud` must equal form `audience`” with “OIDC `aud` must equal the internal service audience constant `cyspbot`.”
+  - Keep form `audience` required for the new protocol shape; it remains the canonical GitHub App URL and drives app credential selection, installation lookup, and policy matching.
+  - Keep `azp` validation, but compare it to `cyspbot` when present.
+  - Preserve strict rejection of missing OIDC `aud`, plural OIDC `aud`, unknown GitHub App URLs, malformed form audiences, and token-policy mismatches.
+  - Add temporary legacy support for requests with no form `audience` only when OIDC `aud=cyspbot` maps unambiguously to the default `cyspbot` GitHub App. Remove this in a later cleanup after all callers use the explicit form audience.
+  - Update README, service contract, and implementation docs to clearly separate service OIDC audience from token-exchange GitHub App audience.
+
+- In `cyspbot-app-token-action`:
+  - Do not add `oidc-audience` or any equivalent external input.
+  - Hardcode `core.getIDToken("cyspbot")`.
+  - Keep the existing `audience` input as the token-exchange GitHub App URL, defaulting to `https://github.com/apps/cyspbot`.
+  - Continue sending form `audience`, `resource`, and `scope` to cyspbot.
+  - Keep local validation for the form `audience` as a canonical GitHub App URL.
+  - Update `action.yml`, README, repository docs, tests, and bundled `dist`.
+
+## Test Plan
+
+- `cyspbot` tests:
+  - Accept form `audience=https://github.com/apps/cyspbot` with OIDC `aud=cyspbot`.
+  - Reject form `audience=https://github.com/apps/cyspbot` with OIDC `aud=https://github.com/apps/cyspbot`.
+  - Reject missing, plural, or unknown OIDC `aud`.
+  - Reject `azp` when it is present and not `cyspbot`.
+  - Accept legacy no-form-audience requests only for `aud=cyspbot`.
+  - Confirm token policy still denies unlisted app, resource, scope, principal, workflow, event, and ref combinations.
+
+- `cyspbot-app-token-action` tests:
+  - Default call uses `getIDToken("cyspbot")` and sends form `audience=https://github.com/apps/cyspbot`.
+  - Explicit `audience=https://github.com/apps/deploy-bot` still uses `getIDToken("cyspbot")` and sends the deploy-bot URL only as the form audience.
+  - Invalid form audience fails before requesting an OIDC token.
+  - Existing resource, scope, cyspbot error handling, response validation, and HTTPS checks remain unchanged.
+
+- Verification commands:
+  - In `/Users/cysp/src/cyspbot`: `corepack pnpm run format:check`, `corepack pnpm run typecheck`, `corepack pnpm run test`.
+  - In `/Users/cysp/src/cyspbot-app-token-action`: `corepack pnpm run format:check`, `corepack pnpm run typecheck`, `corepack pnpm run test`, `corepack pnpm run bundle`.
+
+## Rollout
+
+- Merge and deploy the cyspbot service change first so production accepts the fixed split request and legacy v0.0.5-style requests.
+- Release `cyspbot-app-token-action` v0.0.7 with hardcoded OIDC `aud=cyspbot`.
+- Update cyspbot-owned workflows and affected downstream workflows to v0.0.7.
+- Re-run the failing `terraform-provider-contentful` workflow and confirm the action step succeeds.
+- Later, after all callers have moved to explicit form `audience`, remove legacy no-form-audience inference from cyspbot.
+
+## Assumptions
+
+- `cyspbot` is the only valid GitHub Actions OIDC audience for this service.
+- The OIDC audience is not public workflow configuration.
+- The action’s `audience` input remains public configuration because it selects the GitHub App token target.
