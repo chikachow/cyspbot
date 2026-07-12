@@ -1,0 +1,1 @@
+We have our wrangler configuration in cyspbot-deploy, so it should be able to reference a configuration file in the repository
