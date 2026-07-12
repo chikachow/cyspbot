@@ -1,0 +1,73 @@
+why did this request fail to produce a token exchange?
+
+{
+  "token_policy": {
+    "matched": false,
+    "deny_reasons": [
+      "repository"
+    ]
+  },
+  "level": "error",
+  "error": {
+    "message": "Token Policy denied Installation Token Issuance",
+    "name": "Error"
+  },
+  "event": "installation_token_issuance_failed",
+  "principal": {
+    "actor": "cysp",
+    "event_name": "workflow_dispatch",
+    "issuer": "https://token.actions.githubusercontent.com",
+    "ref": "refs/heads/main",
+    "ref_type": "branch",
+    "repository": "chikachow/cyspbot-deploy",
+    "repository_id": "1268958076",
+    "repository_owner_id": "287214292",
+    "repository_visibility": "private",
+    "resolved_key_id": "38826b17-6a30-5f9b-b169-8beb8202f723",
+    "run_attempt": "1",
+    "run_id": "28273600960",
+    "sha": "c00d1263faa021e567220cec5937f532b65325cc",
+    "sub": "repo:chikachow/cyspbot-deploy:ref:refs/heads/main",
+    "subject_kind": "ref",
+    "workflow": "update-cyspbot",
+    "workflow_ref": "chikachow/cyspbot-deploy/.github/workflows/update-cyspbot.yml@refs/heads/main"
+  },
+  "token_request": {
+    "permissions": {
+      "contents": "write",
+      "pull_requests": "write"
+    },
+    "resource": "https://api.github.com/repos/chikachow/cyspbot-deploy",
+    "scope": "contents:write pull_requests:write"
+  },
+  "$workers": {
+    "truncated": false,
+    "event": {
+      "request": {
+        "url": "https://cyspbot.chikachow.org/token",
+        "method": "POST",
+        "path": "/token"
+      }
+    },
+    "outcome": "ok",
+    "scriptName": "cyspbot-token-exchange",
+    "eventType": "fetch",
+    "executionModel": "stateless",
+    "scriptVersion": {
+      "id": "6fee35a9-6d55-473c-9fd4-cd43778cd373"
+    },
+    "requestId": "a1207dd84d0189cc"
+  },
+  "$metadata": {
+    "id": "01KW397S257G1QW29ZZ4RDKKE1",
+    "requestId": "a1207dd84d0189cc",
+    "trigger": "POST /token",
+    "service": "cyspbot-token-exchange",
+    "level": "error",
+    "error": "Error",
+    "account": "4e7d0e9ce74b7a6ea034ccedc67ead45",
+    "type": "cf-worker",
+    "fingerprint": "8f811e3c87d8674b2049aeb268deae6c",
+    "origin": "fetch"
+  }
+}
