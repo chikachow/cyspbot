@@ -1,0 +1,2 @@
+Carefully inspect gcp documentation. How can this token broker be integrated into native platform capabilities but still conform to the oauth specifications? I think we should supply the oidc token in subject_token, is that correct?
+Update the plan holistically to exactly conform to the oauth token exchange specification ms
