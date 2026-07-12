@@ -1,0 +1,1 @@
+it feels like there is a chicken and egg problem here, in that this pr will both introduce a workflow and the policy to allow that workflow to run
