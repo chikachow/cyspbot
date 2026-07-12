@@ -1,0 +1,1 @@
+Create a detailed implementation plan to adopt this revised design  be thorough, document exact implementation details and the required ancillary changes to fully adopt the design. Feel free to make aggressive refactoring changes, disregarding backwards compatibility where necessary
