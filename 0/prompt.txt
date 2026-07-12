@@ -1,0 +1,4 @@
+I’m interested in externalising the token allowance policy here, moving it to ../cyspbot-deploy
+I’d consider upgrading to a formal policy language like cedar but that is not a requirement 
+Explore and research options for this enhancement 
+Ground decisions and recommendations in fact, authoritative documentation or experimental observations, do not make assumptions
