@@ -2,12 +2,10 @@ name: test
 
 on:
   workflow_call:
-    secrets:
-      CODECOV_TOKEN:
-        required: false
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   run:
@@ -37,5 +35,5 @@ jobs:
           fail_ci_if_error: true
           files: ./coverage/lcov.info
           flags: unittests
-          token: ${{ secrets.CODECOV_TOKEN }}
+          use_oidc: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
           version: v11.2.8
