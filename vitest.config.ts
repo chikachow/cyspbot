@@ -18,7 +18,7 @@ export default defineConfig({
   test: {
     allowOnly: false,
     coverage: {
-      exclude: ["worker-configuration.d.ts"],
+      exclude: ["**/*.test.ts", "test/**", "worker-configuration.d.ts"],
       provider: "istanbul",
       reporter: ["text", "lcov"],
     },
