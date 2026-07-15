@@ -1,3 +1,7 @@
 ignore:
   - "test/**/*"
   - "**/*.test.ts"
+
+comment:
+  layout: "diff, flags, files"
+  require_changes: true
