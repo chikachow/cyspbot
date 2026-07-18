@@ -2,7 +2,6 @@ import type { TrustedOidcIssuer, VerifiedOidcIdToken } from "./verifier.ts";
 
 type OidcIssuerResolution =
   | { status: "configured"; trustedIssuer: TrustedOidcIssuer }
-  | { status: "unavailable" }
   | { status: "unhandled" };
 
 export interface OidcIssuerAdapter {
