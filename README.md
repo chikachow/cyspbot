@@ -1,10 +1,10 @@
 # cyspbot
 
-cyspbot is a hosted Security Token Service for GitHub Actions workflows. It verifies OpenID Connect ID Tokens issued by GitHub Actions and exchanges allowed workflow contexts for short-lived, repository-scoped GitHub App installation access tokens without exposing the GitHub App private key outside Cloudflare.
+cyspbot is a hosted Security Token Service for trusted automation workloads. It authenticates Fly Machine and GitHub Actions workflow-job identities using OpenID Connect ID Tokens from configured issuers, then exchanges authorized identities for short-lived, repository-scoped GitHub App installation access tokens without exposing the GitHub App private key outside Cloudflare.
 
 Implemented public endpoints:
 
-- `POST /token` accepts a GitHub Actions OIDC token and, after verification and policy authorization, exchanges it for a scoped GitHub App installation access token.
+- `POST /token` accepts an ID Token from a supported issuer and, after verification and policy authorization, exchanges it for a scoped GitHub App installation access token.
 - `POST /github/webhooks` accepts signed GitHub App webhook deliveries and acknowledges them without retaining raw payloads or running downstream product logic.
 
 The primary service contract is [docs/service-contract.md](docs/service-contract.md). The implementation reference is [docs/implementation.md](docs/implementation.md). The documentation map is [docs/README.md](docs/README.md).
@@ -14,7 +14,7 @@ The primary service contract is [docs/service-contract.md](docs/service-contract
 - Two deployable Worker packages under `workers/*`: `@cyspbot/token-exchange` and `@cyspbot/github-webhook-receiver`.
 - Worker names are consistently prefixed: `cyspbot-token-exchange` and `cyspbot-github-webhook-receiver`.
 - Each Worker package owns its runtime composition, HTTP route, dependency defaults, and Wrangler config. Shared implementation code lives under `packages/*`. The root Wrangler config is only the local/test binding harness.
-- `jose`-backed OpenID Connect ID Token verification behind a GitHub Actions issuer adapter.
+- `jose`-backed OpenID Connect ID Token verification behind configured issuer adapters.
 - GitHub App private key in a Cloudflare Worker secret binding.
 - Checked-in Token Policy code that allows Installation Token Issuance only for explicit verified subject-token issuer, CEL claim condition, resource, and permission combinations.
 
@@ -27,12 +27,12 @@ Primary endpoint for Installation Token Issuance. It accepts `application/x-www-
 ```http
 grant_type=urn:ietf:params:oauth:grant-type:token-exchange
 requested_token_type=urn:chikachow:github-app-installation-access-token
-subject_token=<github-actions-oidc-token>
+subject_token=<openid-connect-id-token>
 subject_token_type=urn:ietf:params:oauth:token-type:id_token
 ```
 
 `subject_token_type` must be `urn:ietf:params:oauth:token-type:id_token`; cyspbot does not accept the generic JWT token-type identifier. `requested_token_type` is required and must be the cyspbot GitHub App installation token URN.
-Every OpenID Connect ID Token supplied as the RFC 8693 subject token must have non-empty Issuer (`iss`), Audience (`aud`), and Subject (`sub`) claims plus numeric Expiration Time (`exp`) and Issued At (`iat`) claims. It must be signed by a configured issuer, be unexpired, and have the single audience value `cyspbot`. The selected issuer adapter then applies its provider-specific subject binding before Token Policy evaluates the request. Non-empty RFC 8693 `audience` form parameters are rejected as unsupported target selectors.
+Every OpenID Connect ID Token supplied as the RFC 8693 subject token must have non-empty Issuer Identifier (`iss`), Audience (`aud`), and Subject (`sub`) claims plus numeric Expiration Time (`exp`) and Issued At (`iat`) claims. It must be signed by a configured issuer, be unexpired, and have the single audience value `cyspbot`. The selected issuer adapter then applies its provider-specific subject binding before Token Policy evaluates the request. Non-empty RFC 8693 `audience` form parameters are rejected as unsupported target selectors.
 
 Requests may include RFC 8693 `scope` and `resource` fields to request a concrete GitHub App installation token shape. `resource` must be one canonical GitHub repository API URI in the form `https://api.github.com/repos/{owner}/{repo}` with no leading or trailing whitespace. `scope` is a single-ASCII-space-delimited list of exact GitHub App permission requests, such as `actions:read`, `actions:write`, or `contents:read pull_requests:read`; scope order is not significant. Omitted or exactly empty `scope` defaults to `contents:write pull_requests:write`. Whitespace-only, padded, duplicate, or multi-value `scope` and `resource` fields are rejected.
 
@@ -54,9 +54,26 @@ Successful responses use OAuth token response shape with `Cache-Control: no-stor
 
 #### Supported issuers
 
-| Issuer         | Trusted Issuer (`iss`)                        | Additional subject binding          | Omitted `resource`        |
-| -------------- | --------------------------------------------- | ----------------------------------- | ------------------------- |
-| GitHub Actions | `https://token.actions.githubusercontent.com` | `azp` is absent or equals `cyspbot` | Signed `repository` claim |
+| Issuer         | Issuer Identifier (`iss`)                     | Additional subject binding                                                                                | Omitted `resource`        |
+| -------------- | --------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------- |
+| Fly.io         | `https://oidc.fly.io/{org-slug}`              | Numeric `nbf`; organization, Fly App, and Machine claims; Issuer Identifier and canonical Subject binding | Rejected                  |
+| GitHub Actions | `https://token.actions.githubusercontent.com` | `azp` is absent or equals `cyspbot`                                                                       | Signed `repository` claim |
+
+##### Fly.io
+
+A Fly Machine obtains a Fly OIDC token from the [Machines API token endpoint](https://fly.io/docs/machines/api/tokens-resource/) through its local Unix socket:
+
+```bash
+curl --unix-socket /.fly/api \
+  -X POST http://localhost/v1/tokens/oidc \
+  --data '{"aud":"cyspbot"}'
+```
+
+The `aud` JSON property customizes the ID Token Audience claim; it is distinct from the unsupported RFC 8693 `audience` token-exchange parameter. cyspbot accepts only configured organization-specific Issuer Identifiers of the form `https://oidc.fly.io/{org-slug}`. Configure the comma-delimited Fly Organization Slugs in `FLY_OIDC_ORG_SLUGS`. Empty entries are ignored, duplicate entries are trusted once, and an entry with unsupported Fly issuer-path syntax is logged and skipped without disabling other configured issuers. A missing binding is logged and configures no Fly Trusted OIDC Issuer without disabling other providers. Syntax acceptance does not establish that a Fly organization exists.
+
+The Fly.io adapter requires the provider's organization, Fly App, and Machine identity claims, a numeric Not Before (`nbf`) claim, an organization slug matching the configured Issuer Identifier, and the canonical Subject (`sub`) value `{org_name}:{app_name}:{machine_name}`. The adapter does not use the Authorized Party (`azp`) claim when validating Fly subject-token binding.
+
+Fly callers must explicitly supply `resource`; it is not inferred from Fly claims. Authentication does not create a grant: Token Policy must allow the provider-assigned organization and Fly App IDs, optionally one stable Machine ID, the repository resource, and the exact permissions. Callers should obtain a fresh Fly OIDC token rather than reusing one after its Expiration Time (`exp`).
 
 ##### GitHub Actions
 
@@ -68,9 +85,22 @@ Accepts signed JSON GitHub App webhook deliveries up to `256 KiB`. Webhook targe
 
 Signed `ping` deliveries return `202 {"accepted":true,"event":"ping"}`. Any other valid signed JSON event returns `202 {"accepted":true}` with no event-specific parsing or downstream work.
 
-## Current Token Policy
+## Token Policy
 
 Installation Token Issuance is allowed only when a normalized token request matches an explicit checked-in Token Policy rule. Rules bind the verified subject-token issuer, exact resource and permissions, and a CEL condition over signed `claims`, `subject`, and normalized `request` data.
+
+### Fly.io
+
+cyspbot supports Fly allow-rule semantics, but the current checked-in Token Policy contains no Fly allow rule. When a Fly allow rule is checked in, Installation Token Issuance requires:
+
+- the **Verified Subject Token** was derived from a Fly OIDC token issued by an organization-specific configured issuer
+- the provider-assigned organization and Fly App IDs match that rule
+- the organization slug agrees with the Issuer Identifier and the signed `org_name` claim
+- the signed Subject (`sub`) agrees with the signed organization, Fly App, and Machine names
+- when configured by the rule, the stable Machine ID matches exactly
+- the normalized token request `resource` and `permissions` exactly match that rule
+
+Fly policy uses provider-assigned organization and Fly App IDs as authorization keys. A rule may additionally restrict issuance to one stable Machine ID. The Machine name participates in canonical Subject consistency, while the Machine configuration version is required signed Machine configuration-version context; neither is a Token Policy selector.
 
 ### GitHub Actions
 
@@ -164,6 +194,8 @@ The reusable GitHub Action for this hosted service lives in the separate `cyspbo
 
 - [RFC 8693: OAuth 2.0 Token Exchange](https://www.rfc-editor.org/rfc/rfc8693)
 - [OpenID Connect Core 1.0: ID Token validation](https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation)
+- [Fly.io OpenID Connect](https://fly.io/docs/security/openid-connect/)
+- [Fly Machines API Tokens resource](https://fly.io/docs/machines/api/tokens-resource/)
 - [GitHub Actions OpenID Connect](https://docs.github.com/en/actions/concepts/security/openid-connect)
 - [GitHub App installation access tokens](https://docs.github.com/en/rest/apps/apps#create-an-installation-access-token-for-an-app)
 - [GitHub webhook signature validation](https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries)

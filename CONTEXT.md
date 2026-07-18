@@ -1,14 +1,22 @@
 # cyspbot
 
-cyspbot is the maintainer's hosted automation application. It lets trusted GitHub Actions workflow runs obtain repository-scoped GitHub App installation access tokens without exposing the GitHub App private key outside Cloudflare.
+cyspbot is the maintainer's hosted automation application. It lets trusted automation workloads obtain repository-scoped GitHub App installation access tokens without exposing the GitHub App private key outside Cloudflare.
 
 The service contract is [docs/service-contract.md](docs/service-contract.md). The implementation reference is [docs/implementation.md](docs/implementation.md).
 
 ## Language
 
 **Caller**:
-A GitHub Actions workflow invocation that presents an OpenID Connect ID Token as the RFC 8693 subject token to **cyspbot**.
+An automation workload that presents an OpenID Connect ID Token as the RFC 8693 subject token to **cyspbot**.
 _Avoid_: User, human, consumer
+
+**Fly Machine Identity**:
+The organization, Fly App, and Machine identity authenticated from a Fly OIDC token. It uses provider-assigned organization and Fly App IDs plus a stable Machine ID, and binds the organization slug and Subject to the configured Issuer Identifier and Machine name.
+_Avoid_: Principal, VM identity, caller-supplied Machine metadata
+
+**Fly Organization Slug**:
+The provider-defined slug used in a Fly organization's OIDC Issuer Identifier and in the signed `org_name` claim. It selects one configured **Trusted OIDC Issuer** but is not the provider-assigned organization ID (`org_id`) or, by itself, an authorization grant.
+_Avoid_: Organization ID, tenant ID, authorization boundary
 
 **Verified Subject Token**:
 The cyspbot-internal authentication result after an OpenID Connect ID Token has been cryptographically verified against a **Trusted OIDC Issuer**, checked for the cyspbot audience, and accepted by issuer-specific subject-binding checks.
@@ -51,7 +59,7 @@ The primary cyspbot endpoint that accepts a **Caller** ID Token as an RFC 8693 s
 _Avoid_: installation collection endpoint, raw GitHub passthrough
 
 **Trusted OIDC Issuer**:
-A code-owned cyspbot trust entry that defines one accepted OIDC issuer and the verification material and policy cyspbot uses for that issuer.
+A code-owned cyspbot trust entry that defines one accepted OIDC Issuer Identifier, its JWKS URI, and its allowed ID Token signing algorithms.
 _Avoid_: Dynamic issuer discovery, arbitrary identity provider, issuer profile as a separate concept
 
 **JWKS Cache**:
@@ -61,14 +69,14 @@ _Avoid_: Permanent key store, token cache, caller-controlled key source
 ## Relationships
 
 - The product surface is `POST /token` and `POST /github/webhooks`.
-- A **Caller** authenticates to **cyspbot** with a GitHub Actions OIDC token.
+- A **Caller** authenticates to **cyspbot** with an ID Token from a configured **Trusted OIDC Issuer**.
 - A verified **Caller** is represented internally as a **Verified Subject Token**.
 - The issuer adapter for each **Trusted OIDC Issuer** applies issuer-specific subject binding before an ID Token becomes a **Verified Subject Token**.
 - cyspbot verifies a **Caller** only against a **Trusted OIDC Issuer**.
 - **cyspbot** normalizes exactly one **Installation Token Request** from token-exchange `scope`, token-exchange `resource`, and, for GitHub Actions defaulting only, the verified `repository` claim.
 - **Installation Token Issuance** in **cyspbot** issues at most one **Installation Token** for one **Repository Resource**.
 - The **Token Policy** is fixed by **cyspbot** for subject-token issuer, repository resource, GitHub permission request, and CEL claim condition, while the GitHub App configuration remains the upper bound.
-- The **Token Policy** evaluates only verified **Subject Token Claims** named by a checked-in CEL condition, such as GitHub `repository`, `sub`, `ref`, `event_name`, and `workflow_ref`.
+- The **Token Policy** evaluates only verified **Subject Token Claims** named by a checked-in CEL condition, such as Fly `org_id`, `app_id`, and `machine_id`, or GitHub `repository`, `sub`, `ref`, `event_name`, and `workflow_ref`.
 - The **Token Exchange Endpoint** is the only public interface for **Installation Token Issuance**.
 - The **JWKS Cache** supplies verification keys for a **Trusted OIDC Issuer**, but never stores issued **Installation Tokens**.
 - A **GitHub App Installation** is the GitHub-side authority that allows **cyspbot** to issue an **Installation Token**.
