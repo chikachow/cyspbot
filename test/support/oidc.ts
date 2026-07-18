@@ -17,6 +17,7 @@ export interface CreateOidcTokenOptions {
   audience?: string | string[] | null;
   issuer?: string;
   kid?: string;
+  notBefore?: number;
 }
 
 export interface TokenExchangeRequestBodyOptions {
@@ -115,7 +116,7 @@ export async function createOidcToken(
     .setProtectedHeader({ alg: "RS256", kid: options?.kid ?? "test-key-1" })
     .setIssuer(options?.issuer ?? "https://token.actions.githubusercontent.com")
     .setIssuedAt(now - 10)
-    .setNotBefore(now - 10)
+    .setNotBefore(options?.notBefore ?? now - 10)
     .setExpirationTime(now + 300)
     .setSubject(
       typeof sub === "string"
@@ -133,10 +134,14 @@ export async function createOidcToken(
 export async function fetchOidcJwksTestDouble(input: RequestInfo | URL, init?: RequestInit) {
   const request = new Request(input, init);
 
-  if (
-    request.method !== "GET" ||
-    request.url !== "https://token.actions.githubusercontent.com/.well-known/jwks"
-  ) {
+  const supportedJwksUrls = new Set([
+    "https://token.actions.githubusercontent.com/.well-known/jwks",
+    "https://oidc.fly.io/example-org/.well-known/jwks",
+    "https://oidc.fly.io/first-org/.well-known/jwks",
+    "https://oidc.fly.io/second-org/.well-known/jwks",
+  ]);
+
+  if (request.method !== "GET" || !supportedJwksUrls.has(request.url)) {
     return new Response(null, { status: 404 });
   }
 

@@ -1,15 +1,28 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { flyIssuerAdapter } from "@cyspbot/oidc-issuer-fly";
 import {
   githubActionsIssuerAdapter,
   githubActionsTrustedIssuer,
 } from "@cyspbot/oidc-issuer-github-actions";
 import type { OidcIssuerAdapter } from "@cyspbot/oidc/issuer-adapter";
 import { authenticateOidcToken } from "@cyspbot/token-exchange/authentication";
+import { configuredOidcIssuerAdapters } from "@cyspbot/token-exchange/oidc-issuers";
 
 import { createOidcToken, fetchOidcJwksTestDouble } from "./support/oidc.ts";
 
 const request = new Request("https://token.cyspbot.example/token");
+const flyMachineClaims = {
+  app_id: "fly-app-id",
+  app_name: "fixture-app",
+  machine_id: "fly-machine-id",
+  machine_name: "fixture-machine",
+  machine_version: "01KWR7P5J8EP4B0QJ0M3D4P5A6",
+  org_id: "fly-org-id",
+  org_name: "example-org",
+  sub: "example-org:fixture-app:fixture-machine",
+};
+const flyIssuer = "https://oidc.fly.io/example-org";
 
 describe("OIDC authentication", () => {
   it("authenticates a token through its configured issuer adapter", async () => {
@@ -116,6 +129,160 @@ describe("OIDC authentication", () => {
       ),
     ).resolves.toMatchObject({ ok: false, reason: "invalid_token" });
     expect(validateSubjectTokenBinding).not.toHaveBeenCalled();
+  });
+
+  it("authenticates a Fly Machine token through a configured organization issuer", async () => {
+    const result = await authenticateOidcToken(
+      await createOidcToken(flyMachineClaims, { issuer: flyIssuer }),
+      "id_token",
+      request,
+      "cyspbot",
+      [flyIssuerAdapter("example-org")],
+      fetchOidcJwksTestDouble,
+    );
+
+    expect(result).toEqual({
+      context: {
+        subjectToken: {
+          claims: expect.objectContaining({ nbf: expect.any(Number) }),
+          issuer: flyIssuer,
+          resolvedKeyId: "test-key-1",
+          subjectTokenType: "id_token",
+        },
+      },
+      ok: true,
+    });
+  });
+
+  it("does not assign Fly-specific meaning to the Authorized Party claim", async () => {
+    await expect(
+      authenticateOidcToken(
+        await createOidcToken(
+          { ...flyMachineClaims, azp: "a-client-identifier" },
+          { issuer: flyIssuer },
+        ),
+        "id_token",
+        request,
+        "cyspbot",
+        [flyIssuerAdapter("example-org")],
+        fetchOidcJwksTestDouble,
+      ),
+    ).resolves.toMatchObject({ ok: true });
+  });
+
+  it("rejects a Fly Machine token before its Not Before time", async () => {
+    await expect(
+      authenticateOidcToken(
+        await createOidcToken(flyMachineClaims, {
+          issuer: flyIssuer,
+          notBefore: Math.floor(Date.now() / 1000) + 3_600,
+        }),
+        "id_token",
+        request,
+        "cyspbot",
+        [flyIssuerAdapter("example-org")],
+        fetchOidcJwksTestDouble,
+      ),
+    ).resolves.toEqual({
+      errorCode: "ERR_JWT_CLAIM_VALIDATION_FAILED",
+      ok: false,
+      reason: "invalid_token",
+      responseHeaders: { "www-authenticate": "Bearer" },
+    });
+  });
+
+  it("rejects a Fly token whose subject is inconsistent with its Machine identity", async () => {
+    const result = await authenticateOidcToken(
+      await createOidcToken(
+        {
+          ...flyMachineClaims,
+          sub: "example-org:other-app:fixture-machine",
+        },
+        { issuer: flyIssuer },
+      ),
+      "id_token",
+      request,
+      "cyspbot",
+      [flyIssuerAdapter("example-org")],
+      fetchOidcJwksTestDouble,
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      reason: "invalid_token",
+      responseHeaders: { "www-authenticate": "Bearer" },
+    });
+  });
+
+  it("reuses the Fly verifier and remote JWKS cache across authentications", async () => {
+    const fetchJwks = vi.fn(fetchOidcJwksTestDouble);
+    const adapters = configuredOidcIssuerAdapters({ FLY_OIDC_ORG_SLUGS: "example-org" });
+    const token = await createOidcToken(flyMachineClaims, { issuer: flyIssuer });
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await expect(
+        authenticateOidcToken(token, "id_token", request, "cyspbot", adapters, fetchJwks),
+      ).resolves.toMatchObject({ ok: true });
+    }
+
+    expect(fetchJwks).toHaveBeenCalledTimes(1);
+  });
+
+  it("isolates an invalid Fly organization entry from configured issuers", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const fetchJwks = vi.fn(fetchOidcJwksTestDouble);
+
+    try {
+      const adapters = configuredOidcIssuerAdapters({
+        FLY_OIDC_ORG_SLUGS: "first-org,invalid.org,second-org",
+      });
+
+      for (const orgSlug of ["first-org", "second-org"]) {
+        const result = await authenticateOidcToken(
+          await createOidcToken(
+            {
+              app_id: "fly-app-id",
+              app_name: "fixture-app",
+              machine_id: "fly-machine-id",
+              machine_name: "fixture-machine",
+              machine_version: "01KWR7P5J8EP4B0QJ0M3D4P5A6",
+              nbf: Math.floor(Date.now() / 1000) - 10,
+              org_id: "fly-org-id",
+              org_name: orgSlug,
+              sub: `${orgSlug}:fixture-app:fixture-machine`,
+            },
+            { issuer: `https://oidc.fly.io/${orgSlug}` },
+          ),
+          "id_token",
+          request,
+          "cyspbot",
+          adapters,
+          fetchJwks,
+        );
+
+        expect(result).toMatchObject({ ok: true });
+      }
+
+      await expect(
+        authenticateOidcToken(
+          await createOidcToken(undefined, {
+            issuer: "https://oidc.fly.io/invalid.org",
+          }),
+          "id_token",
+          request,
+          "cyspbot",
+          adapters,
+          fetchJwks,
+        ),
+      ).resolves.toEqual({
+        ok: false,
+        reason: "invalid_token",
+        responseHeaders: { "www-authenticate": "Bearer" },
+      });
+      expect(fetchJwks).toHaveBeenCalledTimes(2);
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 
   it.each([

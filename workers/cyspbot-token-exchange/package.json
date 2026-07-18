@@ -24,6 +24,7 @@
     "@cyspbot/github": "workspace:*",
     "@cyspbot/http": "workspace:*",
     "@cyspbot/oidc": "workspace:*",
+    "@cyspbot/oidc-issuer-fly": "workspace:*",
     "@cyspbot/oidc-issuer-github-actions": "workspace:*",
     "jose": "6.2.3"
   }
