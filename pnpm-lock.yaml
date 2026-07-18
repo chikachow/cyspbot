@@ -84,6 +84,12 @@ importers:
         specifier: 6.2.3
         version: 6.2.3
 
+  packages/oidc-issuer-fly:
+    dependencies:
+      '@cyspbot/oidc':
+        specifier: workspace:*
+        version: link:../oidc
+
   packages/oidc-issuer-github-actions:
     dependencies:
       '@cyspbot/oidc':
