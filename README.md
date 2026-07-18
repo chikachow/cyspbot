@@ -1,10 +1,10 @@
 # cyspbot
 
-cyspbot is a hosted Security Token Service for GitHub Actions workflows. It verifies GitHub Actions OIDC tokens from the configured issuer and exchanges allowed workflow contexts for short-lived, repository-scoped GitHub App installation access tokens without exposing the GitHub App private key outside Cloudflare.
+cyspbot is a hosted Security Token Service for GitHub Actions workflows. It verifies OpenID Connect ID Tokens issued by GitHub Actions and exchanges allowed workflow contexts for short-lived, repository-scoped GitHub App installation access tokens without exposing the GitHub App private key outside Cloudflare.
 
 Implemented public endpoints:
 
-- `POST /token` exchanges a trusted GitHub Actions OIDC token for a scoped GitHub App installation access token.
+- `POST /token` exchanges a trusted GitHub Actions ID Token for a scoped GitHub App installation access token.
 - `POST /github/webhooks` accepts signed GitHub App webhook deliveries and acknowledges them without retaining raw payloads or running downstream product logic.
 
 The primary service contract is [docs/service-contract.md](docs/service-contract.md). The implementation reference is [docs/implementation.md](docs/implementation.md). The documentation map is [docs/README.md](docs/README.md).
@@ -31,8 +31,8 @@ subject_token=<github-actions-oidc-token>
 subject_token_type=urn:ietf:params:oauth:token-type:id_token
 ```
 
-`subject_token_type` may also be `urn:ietf:params:oauth:token-type:jwt`. `requested_token_type` is required and must be the cyspbot GitHub App installation token URN.
-Every OIDC ID Token supplied as the RFC 8693 subject token must be signed by a configured issuer, unexpired, and have the single audience (`aud`) value `cyspbot`. The selected issuer adapter then applies its provider-specific subject binding before Token Policy evaluates the request. Non-empty RFC 8693 `audience` form parameters are rejected as unsupported target selectors.
+`subject_token_type` must be `urn:ietf:params:oauth:token-type:id_token`; cyspbot does not accept the generic JWT token-type identifier. `requested_token_type` is required and must be the cyspbot GitHub App installation token URN.
+Every OpenID Connect ID Token supplied as the RFC 8693 subject token must have non-empty Issuer (`iss`), Audience (`aud`), and Subject (`sub`) claims plus numeric Expiration Time (`exp`) and Issued At (`iat`) claims. It must be signed by a configured issuer, be unexpired, and have the single audience value `cyspbot`. The selected issuer adapter then applies its provider-specific subject binding before Token Policy evaluates the request. Non-empty RFC 8693 `audience` form parameters are rejected as unsupported target selectors.
 
 Requests may include RFC 8693 `scope` and `resource` fields to request a concrete GitHub App installation token shape. `resource` must be one canonical GitHub repository API URI in the form `https://api.github.com/repos/{owner}/{repo}` with no leading or trailing whitespace. `scope` is a single-ASCII-space-delimited list of exact GitHub App permission requests, such as `actions:read`, `actions:write`, or `contents:read pull_requests:read`; scope order is not significant. Omitted or exactly empty `scope` defaults to `contents:write pull_requests:write`. Whitespace-only, padded, duplicate, or multi-value `scope` and `resource` fields are rejected.
 

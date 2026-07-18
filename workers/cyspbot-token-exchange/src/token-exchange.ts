@@ -7,7 +7,6 @@ const maxTokenExchangeBodyBytes = 64 * 1024;
 const tokenExchangeGrantType = "urn:ietf:params:oauth:grant-type:token-exchange";
 const githubInstallationAccessTokenType = "urn:chikachow:github-app-installation-access-token";
 const oidcIdTokenType = "urn:ietf:params:oauth:token-type:id_token";
-const jwtTokenType = "urn:ietf:params:oauth:token-type:jwt";
 const unknownRateLimitKey = "unknown";
 const unsupportedInvalidTargetParameters = ["audience"];
 const unsupportedInvalidRequestParameters = [
@@ -69,7 +68,7 @@ export async function handleTokenExchangeRequest(
     return oauthErrorResponse(400, "invalid_request");
   }
 
-  if (subjectTokenType !== oidcIdTokenType && subjectTokenType !== jwtTokenType) {
+  if (subjectTokenType !== oidcIdTokenType) {
     return oauthErrorResponse(400, "invalid_request");
   }
 
@@ -84,7 +83,7 @@ export async function handleTokenExchangeRequest(
   const authentication = await runtime.authenticateSubjectToken({
     request,
     subjectToken,
-    subjectTokenType: subjectTokenType === oidcIdTokenType ? "id_token" : "jwt",
+    subjectTokenType: "id_token",
   });
 
   if (!authentication.ok) {

@@ -2,6 +2,7 @@ import { createPrivateKey } from "node:crypto";
 
 import { SignJWT } from "jose";
 
+import type { VerifiedSubjectToken } from "@cyspbot/token-exchange/authentication";
 import {
   githubInstallationAccessTokenType,
   oidcIdTokenType,
@@ -23,6 +24,28 @@ export interface TokenExchangeRequestBodyOptions {
   form?: Partial<Record<string, string | null>>;
   requestedTokenType?: string | null;
   tokenOptions?: CreateOidcTokenOptions;
+}
+
+export function createVerifiedSubjectToken(
+  claims: Partial<VerifiedSubjectToken["claims"]> = {},
+  options: { issuer?: string; resolvedKeyId?: string } = {},
+): VerifiedSubjectToken {
+  const now = Math.floor(Date.now() / 1000);
+  const issuer = options.issuer ?? "https://token.actions.githubusercontent.com";
+
+  return {
+    claims: {
+      aud: "cyspbot",
+      exp: now + 300,
+      iat: now - 10,
+      iss: issuer,
+      sub: "repo:fixture-owner/fixture-source-repository:ref:refs/heads/fixture-base-branch",
+      ...claims,
+    },
+    issuer,
+    resolvedKeyId: options.resolvedKeyId ?? "test-key-1",
+    subjectTokenType: "id_token",
+  };
 }
 
 export function authorizationHeaders(

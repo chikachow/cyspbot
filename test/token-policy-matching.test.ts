@@ -17,6 +17,7 @@ import {
   sameRepositoryTokenRequest,
   subjectToken,
 } from "./support/token-policy-fixtures.ts";
+import { createVerifiedSubjectToken } from "./support/oidc.ts";
 import { testTokenPolicyRules } from "./support/token-policy.ts";
 
 const fixtureOtherIssuer = "https://issuer.example";
@@ -160,16 +161,14 @@ describe("Token Policy matching", () => {
   });
 
   it("allows a policy rule with any issuer-specific claim named by CEL", () => {
-    const otherSubjectToken: VerifiedSubjectToken = {
-      claims: {
+    const otherSubjectToken = createVerifiedSubjectToken(
+      {
         email: "fixture-service-account@fixture-project.iam.gserviceaccount.com",
         email_verified: true,
         sub: "107517467455664443765",
       },
-      issuer: fixtureOtherIssuer,
-      resolvedKeyId: "fixture-other-key",
-      subjectTokenType: "id_token",
-    };
+      { issuer: fixtureOtherIssuer, resolvedKeyId: "fixture-other-key" },
+    );
     const otherIssuerRule: TokenPolicyRule = {
       effect: "allow",
       id: "test-other-issuer",
@@ -239,6 +238,7 @@ describe("Token Policy matching", () => {
     const typedSubjectToken: VerifiedSubjectToken = {
       claims: {
         ...subjectToken.claims,
+        iss: fixtureOtherIssuer,
         ...additionalClaims,
       },
       issuer: fixtureOtherIssuer,

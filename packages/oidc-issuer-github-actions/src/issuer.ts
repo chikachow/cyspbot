@@ -18,8 +18,5 @@ export const githubActionsIssuerAdapter: OidcIssuerAdapter = {
       ? { status: "configured", trustedIssuer: githubActionsTrustedIssuer }
       : { status: "unhandled" },
   validateSubjectTokenBinding: ({ expectedAudience, verifiedToken }) =>
-    typeof verifiedToken.claims.sub === "string" &&
-    verifiedToken.claims.sub.length > 0 &&
-    typeof verifiedToken.claims.exp === "number" &&
-    (verifiedToken.claims["azp"] === undefined || verifiedToken.claims["azp"] === expectedAudience),
+    verifiedToken.claims["azp"] === undefined || verifiedToken.claims["azp"] === expectedAudience,
 };

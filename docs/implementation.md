@@ -16,7 +16,7 @@ Shared packages:
 
 - `packages/http` owns framework-free JSON responses, problem details, and bounded request-body reading.
 - `packages/github` owns GitHub App JWT signing, GitHub REST calls, installation lookup, installation token creation, and secret binding resolution.
-- `packages/oidc` owns generic OIDC JWT verification and the issuer-adapter contract.
+- `packages/oidc` owns OpenID Connect ID Token verification and the issuer-adapter contract.
 - `packages/oidc-issuer-github-actions` owns the GitHub Actions issuer adapter and trusted issuer constants.
 
 The root `wrangler.jsonc` points at `test/support/root-test-harness.ts`. It is a local/test binding harness, not a deployable product Worker.
@@ -35,7 +35,7 @@ The Worker factory is `createTokenExchangeWorker` in `workers/cyspbot-token-exch
 2. Require `application/x-www-form-urlencoded`.
 3. Read at most `64 KiB`.
 4. Require exactly one non-empty value for each required token-exchange form parameter that cyspbot consumes; value-less instances are treated as omitted, and duplicated non-empty consumed parameters are malformed.
-5. Require `requested_token_type=urn:chikachow:github-app-installation-access-token`.
+5. Require `subject_token_type=urn:ietf:params:oauth:token-type:id_token` and `requested_token_type=urn:chikachow:github-app-installation-access-token`; reject the generic JWT subject-token type.
 6. Treat exactly empty optional `scope` and `resource` form values as omitted, and preserve non-empty values for normalization after authentication.
 7. Reject unsupported or ambiguous fields, including non-empty RFC 8693 `audience`, malformed `scope` or `resource`, duplicate consumed fields, actor-token fields, and multi-resource forms. Non-empty `audience` maps to `invalid_target`; actor-token parameters map to `invalid_request`.
 8. Select a configured issuer adapter from the token's unverified `iss` claim, verify the subject token with that adapter's trusted issuer, signing algorithm, and JWKS URI, then validate that the verified token `aud` claim is the internal service audience `cyspbot` and apply provider-specific subject binding. Unconfigured issuers are rejected before any JWKS fetch.
@@ -76,7 +76,7 @@ cyspbot does not support OAuth client authentication at `/token`. Non-empty `cli
 
 ## OIDC Verification
 
-`packages/oidc/src/verifier.ts` verifies tokens with `jose.jwtVerify` and `jose.createRemoteJWKSet`. The generic verifier owns issuer, allowed-algorithm, signature, expiry, and JWKS checks. `packages/oidc/src/issuer-adapter.ts` defines how authentication recognizes a configured issuer and applies provider-specific subject-token binding to the complete centrally verified token. Token-exchange authentication selects only from adapters composed in `workers/cyspbot-token-exchange/src/oidc-issuers.ts`; the unverified `iss` claim selects configured trust material but never supplies a JWKS URI.
+`packages/oidc/src/verifier.ts` exposes `OidcIdTokenVerifier`, which verifies ID Tokens with `jose.jwtVerify` and `jose.createRemoteJWKSet`. The verifier owns issuer, allowed-algorithm, signature, expiry, and JWKS checks and requires a semantically valid `iss`, `aud`, `sub`, `exp`, and `iat` claim set before returning `VerifiedOidcIdToken`. It accepts string and plural audiences at this package boundary and does not impose a maximum token age; token-exchange authentication separately requires the exact single audience string `cyspbot`. `packages/oidc/src/issuer-adapter.ts` defines how authentication recognizes a configured issuer and applies provider-specific subject-token binding to the complete centrally verified ID Token. Token-exchange authentication selects only from adapters composed in `workers/cyspbot-token-exchange/src/oidc-issuers.ts`; the unverified `iss` claim selects configured trust material but never supplies a JWKS URI.
 
 ### GitHub Actions
 
@@ -86,7 +86,7 @@ The GitHub Actions trusted issuer is defined in `packages/oidc-issuer-github-act
 - JWKS URI: `https://token.actions.githubusercontent.com/.well-known/jwks`
 - allowed signing algorithm: `RS256`
 
-The adapter requires non-empty Subject (`sub`) and numeric Expiration Time (`exp`) claims. An absent Authorized Party (`azp`) claim is accepted; when present, `azp` must equal the expected audience `cyspbot`.
+The shared verifier requires the standard ID Token claims. The GitHub Actions adapter additionally accepts an absent Authorized Party (`azp`) claim and requires it to equal the expected audience `cyspbot` when present.
 
 OIDC/JWKS failures are classified at the verifier boundary:
 

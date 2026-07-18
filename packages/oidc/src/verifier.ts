@@ -14,48 +14,61 @@ export interface TrustedOidcIssuer {
   jwksUri: URL;
 }
 
-export interface VerifiedOidcToken {
-  claims: JWTPayload;
+interface VerifiedOidcIdTokenClaims extends JWTPayload {
+  aud: string | string[];
+  exp: number;
+  iat: number;
+  iss: string;
+  sub: string;
+}
+
+export interface VerifiedOidcIdToken {
+  claims: VerifiedOidcIdTokenClaims;
   issuer: string;
   resolvedKeyId: string | null;
 }
 
-type OidcTokenVerifierFailureReason = "invalid_token" | "provider_failure" | "verifier_failure";
+type OidcIdTokenVerifierFailureReason = "invalid_token" | "provider_failure" | "verifier_failure";
 
-interface OidcTokenVerifierFailure {
+interface OidcIdTokenVerifierFailure {
   errorCode?: string;
   ok: false;
   providerStatus?: number;
-  reason: OidcTokenVerifierFailureReason;
+  reason: OidcIdTokenVerifierFailureReason;
 }
 
-interface OidcTokenVerifierSuccess {
+interface OidcIdTokenVerifierSuccess {
   ok: true;
-  token: VerifiedOidcToken;
+  token: VerifiedOidcIdToken;
 }
 
-export type OidcTokenVerifierResult = OidcTokenVerifierFailure | OidcTokenVerifierSuccess;
+export type OidcIdTokenVerifierResult = OidcIdTokenVerifierFailure | OidcIdTokenVerifierSuccess;
 
-export interface OidcTokenVerifierOptions {
+export interface OidcIdTokenVerifierOptions {
   fetchJwks?: typeof fetch;
   issuer: TrustedOidcIssuer;
 }
 
-export class OidcTokenVerifier {
+export class OidcIdTokenVerifier {
   readonly #issuer: TrustedOidcIssuer;
   readonly #remoteJwks: JWTVerifyGetKey;
 
-  public constructor(options: OidcTokenVerifierOptions) {
+  public constructor(options: OidcIdTokenVerifierOptions) {
     this.#issuer = options.issuer;
     this.#remoteJwks = remoteJwks(options.issuer.jwksUri, options.fetchJwks);
   }
 
-  public async verify(token: string): Promise<OidcTokenVerifierResult> {
+  public async verify(token: string): Promise<OidcIdTokenVerifierResult> {
     try {
       const { payload, protectedHeader } = await jwtVerify(token, this.#remoteJwks, {
         algorithms: [...this.#issuer.allowedSigningAlgorithms],
         issuer: this.#issuer.issuer,
+        requiredClaims: ["aud", "sub", "exp", "iat"],
       });
+
+      if (!isVerifiedOidcIdTokenClaims(payload)) {
+        return invalidTokenFailure("ERR_JWT_CLAIM_VALIDATION_FAILED");
+      }
 
       return {
         ok: true,
@@ -139,7 +152,7 @@ async function fetchRemoteJwks(
   });
 }
 
-function classifyVerificationError(error: unknown): OidcTokenVerifierFailure {
+function classifyVerificationError(error: unknown): OidcIdTokenVerifierFailure {
   const errorCode = errorCodeOf(error);
 
   if (error instanceof OidcProviderJwksError) {
@@ -182,7 +195,7 @@ const providerFailureErrorCodes = new Set([
   "ERR_JWKS_TIMEOUT",
 ]);
 
-function invalidTokenFailure(errorCode?: string): OidcTokenVerifierFailure {
+function invalidTokenFailure(errorCode?: string): OidcIdTokenVerifierFailure {
   return {
     ...(errorCode === undefined ? {} : { errorCode }),
     ok: false,
@@ -190,7 +203,7 @@ function invalidTokenFailure(errorCode?: string): OidcTokenVerifierFailure {
   };
 }
 
-function providerFailure(errorCode?: string, providerStatus?: number): OidcTokenVerifierFailure {
+function providerFailure(errorCode?: string, providerStatus?: number): OidcIdTokenVerifierFailure {
   return {
     ...(errorCode === undefined ? {} : { errorCode }),
     ok: false,
@@ -199,7 +212,7 @@ function providerFailure(errorCode?: string, providerStatus?: number): OidcToken
   };
 }
 
-function verifierFailure(errorCode?: string): OidcTokenVerifierFailure {
+function verifierFailure(errorCode?: string): OidcIdTokenVerifierFailure {
   return {
     ...(errorCode === undefined ? {} : { errorCode }),
     ok: false,
@@ -236,5 +249,29 @@ function isJsonWebKeySetShape(input: unknown): input is { keys: unknown[] } {
     "keys" in input &&
     Array.isArray(input.keys) &&
     input.keys.every((key) => typeof key === "object" && key !== null)
+  );
+}
+
+function isVerifiedOidcIdTokenClaims(input: JWTPayload): input is VerifiedOidcIdTokenClaims {
+  return (
+    typeof input.iss === "string" &&
+    input.iss.length > 0 &&
+    isNonEmptyAudience(input.aud) &&
+    typeof input.sub === "string" &&
+    input.sub.length > 0 &&
+    typeof input.exp === "number" &&
+    typeof input.iat === "number"
+  );
+}
+
+function isNonEmptyAudience(input: JWTPayload["aud"]): input is string | string[] {
+  if (typeof input === "string") {
+    return input.length > 0;
+  }
+
+  return (
+    Array.isArray(input) &&
+    input.length > 0 &&
+    input.every((audience) => typeof audience === "string" && audience.length > 0)
   );
 }
