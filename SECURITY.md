@@ -8,13 +8,13 @@ If private vulnerability reporting is unavailable, contact the repository mainta
 
 ## Security Boundary
 
-cyspbot exchanges verified GitHub Actions OIDC tokens for repository-scoped GitHub App installation access tokens. The important security properties are:
+cyspbot accepts Caller-supplied OpenID Connect ID Tokens from GitHub Actions and exchanges only the resulting Verified Subject Tokens for repository-scoped GitHub App installation access tokens. The important security properties are:
 
 - issuer trust is configured, not discovered from caller-controlled tokens
-- the caller identity is derived from verified GitHub Actions OIDC claims
-- the token-exchange form audience selects one configured GitHub App, and the verified subject token audience must match it exactly
+- the Verified Subject Token is derived only from signed claims in an ID Token issued by the configured GitHub Actions issuer
+- the ID Token audience must be the exact single string `cyspbot`; the unsupported token-exchange `audience` parameter grants nothing
 - callers may request one canonical repository resource and an exact GitHub App permission scope
-- Token Policy must explicitly allow the normalized caller, GitHub App, resource, and permission combination before a token is issued
+- Token Policy must explicitly allow the Verified Subject Token, GitHub App, resource, and permission combination before a token is issued
 - the GitHub App installation remains the upper-bound authority for repositories and permissions
 - the GitHub App private key remains inside the deployment secret boundary
 - webhook processing requires GitHub signature validation before state changes

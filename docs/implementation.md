@@ -49,9 +49,9 @@ The token policy in `workers/cyspbot-token-exchange/src/policy/token-policy.ts` 
 
 cyspbot does not accept a public GitHub App selector. It constrains this profile to cyspbot's configured GitHub App credentials, one signed subject-token `aud` string equal to `cyspbot`, one canonical GitHub repository API `resource`, and one normalized permission set. Plural subject-token audiences are rejected rather than interpreted by containment.
 
-### Token request normalization
+### Shared request normalization
 
-An omitted `scope` normalizes to a PR-authoring permission request. For GitHub Actions, an omitted `resource` defaults to the repository named by the verified token's signed `repository` claim. Omitting both produces:
+An omitted `scope` normalizes to a PR-authoring permission request.
 
 ```json
 {
@@ -60,13 +60,19 @@ An omitted `scope` normalizes to a PR-authoring permission request. For GitHub A
 }
 ```
 
-### GitHub Actions authorization
+### Issuer-specific normalization and authorization
+
+#### GitHub Actions
+
+For GitHub Actions, an omitted `resource` defaults to the repository named by the Verified Subject Token's signed `repository` claim. Omitting both `scope` and `resource` produces the permission request shown above.
 
 That token request is allowed only when an issuer-guarded rule's CEL condition matches the signed GitHub Actions `repository`, event, `ref`, `sub`, and exact `workflow_ref` claims and the rule's canonical resource URI and permissions match the normalized request. The condition accepts the expected legacy GitHub subject or its immutable owner/repository-ID form; inconsistent names or IDs therefore do not match. Rule order is not semantically meaningful; authorization is `allow` if any rule matches and `deny` otherwise. Exact policy entries are intentionally not documented here because they may move to live configuration.
 
-Repository identity in Token Policy is intentionally name-based. GitHub Actions OIDC exposes `repository_id` and `repository_owner_id` as signed claims, immutable subject formats can include those IDs in `sub`, and GitHub's installation-token API supports `repository_ids`; cyspbot still chooses owner/repository names as the policy identifier because they are the maintained external resource names and because token issuance still requires the configured GitHub App installation to cover that repository name. Legacy subjects therefore do not require ID claims. Immutable subjects require `repository_id` to agree with `sub`; the optional `repository_owner_id` claim is checked only when present and non-null. These IDs reject internal inconsistencies but are not independent policy keys. If a repository is deleted and recreated with the same owner/name, matching existing policy for that name is accepted behavior rather than a bypass.
+Repository identity in Token Policy is intentionally name-based. GitHub Actions OIDC exposes `repository_id` and `repository_owner_id` as signed claims, immutable subject formats can include those IDs in `sub`, and GitHub's installation-token API supports `repository_ids`; cyspbot still chooses owner/repository names as the policy identifier because they are the maintained external resource names and because token issuance still requires the configured GitHub App installation to cover that repository name. Legacy subjects therefore do not require ID claims. Immutable subjects require `repository_id` to agree with `sub`; the optional `repository_owner_id` claim is checked only when present and non-null. These IDs reject internal inconsistencies but are not independent policy keys. If a repository is deleted and recreated with the same owner/name, matching existing policy for that name is accepted behavior rather than a bypass. GitHub subject strings are compared literally rather than percent-decoding repository or ref components.
 
-Issuer verification authenticates the signed claim set, while Token Policy decides which claims matter for a particular grant. Missing or incorrectly typed claims named by the condition fail closed as `invalid_target`; policy-irrelevant metadata does not affect authorization. Invalid issuer, signature, audience, expiry, `azp`, or subject binding fails authentication as `invalid_request`. Policy compares GitHub subject strings literally rather than percent-decoding repository or ref components.
+### Shared enforcement and issuance
+
+ID Token verification and issuer-specific subject binding authenticate the signed claim set, while Token Policy decides which claims matter for a particular grant. Missing or incorrectly typed claims named by a condition fail closed as `invalid_target`; policy-irrelevant metadata does not affect authorization. An invalid standard ID Token claim or failed issuer-specific subject binding causes authentication to fail as `invalid_request`.
 
 `issueInstallationTokenForContext` in `workers/cyspbot-token-exchange/src/policy/installation-token-issuance.ts` does not fetch source repository metadata. It parses the normalized token resource as `https://api.github.com/repos/{owner}/{repo}`, resolves the target installation with `GET /repos/{owner}/{repo}/installation`, then passes `repositories: ["<repo>"]` and the normalized permissions to GitHub's installation-token endpoint.
 
@@ -74,17 +80,17 @@ cyspbot treats exactly empty optional `scope` and `resource` form values as omit
 
 cyspbot does not support OAuth client authentication at `/token`. Non-empty `client_id`, `client_secret`, `client_assertion`, and `client_assertion_type` form parameters are rejected with `invalid_request` so callers cannot mistakenly believe client credentials affected token issuance. Value-less form parameters are treated as omitted. An `Authorization` header is rejected with `invalid_client` and `401` before body parsing. Non-empty `authorization_details` is also rejected because this profile expresses the token shape only through cyspbot's service app, `resource`, and `scope`.
 
-## OIDC Verification
+## ID Token Verification
 
 `packages/oidc/src/verifier.ts` exposes `OidcIdTokenVerifier`, which verifies ID Tokens with `jose.jwtVerify` and `jose.createRemoteJWKSet`. The verifier owns issuer, allowed-algorithm, signature, expiry, and JWKS checks and requires a semantically valid `iss`, `aud`, `sub`, `exp`, and `iat` claim set before returning `VerifiedOidcIdToken`. It accepts string and plural audiences at this package boundary and does not impose a maximum token age; token-exchange authentication separately requires the exact single audience string `cyspbot`. `packages/oidc/src/issuer-adapter.ts` defines how authentication recognizes a configured issuer and applies provider-specific subject-token binding to the complete centrally verified ID Token. Token-exchange authentication selects only from adapters composed in `workers/cyspbot-token-exchange/src/oidc-issuers.ts`; the unverified `iss` claim selects configured trust material but never supplies a JWKS URI.
 
-### GitHub Actions
+### Supported issuer adapters
 
-The GitHub Actions trusted issuer is defined in `packages/oidc-issuer-github-actions/src/issuer.ts`:
+| Issuer adapter | Trusted Issuer (`iss`)                        | JWKS URI                                                       | Algorithm |
+| -------------- | --------------------------------------------- | -------------------------------------------------------------- | --------- |
+| GitHub Actions | `https://token.actions.githubusercontent.com` | `https://token.actions.githubusercontent.com/.well-known/jwks` | `RS256`   |
 
-- issuer: `https://token.actions.githubusercontent.com`
-- JWKS URI: `https://token.actions.githubusercontent.com/.well-known/jwks`
-- allowed signing algorithm: `RS256`
+#### GitHub Actions
 
 The shared verifier requires the standard ID Token claims. The GitHub Actions adapter additionally accepts an absent Authorized Party (`azp`) claim and requires it to equal the expected audience `cyspbot` when present.
 

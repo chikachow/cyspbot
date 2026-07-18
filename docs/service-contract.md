@@ -4,10 +4,10 @@ This document describes the public interface, security boundaries, and externall
 
 ## Public Endpoints
 
-| Route              | Method | Purpose                                     | Success response           |
-| ------------------ | ------ | ------------------------------------------- | -------------------------- |
-| `/token`           | `POST` | Exchange trusted GitHub Actions ID Tokens   | OAuth token response JSON  |
-| `/github/webhooks` | `POST` | Accept signed GitHub App webhook deliveries | `202` acknowledgement JSON |
+| Route              | Method | Purpose                                      | Success response           |
+| ------------------ | ------ | -------------------------------------------- | -------------------------- |
+| `/token`           | `POST` | Accept OpenID Connect ID Tokens for exchange | OAuth token response JSON  |
+| `/github/webhooks` | `POST` | Accept signed GitHub App webhook deliveries  | `202` acknowledgement JSON |
 
 Unknown routes return `404` problem details. Unsupported methods on `/github/webhooks` return `405` problem details with `Allow: POST`. Unsupported methods on `/token` return OAuth error JSON with `400 {"error":"invalid_request"}`.
 
@@ -42,15 +42,11 @@ An empty `scope` is not a no-permissions request. Following OAuth token endpoint
 
 The OpenID Connect ID Token supplied as the RFC 8693 subject token must have non-empty Issuer (`iss`), Audience (`aud`), and Subject (`sub`) claims plus numeric Expiration Time (`exp`) and Issued At (`iat`) claims. cyspbot accepts only the ID Token subject-token-type identifier, verifies the configured issuer and expiration, and does not impose a separate maximum token age based on `iat`. The ID Token must have the single audience value `cyspbot`; missing, empty, plural, or other audience values are invalid subject tokens and receive `400 {"error":"invalid_request"}`. After audience verification, the selected issuer adapter enforces its provider-specific subject binding.
 
-### GitHub Actions subject tokens
-
-GitHub Actions callers present a verified [GitHub Actions OIDC](https://docs.github.com/en/actions/concepts/security/openid-connect) subject token issued by `https://token.actions.githubusercontent.com`. An absent Authorized Party (`azp`) claim is accepted; when present, it must equal `cyspbot`. When `resource` is omitted or exactly empty, cyspbot derives it from the signed `repository` claim. Authentication does not create a grant: the matching Token Policy rule must still authorize the signed workflow identity, normalized repository resource, and exact permissions.
-
 cyspbot does not support RFC 8693 `audience`, `actor_token`, or `actor_token_type` form parameters. Non-empty `audience` parameters are rejected with `invalid_target` because this profile uses `resource` for the issued token target and service-owned GitHub App credentials. Actor-token parameters are rejected as malformed for this profile with `invalid_request`.
 
 cyspbot also does not support OAuth client authentication or Rich Authorization Requests at `/token`. Requests containing non-empty `client_id`, `client_secret`, `client_assertion`, `client_assertion_type`, or `authorization_details` fields are rejected with `invalid_request` rather than silently ignored. Requests containing an `Authorization` header are rejected with `401 {"error":"invalid_client"}` and a matching `WWW-Authenticate` challenge. Value-less form parameters are treated as omitted, and other unrecognized extension parameters are ignored, according to OAuth token endpoint rules.
 
-The signed subject token proves it was minted for cyspbot as the relying service; the service owns the GitHub App credential profile; `resource` names the GitHub API repository target where the issued token will be used; and Token Policy decides whether that verified principal may receive the requested installation token. Plural subject-token audiences are rejected rather than interpreted by containment.
+Successful ID Token verification establishes that the configured issuer signed the token for the cyspbot audience and establishes its verified Subject and other claims. The service owns the GitHub App credential profile; `resource` names the GitHub API repository target where the issued token will be used; and Token Policy decides whether the resulting Verified Subject Token may receive the requested installation token. Plural subject-token audiences are rejected rather than interpreted by containment.
 
 Policy denial for a supported, normalized GitHub App and `resource` receives `400 {"error":"invalid_target"}`.
 
@@ -81,7 +77,17 @@ OAuth error responses use JSON with the same no-store headers:
 - upstream GitHub server failure: `502 {"error":"server_error"}`
 - internal server failure: `500 {"error":"server_error"}`
 
-OIDC/JWKS provider unavailability means cyspbot cannot obtain a usable trusted key set: JWKS network failures, timeouts, non-200 responses, malformed JSON, malformed shape, or ambiguous key matches. OIDC tokens whose JWT header names a `kid` absent from the usable JWKS are invalid subject tokens and return `400 {"error":"invalid_request"}` because the caller controls the `kid` header.
+Issuer JWKS unavailability means cyspbot cannot obtain a usable trusted key set: JWKS network failures, timeouts, non-200 responses, malformed JSON, malformed shape, or ambiguous key matches. ID Tokens whose JWT header names a `kid` absent from the usable JWKS are invalid subject tokens and return `400 {"error":"invalid_request"}` because the Caller controls the `kid` header.
+
+### Supported issuers
+
+| Issuer         | Trusted Issuer (`iss`)                        | Additional subject binding          | Omitted `resource`        |
+| -------------- | --------------------------------------------- | ----------------------------------- | ------------------------- |
+| GitHub Actions | `https://token.actions.githubusercontent.com` | `azp` is absent or equals `cyspbot` | Signed `repository` claim |
+
+#### GitHub Actions
+
+GitHub Actions callers present a [GitHub Actions OIDC token](https://docs.github.com/en/actions/concepts/security/openid-connect), which is an ID Token issued by `https://token.actions.githubusercontent.com`. An absent Authorized Party (`azp`) claim is accepted; when present, it must equal `cyspbot`. When `resource` is omitted or exactly empty, cyspbot derives it from the signed `repository` claim. Authentication produces a Verified Subject Token but does not create a grant: the matching Token Policy rule must still authorize the signed workflow identity, normalized repository resource, and exact permissions.
 
 ### Token Policy
 
@@ -91,9 +97,9 @@ Installation Token Issuance is allowed only when the normalized installation tok
 
 GitHub Actions authentication additionally requires:
 
-- the caller presents a verified [GitHub Actions OIDC](https://docs.github.com/en/actions/concepts/security/openid-connect) subject token from `https://token.actions.githubusercontent.com`
+- the Caller presents a [GitHub Actions OIDC token](https://docs.github.com/en/actions/concepts/security/openid-connect) from `https://token.actions.githubusercontent.com`
 - the signed subject token audience is `cyspbot`
-- if the OIDC token has an `azp` claim, that claim matches `cyspbot`
+- if the GitHub Actions OIDC token has an `azp` claim, that claim matches `cyspbot`
 
 After authentication, GitHub Actions policy rules require:
 
@@ -103,15 +109,13 @@ After authentication, GitHub Actions policy rules require:
 - `repository`, `ref`, `sub`, and `workflow_ref` exactly satisfy the matching rule's CEL condition
 - normalized `resource` and `permissions` exactly match the matching rule
 
-The caller cannot supply arbitrary GitHub Apps, GitHub permissions, or repository ids. The validated `scope` and validated `resource` are normalized into one installation token request. Token Policy answers whether the verified subject token may receive exactly that token request, including cross-owner requests when explicit policy allows them. cyspbot denies unconfigured issuer/condition/resource/permission combinations with `invalid_target`. The [GitHub App installation](https://docs.github.com/en/rest/apps/apps#create-an-installation-access-token-for-an-app) remains the upper-bound permission authority.
-
 Policy evaluates only facts present in the verified token. For the common legacy subject form, the rule requires `sub` to contain the same repository name as the signed `repository` claim; `repository_id` and `repository_owner_id` are not inputs to that authorization decision. For GitHub's immutable subject form, `repository_id` must be present and consistent with `sub`. When the optional `repository_owner_id` claim is present, it must also be a string consistent with `sub`; when it is absent or null, policy accepts any owner ID embedded in the otherwise matching immutable subject. These IDs check internal subject consistency but are not independent policy keys.
 
-Missing or incorrectly typed claims used by a configured policy condition authenticate as verified token data but fail policy with `400 {"error":"invalid_target"}`. Claims that the matching rule does not use, such as GitHub's `actor` metadata, do not affect authorization. Invalid issuer, signature, audience, expiry, `azp`, or subject binding remains an invalid subject token and returns `400 {"error":"invalid_request"}`. Subject matching is literal; percent-encoded repository or ref components are not decoded into an allowed subject.
+Claims that the matching rule does not use, such as GitHub's `actor` metadata, do not affect authorization. Invalid `azp` or GitHub subject binding remains an invalid subject token and returns `400 {"error":"invalid_request"}`. Subject matching is literal; percent-encoded repository or ref components are not decoded into an allowed subject.
 
 Token Policy intentionally uses GitHub owner/repository names as the externally meaningful repository identifier, even though [GitHub Actions OIDC](https://docs.github.com/en/actions/reference/security/oidc) also exposes immutable repository and owner IDs and GitHub's installation-token API can scope by `repository_ids`. Those IDs participate in the immutable-subject consistency condition but are not independent policy keys. A repository that is deleted and recreated with the same owner/name can continue to match policy for that name when the GitHub App installation still grants sufficient permissions.
 
-The omitted `scope` and `resource` default produces this normalized permission request for cyspbot's service-owned GitHub App and the verified principal repository:
+The omitted `scope` and `resource` default produces this normalized permission request for cyspbot's service-owned GitHub App and the Verified Subject Token's repository:
 
 ```json
 {
@@ -120,11 +124,19 @@ The omitted `scope` and `resource` default produces this normalized permission r
 }
 ```
 
-That token request is allowed only when explicit service-owned policy allows it. The exact policy entries are intentionally not part of this public contract because the policy data may move from checked-in code to live configuration.
+cyspbot denies forked pull request contexts, unconfigured refs, unconfigured workflow files, tag refs, and unsupported event names.
 
-cyspbot resolves the target installation with `GET /repos/{owner}/{repo}/installation`, then mints the final installation token with GitHub's `repositories` selector and the normalized permissions. It does not fetch source repository metadata, compare OIDC repository claims to live source repository metadata, or use live default-branch metadata as policy criteria.
+#### Shared enforcement and issuance
 
-cyspbot denies forked pull request contexts, unconfigured refs, unconfigured workflow files, tag refs, unsupported event names, unsupported scopes, and non-canonical resource forms.
+The Caller cannot supply arbitrary GitHub Apps, GitHub permissions, or repository IDs. The validated `scope` and `resource` are normalized into one Installation Token Request. Token Policy answers whether the Verified Subject Token may receive exactly that request, including cross-owner requests when explicit policy allows them. cyspbot denies unconfigured issuer, condition, resource, or permission combinations with `invalid_target`. The [GitHub App installation](https://docs.github.com/en/rest/apps/apps#create-an-installation-access-token-for-an-app) remains the upper-bound permission authority.
+
+Missing or incorrectly typed claims used by a configured policy condition authenticate as verified token data but fail policy with `400 {"error":"invalid_target"}`. An invalid standard ID Token claim or failed issuer-specific subject binding remains an invalid subject token and returns `400 {"error":"invalid_request"}`.
+
+An Installation Token Request is allowed only when explicit service-owned policy allows it. The exact policy entries are intentionally not part of this public contract because the policy data may move from checked-in code to live configuration.
+
+cyspbot resolves the target installation with `GET /repos/{owner}/{repo}/installation`, then mints the final installation token with GitHub's `repositories` selector and the normalized permissions. It does not fetch source repository metadata or use live default-branch metadata as policy criteria.
+
+cyspbot denies unsupported scopes and non-canonical resource forms.
 
 ### Standards and Vendor References
 

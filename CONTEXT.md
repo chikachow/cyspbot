@@ -15,11 +15,11 @@ The cyspbot-internal authentication result after an OpenID Connect ID Token has 
 _Avoid_: Principal, raw JWT, unverified subject
 
 **Subject Token Claims**:
-The verified JWT claims carried by a **Verified Subject Token**. An issuer adapter may require provider-specific claims to establish an internally consistent identity before policy evaluation. **Token Policy** may then read verified claims through CEL as `claims["..."]` to authorize a specific grant. Adapter-level identity requirements are authentication constraints; they do not authorize **Installation Token Issuance**.
+The verified claims carried by a **Verified Subject Token**. They describe the identity and context asserted by a **Trusted OIDC Issuer**.
 _Avoid_: Derived principal fields, caller-provided attributes
 
 **Installation Token Issuance**:
-The cyspbot capability that exchanges a trusted GitHub Actions OIDC token for a short-lived GitHub App installation access token for workflow runs that satisfy cyspbot's checked-in OIDC trust policy.
+The cyspbot capability that exchanges a **Verified Subject Token** for a short-lived GitHub App installation access token when **Token Policy** allows that **Verified Subject Token** to receive the **Installation Token Request**.
 _Avoid_: cyspbot itself, app login
 
 **Installation Token Request**:
@@ -47,7 +47,7 @@ A cyspbot Worker that validates GitHub webhook authenticity and envelope fields,
 _Avoid_: Business event processor, schema-normalizer
 
 **Token Exchange Endpoint**:
-The primary cyspbot STS endpoint that accepts a **Caller** ID Token as an RFC 8693 subject token and returns an **Installation Token** using an OAuth token-exchange contract.
+The primary cyspbot endpoint that accepts a **Caller** ID Token as an RFC 8693 subject token and returns an **Installation Token** using OAuth 2.0 Token Exchange.
 _Avoid_: installation collection endpoint, raw GitHub passthrough
 
 **Trusted OIDC Issuer**:
@@ -61,7 +61,7 @@ _Avoid_: Permanent key store, token cache, caller-controlled key source
 ## Relationships
 
 - The product surface is `POST /token` and `POST /github/webhooks`.
-- A **Caller** authenticates to **cyspbot** with a GitHub Actions ID Token.
+- A **Caller** authenticates to **cyspbot** with a GitHub Actions OIDC token.
 - A verified **Caller** is represented internally as a **Verified Subject Token**.
 - The issuer adapter for each **Trusted OIDC Issuer** applies issuer-specific subject binding before an ID Token becomes a **Verified Subject Token**.
 - cyspbot verifies a **Caller** only against a **Trusted OIDC Issuer**.
