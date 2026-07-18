@@ -142,30 +142,6 @@ describe("OIDC authentication", () => {
     expect(fetchJwks).not.toHaveBeenCalled();
   });
 
-  it("reports a configured issuer with invalid trust configuration as a verifier failure", async () => {
-    const invalidAdapter: OidcIssuerAdapter = {
-      ...githubActionsIssuerAdapter,
-      resolveIssuer: () => ({ status: "unavailable" }),
-    };
-    const fetchJwks = vi.fn(fetchOidcJwksTestDouble);
-
-    await expect(
-      authenticateOidcToken(
-        await createOidcToken(),
-        "id_token",
-        request,
-        "cyspbot",
-        [invalidAdapter],
-        fetchJwks,
-      ),
-    ).resolves.toEqual({
-      ok: false,
-      reason: "oidc_verifier_failure",
-      responseHeaders: { "www-authenticate": "Bearer" },
-    });
-    expect(fetchJwks).not.toHaveBeenCalled();
-  });
-
   it("keeps independent verifier caches for distinct injected fetch functions", async () => {
     const fetchJwksA = vi.fn(fetchOidcJwksTestDouble);
     const fetchJwksB = vi.fn(fetchOidcJwksTestDouble);

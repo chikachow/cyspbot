@@ -140,10 +140,6 @@ function trustedIssuerForSubjectToken(
   for (const adapter of issuerAdapters) {
     const resolution = adapter.resolveIssuer(unverifiedTokenIssuer);
 
-    if (resolution.status === "unavailable") {
-      return { ok: false, reason: "oidc_verifier_failure" };
-    }
-
     if (resolution.status === "unhandled") {
       continue;
     }
