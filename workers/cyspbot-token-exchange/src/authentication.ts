@@ -114,7 +114,12 @@ export async function authenticateOidcToken(
   };
 }
 
-const oidcVerifiers = new WeakMap<TrustedOidcIssuer, OidcIdTokenVerifier>();
+interface CachedOidcIdTokenVerifiers {
+  defaultVerifier?: OidcIdTokenVerifier;
+  injectedFetchVerifiers: WeakMap<typeof fetch, OidcIdTokenVerifier>;
+}
+
+const oidcVerifiers = new WeakMap<TrustedOidcIssuer, CachedOidcIdTokenVerifiers>();
 
 function trustedIssuerForSubjectToken(
   token: string,
@@ -153,18 +158,32 @@ function oidcVerifierForTrustedIssuer(
   issuer: TrustedOidcIssuer,
   fetchJwks: typeof fetch | undefined,
 ): OidcIdTokenVerifier {
-  if (fetchJwks !== undefined) {
-    return new OidcIdTokenVerifier({ fetchJwks, issuer });
+  let cachedVerifiers = oidcVerifiers.get(issuer);
+
+  if (cachedVerifiers === undefined) {
+    cachedVerifiers = { injectedFetchVerifiers: new WeakMap() };
+    oidcVerifiers.set(issuer, cachedVerifiers);
   }
 
-  const cachedVerifier = oidcVerifiers.get(issuer);
+  if (fetchJwks !== undefined) {
+    const injectedFetchVerifier = cachedVerifiers.injectedFetchVerifiers.get(fetchJwks);
 
-  if (cachedVerifier !== undefined) {
-    return cachedVerifier;
+    if (injectedFetchVerifier !== undefined) {
+      return injectedFetchVerifier;
+    }
+
+    const verifier = new OidcIdTokenVerifier({ fetchJwks, issuer });
+    cachedVerifiers.injectedFetchVerifiers.set(fetchJwks, verifier);
+
+    return verifier;
+  }
+
+  if (cachedVerifiers.defaultVerifier !== undefined) {
+    return cachedVerifiers.defaultVerifier;
   }
 
   const verifier = new OidcIdTokenVerifier({ issuer });
-  oidcVerifiers.set(issuer, verifier);
+  cachedVerifiers.defaultVerifier = verifier;
 
   return verifier;
 }
