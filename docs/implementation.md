@@ -17,6 +17,7 @@ Shared packages:
 - `packages/http` owns framework-free JSON responses, problem details, and bounded request-body reading.
 - `packages/github` owns GitHub App JWT signing, GitHub REST calls, installation lookup, installation token creation, and secret binding resolution.
 - `packages/oidc` owns OpenID Connect ID Token verification and the issuer-adapter contract.
+- `packages/oidc-issuer-fly` owns the Fly.io issuer adapter and organization-specific trusted issuer construction.
 - `packages/oidc-issuer-github-actions` owns the GitHub Actions issuer adapter and trusted issuer constants.
 
 The root `wrangler.jsonc` points at `test/support/root-test-harness.ts`. It is a local/test binding harness, not a deployable product Worker.
@@ -45,7 +46,7 @@ The Worker factory is `createTokenExchangeWorker` in `workers/cyspbot-token-exch
 12. Resolve the target GitHub App installation from the normalized repository resource using cyspbot's configured GitHub App credentials.
 13. Issue a GitHub App installation access token for `repositories: [<repo>]` and the normalized permissions.
 
-The token policy in `workers/cyspbot-token-exchange/src/policy/token-policy.ts` normalizes and authorizes token requests and matches each allow rule's verified subject-token issuer, GitHub repository resource, and permission set. `workers/cyspbot-token-exchange/src/policy/token-policy-condition.ts` uses the CEL library to compile, cache, bind, and evaluate each rule's bounded condition. CEL errors, absent or unknown claims, type mismatches, and non-boolean results fail closed. `workers/cyspbot-token-exchange/src/policy/github-actions-token-policy-rule.ts` owns the GitHub Actions claim and subject condition shared by production policy and tests. Policy does not mutate the requested token shape. The current policy data lives in `workers/cyspbot-token-exchange/src/policy/token-policy-rules.ts`, but exact entries are service-owned authorization data rather than implementation documentation.
+The token policy in `workers/cyspbot-token-exchange/src/policy/token-policy.ts` normalizes and authorizes token requests and matches each allow rule's verified subject-token issuer, GitHub repository resource, and permission set. `workers/cyspbot-token-exchange/src/policy/token-policy-condition.ts` uses the CEL library to compile, cache, bind, and evaluate each rule's bounded condition. CEL errors, absent or unknown claims, type mismatches, and non-boolean results fail closed. Provider rule builders in `workers/cyspbot-token-exchange/src/policy/` own the Fly.io and GitHub Actions claim conditions shared by production policy and tests. Policy does not mutate the requested token shape. The current policy data lives in `workers/cyspbot-token-exchange/src/policy/token-policy-rules.ts`, but exact entries are service-owned authorization data rather than implementation documentation.
 
 cyspbot does not accept a public GitHub App selector. It constrains this profile to cyspbot's configured GitHub App credentials, one signed subject-token `aud` string equal to `cyspbot`, one canonical GitHub repository API `resource`, and one normalized permission set. Plural subject-token audiences are rejected rather than interpreted by containment.
 
@@ -61,6 +62,10 @@ An omitted `scope` normalizes to a PR-authoring permission request.
 ```
 
 ### Issuer-specific normalization and authorization
+
+#### Fly.io
+
+Fly callers must supply an explicit repository `resource`; cyspbot does not derive a GitHub repository target from Fly claims. `flyMachineInstallationTokenRule` builds an issuer-guarded condition that matches provider-assigned organization and Fly App IDs, reasserts the configured organization slug and canonical Subject binding, and can optionally require one stable Machine ID. Its canonical repository resource and permissions must also match exactly. Authentication alone creates no grant.
 
 #### GitHub Actions
 
@@ -86,13 +91,22 @@ cyspbot does not support OAuth client authentication at `/token`. Non-empty `cli
 
 ### Supported issuer adapters
 
-| Issuer adapter | Trusted Issuer (`iss`)                        | JWKS URI                                                       | Algorithm |
+| Issuer adapter | Issuer Identifier (`iss`)                     | JWKS URI                                                       | Algorithm |
 | -------------- | --------------------------------------------- | -------------------------------------------------------------- | --------- |
+| Fly.io         | `https://oidc.fly.io/{org-slug}`              | `https://oidc.fly.io/{org-slug}/.well-known/jwks`              | `RS256`   |
 | GitHub Actions | `https://token.actions.githubusercontent.com` | `https://token.actions.githubusercontent.com/.well-known/jwks` | `RS256`   |
+
+#### Fly.io
+
+The integration Worker parses `FLY_OIDC_ORG_SLUGS` as comma-delimited Fly Organization Slugs. It trims entries, ignores empty entries, preserves the first occurrence of each duplicate, and checks each remaining unique entry independently. Each accepted entry creates one Fly issuer adapter, one exact Trusted OIDC Issuer, and one remote-JWKS cache identity. Each unique entry with unsupported Fly issuer-path syntax produces one structured configuration error that identifies the binding and first entry index without logging the value; that entry is skipped without disabling other configured Fly issuers. A missing binding produces one structured configuration error per Worker isolate, creates no Fly adapter, and leaves other configured issuer adapters available. An explicitly empty binding quietly creates no Fly adapter. An unconfigured Issuer Identifier is rejected before a JWKS fetch.
+
+The provider package accepts one Fly Organization Slug per adapter and does not parse deployment configuration. `flyIssuerIdentifierForOrganizationSlug` returns an Issuer Identifier only for non-empty strings containing the lowercase ASCII letters, digits, and hyphens observed at Fly's organization-specific OIDC discovery endpoint. This is cyspbot's supported Fly issuer endpoint-path syntax, not a complete statement of Fly's organization-creation rules or evidence that an organization exists. The integration Worker caches the composed adapter list by the raw binding value.
+
+After shared ID Token verification, the Fly.io adapter requires a numeric Not Before (`nbf`) claim and non-empty `org_id`, `org_name`, `app_id`, `app_name`, `machine_id`, `machine_name`, and `machine_version` claims. It requires `org_name` to equal the organization slug in the verified Issuer Identifier and Subject (`sub`) to equal `{org_name}:{app_name}:{machine_name}`. The Machine name participates in canonical Subject consistency, while the Machine configuration version is required signed Machine configuration-version context; neither is a Token Policy selector. The adapter does not use the Authorized Party (`azp`) claim when validating Fly subject-token binding.
 
 #### GitHub Actions
 
-The shared verifier requires the standard ID Token claims. The GitHub Actions adapter additionally accepts an absent Authorized Party (`azp`) claim and requires it to equal the expected audience `cyspbot` when present.
+The shared verifier requires the standard ID Token claims. The GitHub Actions adapter additionally accepts an absent Authorized Party (`azp`) claim and requires it to equal `cyspbot` when present.
 
 OIDC/JWKS failures are classified at the verifier boundary:
 
@@ -126,6 +140,7 @@ The source Worker configs declare placeholder values and binding names only.
 
 Token exchange Worker bindings:
 
+- `FLY_OIDC_ORG_SLUGS`, a comma-delimited allow-list of Fly Organization Slugs; entries with unsupported Fly issuer-path syntax are logged and skipped independently
 - `GITHUB_APP_ID`
 - `GITHUB_APP_PRIVATE_KEY`
 - `GITHUB_API_BASE_URL`, defaulting to `https://api.github.com`
@@ -154,6 +169,8 @@ The public GitHub Actions `ci` workflow runs the same classes of checks as separ
 
 - [RFC 8693: OAuth 2.0 Token Exchange](https://www.rfc-editor.org/rfc/rfc8693)
 - [OpenID Connect Core 1.0: ID Token validation](https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation)
+- [Fly.io OpenID Connect](https://fly.io/docs/security/openid-connect/)
+- [Fly Machines API Tokens resource](https://fly.io/docs/machines/api/tokens-resource/)
 - [GitHub Actions OpenID Connect](https://docs.github.com/en/actions/concepts/security/openid-connect)
 - [GitHub Actions OIDC security hardening](https://docs.github.com/en/actions/how-tos/security-for-github-actions/security-hardening-your-deployments/about-security-hardening-with-openid-connect)
 - [GitHub App installation access tokens](https://docs.github.com/en/rest/apps/apps#create-an-installation-access-token-for-an-app)
