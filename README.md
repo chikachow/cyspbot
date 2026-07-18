@@ -4,7 +4,7 @@ cyspbot is a hosted Security Token Service for GitHub Actions workflows. It veri
 
 Implemented public endpoints:
 
-- `POST /token` exchanges a trusted GitHub Actions ID Token for a scoped GitHub App installation access token.
+- `POST /token` accepts a GitHub Actions OIDC token and, after verification and policy authorization, exchanges it for a scoped GitHub App installation access token.
 - `POST /github/webhooks` accepts signed GitHub App webhook deliveries and acknowledges them without retaining raw payloads or running downstream product logic.
 
 The primary service contract is [docs/service-contract.md](docs/service-contract.md). The implementation reference is [docs/implementation.md](docs/implementation.md). The documentation map is [docs/README.md](docs/README.md).
@@ -14,7 +14,7 @@ The primary service contract is [docs/service-contract.md](docs/service-contract
 - Two deployable Worker packages under `workers/*`: `@cyspbot/token-exchange` and `@cyspbot/github-webhook-receiver`.
 - Worker names are consistently prefixed: `cyspbot-token-exchange` and `cyspbot-github-webhook-receiver`.
 - Each Worker package owns its runtime composition, HTTP route, dependency defaults, and Wrangler config. Shared implementation code lives under `packages/*`. The root Wrangler config is only the local/test binding harness.
-- `jose`-backed OIDC verification for the GitHub Actions issuer, with GitHub Actions claim parsing as a separate provider layer.
+- `jose`-backed OpenID Connect ID Token verification behind a GitHub Actions issuer adapter.
 - GitHub App private key in a Cloudflare Worker secret binding.
 - Checked-in Token Policy code that allows Installation Token Issuance only for explicit verified subject-token issuer, CEL claim condition, resource, and permission combinations.
 
@@ -36,10 +36,6 @@ Every OpenID Connect ID Token supplied as the RFC 8693 subject token must have n
 
 Requests may include RFC 8693 `scope` and `resource` fields to request a concrete GitHub App installation token shape. `resource` must be one canonical GitHub repository API URI in the form `https://api.github.com/repos/{owner}/{repo}` with no leading or trailing whitespace. `scope` is a single-ASCII-space-delimited list of exact GitHub App permission requests, such as `actions:read`, `actions:write`, or `contents:read pull_requests:read`; scope order is not significant. Omitted or exactly empty `scope` defaults to `contents:write pull_requests:write`. Whitespace-only, padded, duplicate, or multi-value `scope` and `resource` fields are rejected.
 
-#### GitHub Actions caller
-
-GitHub Actions OIDC ID Tokens are issued by `https://token.actions.githubusercontent.com`. An absent Authorized Party (`azp`) claim is accepted; when present, it must equal `cyspbot`. An omitted or exactly empty `resource` defaults to the token's signed `repository` claim. Authentication does not create a grant: Token Policy must still match the signed workflow identity, repository resource, and exact permissions.
-
 Empty `scope` is not a no-permissions request. Following OAuth token endpoint parameter handling for this optional field, `scope=` is treated as omitted and receives the cyspbot default scope. GitHub's installation-token API treats an omitted `permissions` object as the app installation's default permissions, and live testing showed that a present empty `permissions: {}` object receives the same default permissions. cyspbot therefore requires a non-empty explicit scope when the caller does not want the cyspbot default.
 
 OAuth client authentication is not supported at `/token`. Requests with an `Authorization` header or non-empty client-authentication form parameters are rejected rather than silently ignored.
@@ -56,6 +52,16 @@ Successful responses use OAuth token response shape with `Cache-Control: no-stor
 }
 ```
 
+#### Supported issuers
+
+| Issuer         | Trusted Issuer (`iss`)                        | Additional subject binding          | Omitted `resource`        |
+| -------------- | --------------------------------------------- | ----------------------------------- | ------------------------- |
+| GitHub Actions | `https://token.actions.githubusercontent.com` | `azp` is absent or equals `cyspbot` | Signed `repository` claim |
+
+##### GitHub Actions
+
+A GitHub Actions OIDC token is an ID Token issued by `https://token.actions.githubusercontent.com`. An absent Authorized Party (`azp`) claim is accepted; when present, it must equal `cyspbot`. An omitted or exactly empty `resource` defaults to the token's signed `repository` claim. Authentication does not create a grant: Token Policy must still match the signed workflow identity, repository resource, and exact permissions.
+
 ### `POST /github/webhooks`
 
 Accepts signed JSON GitHub App webhook deliveries up to `256 KiB`. Webhook target headers must identify the configured GitHub App. Raw webhook bodies are not retained.
@@ -68,10 +74,10 @@ Installation Token Issuance is allowed only when a normalized token request matc
 
 ### GitHub Actions
 
-- the caller is a verified GitHub Actions principal from the configured issuer
+- the **Verified Subject Token** was derived from an ID Token issued by the configured GitHub Actions issuer
 - the signed subject token audience is `cyspbot`, and any `azp` claim is accepted only if it also matches `cyspbot`
 - `event_name` matches the checked-in rule
-- the OIDC subject context is `ref`
+- the signed Subject (`sub`) claim uses a `ref` context
 - `ref` and the parsed subject ref exactly match the checked-in rule
 - the parsed subject repository name matches the signed `repository` claim, and immutable subject IDs are checked when GitHub includes them in `sub`
 - `workflow_ref` exactly matches the checked-in rule
@@ -80,13 +86,15 @@ Installation Token Issuance is allowed only when a normalized token request matc
 
 Repository identity in policy is intentionally based on GitHub owner/repository names rather than repository IDs. GitHub Actions OIDC tokens may carry repository IDs as separate signed claims, and immutable subject formats may repeat those IDs inside `sub`; the CEL condition requires the immutable `sub` IDs to agree with the corresponding signed claims, but policy matching itself remains name-based. A repository that is deleted and recreated with the same owner/name can match existing policy for that name, and token issuance still depends on the GitHub App being installed with sufficient permissions.
 
+cyspbot denies forked pull request contexts, unconfigured refs, unconfigured workflow files, tag refs, and unsupported event names.
+
 ### Enforcement
 
 The caller cannot supply arbitrary GitHub Apps, GitHub permissions, or repository ids. The validated `scope` and validated `resource` are normalized into one installation token request, then policy answers whether the verified subject token may receive exactly that token. Cross-owner requests are possible only when explicitly allowed by policy. Unlisted repositories do not receive a default token.
 
-The exact policy entries are intentionally not documented here. They are service-owned authorization data and may move from checked-in code to live configuration. The durable contract is deny-by-default: unlisted principal, resource, and permission combinations do not receive tokens.
+The exact policy entries are intentionally not documented here. They are service-owned authorization data and may move from checked-in code to live configuration. The durable contract is deny-by-default: unconfigured verified subject-token identities, resources, and permission combinations do not receive tokens.
 
-cyspbot denies forked pull request contexts, unconfigured refs, unconfigured workflow files, tag refs, unsupported event names, unsupported scopes, and non-canonical resource forms.
+cyspbot denies unsupported scopes and non-canonical resource forms.
 
 ## GitHub App Configuration
 
@@ -148,7 +156,7 @@ permissions:
   id-token: write
 ```
 
-That permission is necessary but not sufficient. cyspbot also requires the verified OIDC principal and normalized token request to match Token Policy exactly, including the configured repository, event, branch ref, `workflow_ref`, GitHub App, `resource`, and permission scope.
+That permission is necessary but not sufficient. cyspbot also requires the Verified Subject Token and normalized token request to match Token Policy exactly, including the configured repository, event, branch ref, `workflow_ref`, GitHub App, `resource`, and permission scope.
 
 The reusable GitHub Action for this hosted service lives in the separate `cyspbot-app-token-action` repository.
 

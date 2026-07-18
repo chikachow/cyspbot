@@ -8,14 +8,14 @@ Production deployment is handled by a separate pipeline outside this codebase.
 
 The implementation is split into two deployable workspace packages:
 
-- `@cyspbot/token-exchange` deploys Worker `cyspbot-token-exchange`: `/token`, OIDC verification, token policy, GitHub App installation token issuance
+- `@cyspbot/token-exchange` deploys Worker `cyspbot-token-exchange`: `/token`, OpenID Connect ID Token verification, token policy, GitHub App installation token issuance
 - `@cyspbot/github-webhook-receiver` deploys Worker `cyspbot-github-webhook-receiver`: `/github/webhooks`, signature validation, target app validation, JSON validation, and acknowledgement
 
 This source repository owns:
 
 - public-safe deployable package templates under `workers/*`
 - package-owned Worker adapters, routes, dependency defaults, and Wrangler configs
-- shared package modules under `packages/*` for HTTP helpers, GitHub clients, generic OIDC verification, and GitHub Actions OIDC claim interpretation
+- shared package modules under `packages/*` for HTTP helpers, GitHub clients, OpenID Connect ID Token verification, and GitHub Actions issuer-adapter handling
 - Cloudflare binding declarations required by the source
 - tests and dry-run checks for the two Worker packages
 
@@ -37,7 +37,7 @@ Local `pnpm run dev` uses Wrangler's multi-worker mode for separated Worker conf
 
 Changes that alter `/token` request shape must be deployed before repository workflows are updated to depend on the new shape. Keep the deploy-trigger workflow on an action version and inputs that the currently live Worker already authorizes, deploy the new Worker, then update the workflow to the new action/input shape in a follow-up change.
 
-This ordering prevents self-deployment deadlocks: a policy or workflow principal in source code is not usable until the Worker containing that policy has been deployed.
+This ordering prevents self-deployment deadlocks: a policy or workflow identity in source code is not usable until the Worker containing that policy has been deployed.
 
 ## Public Source Boundary
 
