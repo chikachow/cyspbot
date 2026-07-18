@@ -276,6 +276,23 @@ describe("cyspbot-token-exchange", () => {
     });
   });
 
+  it("rejects the generic JWT subject token type", async () => {
+    const body = new URLSearchParams(await tokenExchangeRequestBody());
+    body.set("subject_token_type", "urn:ietf:params:oauth:token-type:jwt");
+    const response = await fetchTokenExchange("https://example.test/token", {
+      body,
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_request",
+    });
+  });
+
   it("rejects token exchange requests whose OIDC audience is not cyspbot", async () => {
     const response = await fetchTokenExchange("https://example.test/token", {
       body: await tokenExchangeRequestBody({

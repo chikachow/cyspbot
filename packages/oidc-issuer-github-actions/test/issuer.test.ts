@@ -3,6 +3,18 @@ import { describe, expect, it } from "vitest";
 import { githubActionsIssuerAdapter, githubActionsTrustedIssuer } from "../src/issuer.ts";
 
 describe("GitHub Actions OIDC issuer adapter", () => {
+  const verifiedToken = {
+    claims: {
+      aud: "cyspbot",
+      exp: 2,
+      iat: 1,
+      iss: githubActionsTrustedIssuer.issuer,
+      sub: "repo:fixture-owner/fixture-repository:ref:refs/heads/main",
+    },
+    issuer: githubActionsTrustedIssuer.issuer,
+    resolvedKeyId: "fixture-key",
+  };
+
   it("resolves only the configured GitHub Actions issuer", () => {
     expect(githubActionsIssuerAdapter.resolveIssuer(githubActionsTrustedIssuer.issuer)).toEqual({
       status: "configured",
@@ -18,40 +30,26 @@ describe("GitHub Actions OIDC issuer adapter", () => {
       githubActionsIssuerAdapter.validateSubjectTokenBinding({
         expectedAudience: "cyspbot",
         verifiedToken: {
-          claims: {
-            azp: "cyspbot",
-            exp: 1,
-            sub: "repo:fixture-owner/fixture-repository:ref:refs/heads/main",
-          },
-          issuer: githubActionsTrustedIssuer.issuer,
-          resolvedKeyId: "fixture-key",
+          ...verifiedToken,
+          claims: { ...verifiedToken.claims, azp: "cyspbot" },
         },
+      }),
+    ).toBe(true);
+    expect(
+      githubActionsIssuerAdapter.validateSubjectTokenBinding({
+        expectedAudience: "cyspbot",
+        verifiedToken,
       }),
     ).toBe(true);
   });
 
-  it("rejects missing subjects and mismatched authorized parties", () => {
+  it("rejects mismatched authorized parties", () => {
     expect(
       githubActionsIssuerAdapter.validateSubjectTokenBinding({
         expectedAudience: "cyspbot",
         verifiedToken: {
-          claims: { exp: 1, sub: "" },
-          issuer: githubActionsTrustedIssuer.issuer,
-          resolvedKeyId: "fixture-key",
-        },
-      }),
-    ).toBe(false);
-    expect(
-      githubActionsIssuerAdapter.validateSubjectTokenBinding({
-        expectedAudience: "cyspbot",
-        verifiedToken: {
-          claims: {
-            azp: "other-service",
-            exp: 1,
-            sub: "repo:fixture-owner/fixture-repository:ref:refs/heads/main",
-          },
-          issuer: githubActionsTrustedIssuer.issuer,
-          resolvedKeyId: "fixture-key",
+          ...verifiedToken,
+          claims: { ...verifiedToken.claims, azp: "other-service" },
         },
       }),
     ).toBe(false);

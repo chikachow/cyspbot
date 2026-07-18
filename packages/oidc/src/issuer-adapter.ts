@@ -1,4 +1,4 @@
-import type { TrustedOidcIssuer, VerifiedOidcToken } from "./verifier.ts";
+import type { TrustedOidcIssuer, VerifiedOidcIdToken } from "./verifier.ts";
 
 type OidcIssuerResolution =
   | { status: "configured"; trustedIssuer: TrustedOidcIssuer }
@@ -9,6 +9,6 @@ export interface OidcIssuerAdapter {
   resolveIssuer(unverifiedIssuer: string): OidcIssuerResolution;
   validateSubjectTokenBinding(input: {
     expectedAudience: string;
-    verifiedToken: VerifiedOidcToken;
+    verifiedToken: VerifiedOidcIdToken;
   }): boolean;
 }

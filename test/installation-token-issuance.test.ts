@@ -4,24 +4,20 @@ import type { VerifiedSubjectToken } from "@cyspbot/token-exchange/authenticatio
 import { issueInstallationTokenForContext } from "../workers/cyspbot-token-exchange/src/policy/installation-token-issuance.ts";
 import { testRepository, testInstallationId } from "./support/constants.ts";
 import { fetchGitHubTestDouble } from "./support/github-api.ts";
+import { createVerifiedSubjectToken } from "./support/oidc.ts";
 import { testTokenPolicyRules } from "./support/token-policy.ts";
 import { testEnv } from "./support/worker-env.ts";
 
-const subjectToken: VerifiedSubjectToken = {
-  claims: {
-    actor: "dependabot[bot]",
-    event_name: "workflow_dispatch",
-    ref: "refs/heads/fixture-base-branch",
-    ref_type: "branch",
-    repository: testRepository,
-    sub: "repo:fixture-owner/fixture-source-repository:ref:refs/heads/fixture-base-branch",
-    workflow_ref:
-      "fixture-owner/fixture-source-repository/.github/workflows/fixture-token-request.yml@refs/heads/fixture-base-branch",
-  },
-  issuer: "https://token.actions.githubusercontent.com",
-  resolvedKeyId: "test-key-1",
-  subjectTokenType: "id_token",
-};
+const subjectToken: VerifiedSubjectToken = createVerifiedSubjectToken({
+  actor: "dependabot[bot]",
+  event_name: "workflow_dispatch",
+  ref: "refs/heads/fixture-base-branch",
+  ref_type: "branch",
+  repository: testRepository,
+  sub: "repo:fixture-owner/fixture-source-repository:ref:refs/heads/fixture-base-branch",
+  workflow_ref:
+    "fixture-owner/fixture-source-repository/.github/workflows/fixture-token-request.yml@refs/heads/fixture-base-branch",
+});
 
 describe("installation token issuance", () => {
   it("rejects installation token requests that select extra repositories", async () => {

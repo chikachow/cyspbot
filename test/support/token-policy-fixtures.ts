@@ -4,6 +4,7 @@ import {
   type InstallationAccessTokenRequest,
 } from "@cyspbot/token-exchange/policy/token-policy";
 import type { VerifiedSubjectToken } from "@cyspbot/token-exchange/authentication";
+import { createVerifiedSubjectToken } from "./oidc.ts";
 
 export const fixtureRef = "refs/heads/fixture-base-branch";
 export const fixtureSourceRepository = "fixture-owner/fixture-source-repository";
@@ -13,8 +14,8 @@ export const fixtureTargetResource =
 
 const fixtureWorkflowRef = `${fixtureSourceRepository}/.github/workflows/fixture-token-request.yml@${fixtureRef}`;
 
-export const subjectToken: VerifiedSubjectToken = {
-  claims: {
+export const subjectToken = createVerifiedSubjectToken(
+  {
     actor: "dependabot[bot]",
     event_name: "workflow_dispatch",
     ref: fixtureRef,
@@ -30,10 +31,8 @@ export const subjectToken: VerifiedSubjectToken = {
     workflow: "fixture token request",
     workflow_ref: fixtureWorkflowRef,
   },
-  issuer: githubActionsTrustedIssuer.issuer,
-  resolvedKeyId: "fixture-key",
-  subjectTokenType: "id_token",
-};
+  { issuer: githubActionsTrustedIssuer.issuer, resolvedKeyId: "fixture-key" },
+);
 
 export function sameRepositoryTokenRequest(): InstallationAccessTokenRequest {
   return mustNormalizeTokenRequest(subjectToken, {

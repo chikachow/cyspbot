@@ -1,14 +1,14 @@
 import type { OidcIssuerAdapter } from "@cyspbot/oidc/issuer-adapter";
-import type { TrustedOidcIssuer, VerifiedOidcToken } from "@cyspbot/oidc";
-import { OidcTokenVerifier } from "@cyspbot/oidc/verifier";
+import type { TrustedOidcIssuer, VerifiedOidcIdToken } from "@cyspbot/oidc";
+import { OidcIdTokenVerifier } from "@cyspbot/oidc/verifier";
 import { decodeJwt } from "jose";
 
 export const cyspbotOidcAudience = "cyspbot";
 
-export type SubjectTokenType = "id_token" | "jwt";
+export type SubjectTokenType = "id_token";
 
 export interface VerifiedSubjectToken {
-  claims: VerifiedOidcToken["claims"];
+  claims: VerifiedOidcIdToken["claims"];
   issuer: string;
   resolvedKeyId: string | null;
   subjectTokenType: SubjectTokenType;
@@ -114,7 +114,7 @@ export async function authenticateOidcToken(
   };
 }
 
-const oidcVerifiers = new WeakMap<TrustedOidcIssuer, OidcTokenVerifier>();
+const oidcVerifiers = new WeakMap<TrustedOidcIssuer, OidcIdTokenVerifier>();
 
 function trustedIssuerForSubjectToken(
   token: string,
@@ -152,9 +152,9 @@ function trustedIssuerForSubjectToken(
 function oidcVerifierForTrustedIssuer(
   issuer: TrustedOidcIssuer,
   fetchJwks: typeof fetch | undefined,
-): OidcTokenVerifier {
+): OidcIdTokenVerifier {
   if (fetchJwks !== undefined) {
-    return new OidcTokenVerifier({ fetchJwks, issuer });
+    return new OidcIdTokenVerifier({ fetchJwks, issuer });
   }
 
   const cachedVerifier = oidcVerifiers.get(issuer);
@@ -163,7 +163,7 @@ function oidcVerifierForTrustedIssuer(
     return cachedVerifier;
   }
 
-  const verifier = new OidcTokenVerifier({ issuer });
+  const verifier = new OidcIdTokenVerifier({ issuer });
   oidcVerifiers.set(issuer, verifier);
 
   return verifier;
