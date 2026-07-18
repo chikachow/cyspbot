@@ -166,6 +166,68 @@ describe("OIDC authentication", () => {
     expect(fetchJwks).not.toHaveBeenCalled();
   });
 
+  it("keeps independent verifier caches for distinct injected fetch functions", async () => {
+    const fetchJwksA = vi.fn(fetchOidcJwksTestDouble);
+    const fetchJwksB = vi.fn(fetchOidcJwksTestDouble);
+    const token = await createOidcToken();
+
+    for (const fetchJwks of [fetchJwksA, fetchJwksB]) {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        await expect(
+          authenticateOidcToken(
+            token,
+            "id_token",
+            request,
+            "cyspbot",
+            [githubActionsIssuerAdapter],
+            fetchJwks,
+          ),
+        ).resolves.toMatchObject({ ok: true });
+      }
+    }
+
+    expect(fetchJwksA).toHaveBeenCalledTimes(1);
+    expect(fetchJwksB).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the default and injected-fetch verifier caches independent", async () => {
+    const defaultFetchJwks = vi.fn(fetchOidcJwksTestDouble);
+    const injectedFetchJwks = vi.fn(fetchOidcJwksTestDouble);
+    const trustedIssuer = { ...githubActionsTrustedIssuer };
+    const isolatedAdapter: OidcIssuerAdapter = {
+      ...githubActionsIssuerAdapter,
+      resolveIssuer: (unverifiedIssuer) =>
+        unverifiedIssuer === trustedIssuer.issuer
+          ? { status: "configured", trustedIssuer }
+          : { status: "unhandled" },
+    };
+    const token = await createOidcToken();
+    vi.stubGlobal("fetch", defaultFetchJwks);
+
+    try {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        await expect(
+          authenticateOidcToken(token, "id_token", request, "cyspbot", [isolatedAdapter]),
+        ).resolves.toMatchObject({ ok: true });
+        await expect(
+          authenticateOidcToken(
+            token,
+            "id_token",
+            request,
+            "cyspbot",
+            [isolatedAdapter],
+            injectedFetchJwks,
+          ),
+        ).resolves.toMatchObject({ ok: true });
+      }
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    expect(defaultFetchJwks).toHaveBeenCalledTimes(1);
+    expect(injectedFetchJwks).toHaveBeenCalledTimes(1);
+  });
+
   it("does not select an adapter that declines the token issuer", async () => {
     const decliningAdapter: OidcIssuerAdapter = {
       ...githubActionsIssuerAdapter,
