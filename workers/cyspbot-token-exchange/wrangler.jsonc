@@ -21,6 +21,7 @@
     "required": ["GITHUB_APP_PRIVATE_KEY"],
   },
   "vars": {
+    "FLY_OIDC_ORG_SLUGS": "",
     "GITHUB_API_BASE_URL": "https://api.github.com",
     "GITHUB_APP_ID": "000000",
   },
