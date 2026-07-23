@@ -318,8 +318,12 @@ function parseGitHubInstallationScope(
   for (const scope of scopeTokens) {
     const permission = supportedPermissionScopes.get(scope);
 
-    if (permission === undefined || seen.has(scope)) {
+    if (permission === undefined) {
       return null;
+    }
+
+    if (seen.has(scope)) {
+      continue;
     }
 
     const [name, level] = permission;
