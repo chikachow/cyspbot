@@ -82,12 +82,6 @@ describe("Fly.io OIDC issuer adapter", () => {
         verifiedToken: createVerifiedToken({ ...validClaims, org_name: "other-org" }),
       }),
     ).toBe(false);
-    expect(
-      adapter.validateSubjectTokenBinding({
-        expectedAudience: "cyspbot",
-        verifiedToken: createVerifiedToken(validClaims, "https://oidc.fly.io/other-org"),
-      }),
-    ).toBe(false);
   });
 
   it("does not assign Fly-specific meaning to the Authorized Party claim", () => {
@@ -99,18 +93,10 @@ describe("Fly.io OIDC issuer adapter", () => {
     ).toBe(true);
   });
 
-  it("rejects missing, empty, or incorrectly typed required claims", () => {
+  it("requires the claims used by the canonical Subject binding", () => {
     const adapter = flyIssuerAdapter("example-org");
 
-    for (const claim of [
-      "app_id",
-      "app_name",
-      "machine_id",
-      "machine_name",
-      "machine_version",
-      "org_id",
-      "org_name",
-    ] as const) {
+    for (const claim of ["app_name", "machine_name", "org_name"] as const) {
       for (const value of [undefined, "", 1]) {
         expect(
           adapter.validateSubjectTokenBinding({
@@ -120,27 +106,28 @@ describe("Fly.io OIDC issuer adapter", () => {
         ).toBe(false);
       }
     }
+  });
 
-    for (const claim of ["nbf"] as const) {
-      for (const value of [undefined, "1"]) {
+  it("does not require claims that do not participate in authentication", () => {
+    const adapter = flyIssuerAdapter("example-org");
+
+    for (const claim of ["app_id", "machine_id", "machine_version", "nbf", "org_id"] as const) {
+      for (const value of [undefined, "", 1]) {
         expect(
           adapter.validateSubjectTokenBinding({
             expectedAudience: "cyspbot",
             verifiedToken: createVerifiedToken({ ...validClaims, [claim]: value }),
           }),
-        ).toBe(false);
+        ).toBe(true);
       }
     }
   });
 });
 
-function createVerifiedToken(
-  claims: Record<string, unknown>,
-  issuer = "https://oidc.fly.io/example-org",
-): VerifiedOidcIdToken {
+function createVerifiedToken(claims: Record<string, unknown>): VerifiedOidcIdToken {
   return {
     claims: claims as VerifiedOidcIdToken["claims"],
-    issuer,
+    issuer: "https://oidc.fly.io/example-org",
     resolvedKeyId: "fixture-key",
   };
 }

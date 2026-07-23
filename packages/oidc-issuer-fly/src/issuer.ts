@@ -28,11 +28,10 @@ export function flyIssuerAdapter(organizationSlug: string): OidcIssuerAdapter {
       candidateIssuer === issuerIdentifier
         ? { status: "configured", trustedIssuer }
         : { status: "unhandled" },
-    validateSubjectTokenBinding: (input) =>
+    validateSubjectTokenBinding: ({ verifiedToken }) =>
       validateFlySubjectTokenBinding({
-        ...input,
-        expectedIssuerIdentifier: issuerIdentifier,
         expectedOrganizationSlug: organizationSlug,
+        verifiedToken,
       }),
   };
 }
@@ -42,29 +41,18 @@ function isNonEmptyString(value: unknown): value is string {
 }
 
 function validateFlySubjectTokenBinding(input: {
-  expectedIssuerIdentifier: string;
   expectedOrganizationSlug: string;
   verifiedToken: VerifiedOidcIdToken;
 }): boolean {
-  const { expectedIssuerIdentifier, expectedOrganizationSlug, verifiedToken } = input;
-  const { claims, issuer } = verifiedToken;
-  const appId = claims["app_id"];
+  const { expectedOrganizationSlug, verifiedToken } = input;
+  const { claims } = verifiedToken;
   const appName = claims["app_name"];
-  const machineId = claims["machine_id"];
   const machineName = claims["machine_name"];
-  const machineVersion = claims["machine_version"];
-  const orgId = claims["org_id"];
   const orgName = claims["org_name"];
 
   return (
-    issuer === expectedIssuerIdentifier &&
-    typeof claims.nbf === "number" &&
-    isNonEmptyString(appId) &&
     isNonEmptyString(appName) &&
-    isNonEmptyString(machineId) &&
     isNonEmptyString(machineName) &&
-    isNonEmptyString(machineVersion) &&
-    isNonEmptyString(orgId) &&
     isNonEmptyString(orgName) &&
     orgName === expectedOrganizationSlug &&
     claims.sub === `${orgName}:${appName}:${machineName}`

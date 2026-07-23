@@ -33,19 +33,12 @@ export function flyMachineInstallationTokenRule(options: {
       },
     },
     subject: { issuer: issuerIdentifier },
-    // Reassert adapter-owned identity consistency at the authorization boundary.
-    // This keeps policy fail-closed if it is ever evaluated with a malformed context.
     when: [
       `claims["org_id"] == ${celString(options.orgId)}`,
-      `claims["org_name"] == ${celString(options.orgSlug)}`,
       `claims["app_id"] == ${celString(options.appId)}`,
-      'claims["app_name"].matches(".+")',
       ...(options.machineId === undefined
-        ? ['claims["machine_id"].matches(".+")']
+        ? []
         : [`claims["machine_id"] == ${celString(options.machineId)}`]),
-      'claims["machine_name"].matches(".+")',
-      'claims["machine_version"].matches(".+")',
-      'claims["sub"] == claims["org_name"] + ":" + claims["app_name"] + ":" + claims["machine_name"]',
     ].join(" && "),
   };
 }

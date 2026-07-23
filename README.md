@@ -54,10 +54,10 @@ Successful responses use OAuth token response shape with `Cache-Control: no-stor
 
 #### Supported issuers
 
-| Issuer         | Issuer Identifier (`iss`)                     | Additional subject binding                                                                                | Omitted `resource`        |
-| -------------- | --------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------- |
-| Fly.io         | `https://oidc.fly.io/{org-slug}`              | Numeric `nbf`; organization, Fly App, and Machine claims; Issuer Identifier and canonical Subject binding | Rejected                  |
-| GitHub Actions | `https://token.actions.githubusercontent.com` | `azp` is absent or equals `cyspbot`                                                                       | Signed `repository` claim |
+| Issuer         | Issuer Identifier (`iss`)                     | Additional subject binding                        | Omitted `resource`        |
+| -------------- | --------------------------------------------- | ------------------------------------------------- | ------------------------- |
+| Fly.io         | `https://oidc.fly.io/{org-slug}`              | Issuer organization and canonical Subject binding | Rejected                  |
+| GitHub Actions | `https://token.actions.githubusercontent.com` | `azp` is absent or equals `cyspbot`               | Signed `repository` claim |
 
 ##### Fly.io
 
@@ -71,7 +71,7 @@ curl --unix-socket /.fly/api \
 
 The `aud` JSON property customizes the ID Token Audience claim; it is distinct from the unsupported RFC 8693 `audience` token-exchange parameter. cyspbot accepts only configured organization-specific Issuer Identifiers of the form `https://oidc.fly.io/{org-slug}`. Configure the comma-delimited Fly Organization Slugs in `FLY_OIDC_ORG_SLUGS`. Empty entries are ignored, duplicate entries are trusted once, and an entry with unsupported Fly issuer-path syntax is logged and skipped without disabling other configured issuers. A missing binding is logged and configures no Fly Trusted OIDC Issuer without disabling other providers. Syntax acceptance does not establish that a Fly organization exists.
 
-The Fly.io adapter requires the provider's organization, Fly App, and Machine identity claims, a numeric Not Before (`nbf`) claim, an organization slug matching the configured Issuer Identifier, and the canonical Subject (`sub`) value `{org_name}:{app_name}:{machine_name}`. The adapter does not use the Authorized Party (`azp`) claim when validating Fly subject-token binding.
+The Fly.io adapter requires the signed organization, Fly App, and Machine names used by the canonical Subject (`sub`) value `{org_name}:{app_name}:{machine_name}`. The organization name must match the configured Issuer Identifier. Other signed claims are available to Token Policy but do not affect authentication unless a rule selects them. The adapter does not use the Authorized Party (`azp`) claim when validating Fly subject-token binding.
 
 Fly callers must explicitly supply `resource`; it is not inferred from Fly claims. Authentication does not create a grant: Token Policy must allow the provider-assigned organization and Fly App IDs, optionally one stable Machine ID, the repository resource, and the exact permissions. Callers should obtain a fresh Fly OIDC token rather than reusing one after its Expiration Time (`exp`).
 
@@ -100,7 +100,7 @@ cyspbot supports Fly allow-rule semantics, but the current checked-in Token Poli
 - when configured by the rule, the stable Machine ID matches exactly
 - the normalized token request `resource` and `permissions` exactly match that rule
 
-Fly policy uses provider-assigned organization and Fly App IDs as authorization keys. A rule may additionally restrict issuance to one stable Machine ID. The Machine name participates in canonical Subject consistency, while the Machine configuration version is required signed Machine configuration-version context; neither is a Token Policy selector.
+Fly policy can use provider-assigned organization and Fly App IDs as authorization keys and may additionally restrict issuance to one stable Machine ID. Claims that a rule does not select, including Machine configuration version, do not affect authorization.
 
 ### GitHub Actions
 
