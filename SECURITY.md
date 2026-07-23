@@ -13,7 +13,7 @@ cyspbot accepts Caller-supplied OpenID Connect ID Tokens from configured issuers
 - issuer trust is configured, not discovered from caller-controlled tokens
 - the Verified Subject Token is derived only from signed claims in an ID Token issued by a configured issuer and accepted by that issuer's adapter
 - the ID Token audience must be the exact single string `cyspbot`; the unsupported token-exchange `audience` parameter grants nothing
-- each configured Fly.io organization has its own issuer adapter and Trusted OIDC Issuer; Fly Machine identity is bound to provider-assigned organization and Fly App IDs, the Fly Organization Slug, a stable Machine ID, a Machine name that participates in canonical Subject consistency, and a Machine configuration version required as signed Machine configuration-version context; neither the Machine name nor configuration version is a Token Policy selector
+- each configured Fly.io organization has its own issuer adapter and Trusted OIDC Issuer; Fly Machine authentication binds the configured organization to the signed organization, Fly App, and Machine names in the canonical Subject, while Token Policy separately selects any provider-assigned IDs needed for authorization
 - callers may request one canonical repository resource and an exact GitHub App permission scope
 - Token Policy must explicitly allow the Verified Subject Token, GitHub App, resource, and permission combination before a token is issued
 - the GitHub App installation remains the upper-bound authority for repositories and permissions

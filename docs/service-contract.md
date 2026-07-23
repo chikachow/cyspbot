@@ -81,16 +81,16 @@ Issuer JWKS unavailability means cyspbot cannot obtain a usable trusted key set:
 
 ### Supported issuers
 
-| Issuer         | Issuer Identifier (`iss`)                     | Additional subject binding                                                                                | Omitted `resource`        |
-| -------------- | --------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------- |
-| Fly.io         | `https://oidc.fly.io/{org-slug}`              | Numeric `nbf`; organization, Fly App, and Machine claims; Issuer Identifier and canonical Subject binding | Rejected                  |
-| GitHub Actions | `https://token.actions.githubusercontent.com` | `azp` is absent or equals `cyspbot`                                                                       | Signed `repository` claim |
+| Issuer         | Issuer Identifier (`iss`)                     | Additional subject binding                        | Omitted `resource`        |
+| -------------- | --------------------------------------------- | ------------------------------------------------- | ------------------------- |
+| Fly.io         | `https://oidc.fly.io/{org-slug}`              | Issuer organization and canonical Subject binding | Rejected                  |
+| GitHub Actions | `https://token.actions.githubusercontent.com` | `azp` is absent or equals `cyspbot`               | Signed `repository` claim |
 
 #### Fly.io
 
 Fly callers present a [Fly OIDC token](https://fly.io/docs/security/openid-connect/), which is an ID Token obtained by a Fly Machine and issued under an organization-specific Issuer Identifier of the form `https://oidc.fly.io/{org-slug}`. cyspbot configures that Issuer Identifier only when the Fly Organization Slug in `FLY_OIDC_ORG_SLUGS` matches its supported Fly issuer-path syntax. This syntax policy does not establish that the organization exists or define Fly's organization-creation grammar. Each accepted entry configures an independent Trusted OIDC Issuer. Empty entries are ignored, duplicates are trusted once, and an unsupported entry is logged and skipped without changing the trust configured by other entries. A missing binding is logged, configures no Fly Trusted OIDC Issuer, and leaves other configured OIDC providers available.
 
-The adapter requires the provider's organization, Fly App, and Machine identity claims and a numeric Not Before (`nbf`) claim. The signed `org_name` must equal the organization slug in the verified Issuer Identifier, and the signed Subject (`sub`) must equal `{org_name}:{app_name}:{machine_name}`. The Machine name participates in canonical Subject consistency, while the Machine configuration version is required signed Machine configuration-version context; neither is a Token Policy selector. The adapter does not use the Authorized Party (`azp`) claim when validating Fly subject-token binding.
+The adapter requires the signed organization, Fly App, and Machine names used by Fly's canonical Subject. The signed `org_name` must equal the organization slug in the verified Issuer Identifier, and the signed Subject (`sub`) must equal `{org_name}:{app_name}:{machine_name}`. Other signed claims do not affect authentication. Token Policy can select provider-assigned IDs or other claims when they matter to a grant. The adapter does not use the Authorized Party (`azp`) claim when validating Fly subject-token binding.
 
 Fly callers must provide an explicit repository `resource`; omission or `resource=` receives `invalid_target`. Authentication produces a Verified Subject Token but does not create a grant: the matching Token Policy rule must still authorize the Fly Machine identity, normalized repository resource, and exact permissions.
 
@@ -118,7 +118,7 @@ After authentication, Fly.io policy rules require:
 - when the rule names a stable `machine_id`, that ID matches exactly
 - normalized `resource` and `permissions` exactly match the rule
 
-Missing or incorrectly typed Fly identity claims fail issuer-specific binding as an invalid subject token. A valid Fly Machine identity that does not match configured Token Policy fails with `invalid_target`.
+Missing or incorrectly typed Fly claims used by the canonical Subject binding fail authentication as an invalid subject token. A valid Fly Machine identity that lacks or does not match a claim selected by Token Policy fails with `invalid_target`.
 
 #### GitHub Actions
 
