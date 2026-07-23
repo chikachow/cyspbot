@@ -41,6 +41,22 @@ describe("InstallationAccessTokenRequest normalization", () => {
     });
   });
 
+  it("normalizes duplicate GitHub permission scopes", () => {
+    const tokenRequest = mustNormalizeTokenRequest(subjectToken, {
+      resource: fixtureSourceResource,
+      scope: "contents:write contents:write pull_requests:write",
+    });
+
+    expect(tokenRequest).toEqual({
+      permissions: {
+        contents: "write",
+        pull_requests: "write",
+      },
+      resource: new URL(fixtureSourceResource),
+      scope: "contents:write pull_requests:write",
+    });
+  });
+
   it("normalizes read GitHub permission scopes", () => {
     const tokenRequest = mustNormalizeTokenRequest(subjectToken, {
       resource: fixtureSourceResource,
@@ -91,7 +107,6 @@ describe("InstallationAccessTokenRequest normalization", () => {
     "contents:write\tpull_requests:write",
     "contents:write\npull_requests:write",
     "metadata:read",
-    "actions:write actions:write",
     "contents:read contents:write",
     "actions",
   ])("rejects unsupported scope %s", (scope) => {

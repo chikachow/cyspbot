@@ -21,7 +21,7 @@ export async function readRequestBodyUpTo(
       return { ok: false, status: 400 };
     }
 
-    if (parsedContentLength > maxBytes) {
+    if (parsedContentLength > BigInt(maxBytes)) {
       return { ok: false, status: 413 };
     }
   }
@@ -62,12 +62,10 @@ export async function readRequestBodyUpTo(
   return { bytes, ok: true };
 }
 
-function parseContentLength(value: string): number | null {
-  if (!/^(0|[1-9][0-9]*)$/u.test(value)) {
+function parseContentLength(value: string): bigint | null {
+  if (!/^[0-9]+$/u.test(value)) {
     return null;
   }
 
-  const parsed = Number(value);
-
-  return Number.isSafeInteger(parsed) ? parsed : null;
+  return BigInt(value);
 }
