@@ -440,17 +440,21 @@ describe("Token Policy rule validation", () => {
       "permissions",
     ],
     ["empty condition", (rule: TokenPolicyRule) => ({ ...rule, when: "" }), "condition"],
-    [
-      "oversized condition",
-      (rule: TokenPolicyRule) => ({ ...rule, when: "x".repeat(4097) }),
-      "condition",
-    ],
   ])("rejects a policy rule with %s", (_name, mutateRule, errorKind) => {
     const rule = testTokenPolicyRules[0] as TokenPolicyRule;
 
     expect(() => validateTokenPolicyRules([mutateRule(rule)])).toThrow(
       `invalid token policy rule ${errorKind}`,
     );
+  });
+
+  it("accepts a long valid CEL condition", () => {
+    const rule = {
+      ...(testTokenPolicyRules[0] as TokenPolicyRule),
+      when: `claims["sub"] == ${JSON.stringify("x".repeat(10_000))}`,
+    };
+
+    expect(validateTokenPolicyRules([rule])).toEqual([rule]);
   });
 
   it.each(["owner", "/repository", "owner/", "owner/repository/extra"])(

@@ -51,7 +51,6 @@ export interface ParsedGitHubRepositoryResource {
   resource: URL;
 }
 
-const maxCelConditionLength = 4096;
 const supportedPermissionScopes = new Map<string, readonly [string, string]>([
   ["actions:read", ["actions", "read"]],
   ["actions:write", ["actions", "write"]],
@@ -144,10 +143,6 @@ export function validateTokenPolicyRules(
 
     if (!rulePermissionsAreSupported(rule.issue.githubInstallationToken.permissions)) {
       throw new Error("invalid token policy rule permissions");
-    }
-
-    if (rule.when.length === 0 || rule.when.length > maxCelConditionLength) {
-      throw new Error("invalid token policy rule condition");
     }
 
     if (!tokenPolicyConditionIsValid(rule)) {
