@@ -114,7 +114,7 @@ importers:
         specifier: 0.6.0
         version: 0.6.0(@bufbuild/protobuf@2.13.0)
       '@bufbuild/protobuf':
-        specifier: ^2.13.0
+        specifier: 2.13.0
         version: 2.13.0
       '@cyspbot/github':
         specifier: workspace:*
