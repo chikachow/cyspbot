@@ -1,9 +1,10 @@
 import { problemResponse } from "@cyspbot/http/problem-details";
-import {
-  defaultGitHubWebhookReceiverDependencies,
-  type GitHubWebhookReceiverDependencies,
-} from "./dependencies.ts";
+import type { GitHubWebhookReceiverDependencies } from "./github-webhooks/acceptance.ts";
 import { handleGitHubWebhookRequest } from "./webhook.ts";
+
+const defaultGitHubWebhookReceiverDependencies: GitHubWebhookReceiverDependencies = {
+  now: () => new Date(),
+};
 
 export function createGitHubWebhookReceiverWorker(
   dependencies: GitHubWebhookReceiverDependencies = defaultGitHubWebhookReceiverDependencies,

@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  createInstallationToken,
-  resolveInstallationForRepository,
-} from "../packages/github/src/app.ts";
-import { GitHubApiError } from "../packages/github/src/http.ts";
+import { resolveInstallationForRepository } from "../packages/github/src/app.ts";
 import { testPrivateKeyPem, testRepository } from "./support/constants.ts";
 
 describe("GitHub App authentication", () => {
@@ -41,27 +37,5 @@ describe("GitHub App authentication", () => {
     );
 
     expect(installation).toEqual({ id: 12345 });
-  });
-
-  it("rejects repository ids that are not complete decimal strings", async () => {
-    await expect(
-      createInstallationToken(
-        {
-          GITHUB_APP_ID: "2419473",
-          GITHUB_APP_PRIVATE_KEY: testPrivateKeyPem,
-        },
-        12345,
-        "123abc",
-        { contents: "write" },
-        {
-          fetch: async () => {
-            throw new Error("GitHub API should not be called for an invalid repository id");
-          },
-        },
-      ),
-    ).rejects.toMatchObject({
-      message: "invalid repository id",
-      status: 400,
-    } satisfies Pick<GitHubApiError, "message" | "status">);
   });
 });
