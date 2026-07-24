@@ -25,4 +25,4 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - run: node --run bindings:check
+      - run: node --run types:check
