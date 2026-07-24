@@ -1,6 +1,8 @@
 import { jsonResponse, problemResponse } from "@cyspbot/http/problem-details";
-import { acceptGitHubWebhookDelivery } from "./github-webhooks/acceptance.ts";
-import type { GitHubWebhookReceiverDependencies } from "./dependencies.ts";
+import {
+  acceptGitHubWebhookDelivery,
+  type GitHubWebhookReceiverDependencies,
+} from "./github-webhooks/acceptance.ts";
 
 export async function handleGitHubWebhookRequest(
   request: Request,

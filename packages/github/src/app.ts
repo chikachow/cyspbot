@@ -67,70 +67,17 @@ export async function resolveInstallationForRepository(
   return { id: body.id };
 }
 
-export async function createInstallationToken(
+export async function createInstallationTokenForRepositoryName(
   env: GitHubAppEnv,
   installationId: number,
-  repositoryId: string,
-  permissions: Record<string, string> | undefined,
+  repositoryName: string,
+  permissions: Record<string, string>,
   dependencies: GitHubApiDependencies,
 ): Promise<InstallationToken> {
-  const parsedRepositoryId = parseRepositoryId(repositoryId);
-
-  if (parsedRepositoryId === null) {
-    throw new GitHubApiError(400, "invalid repository id");
-  }
-
-  return createInstallationTokenWithBody(
-    env,
-    installationId,
-    {
-      repository_ids: [parsedRepositoryId],
-    },
+  const requestBody = {
     permissions,
-    dependencies,
-  );
-}
-
-export async function createInstallationTokenForRepository(
-  env: GitHubAppEnv,
-  installationId: number,
-  repository: string,
-  permissions: Record<string, string> | undefined,
-  dependencies: GitHubApiDependencies,
-): Promise<InstallationToken> {
-  const repositoryName = parseRepositoryName(repository);
-
-  if (repositoryName === null) {
-    throw new GitHubApiError(400, "invalid repository");
-  }
-
-  return createInstallationTokenWithBody(
-    env,
-    installationId,
-    {
-      repositories: [repositoryName],
-    },
-    permissions,
-    dependencies,
-  );
-}
-
-async function createInstallationTokenWithBody(
-  env: GitHubAppEnv,
-  installationId: number,
-  repositorySelection: { repositories: string[] } | { repository_ids: number[] },
-  permissions: Record<string, string> | undefined,
-  dependencies: GitHubApiDependencies,
-): Promise<InstallationToken> {
-  const requestBody:
-    | { permissions?: Record<string, string>; repositories: string[] }
-    | { permissions?: Record<string, string>; repository_ids: number[] } = {
-    ...repositorySelection,
+    repositories: [repositoryName],
   };
-
-  if (permissions !== undefined) {
-    requestBody.permissions = permissions;
-  }
 
   const response = await fetchGitHubApi(
     env,
@@ -162,21 +109,6 @@ async function createInstallationTokenWithBody(
     permissions: responseBody.permissions,
     token: responseBody.token,
   };
-}
-
-/*
- * Installation token requests support either repository IDs or repository names.
- * cyspbot's token exchange flow uses repository names after resolving the target
- * installation from the same owner/repository resource.
- */
-function parseRepositoryName(repository: string): string | null {
-  const parts = repository.split("/");
-
-  if (parts.length !== 2 || parts.some((part) => part.length === 0)) {
-    return null;
-  }
-
-  return parts[1] ?? null;
 }
 
 async function appAuthenticationHeaders(env: GitHubAppEnv): Promise<HeadersInit> {
@@ -234,16 +166,6 @@ function isStringRecord(value: unknown): value is Record<string, string> {
   }
 
   return Object.values(value).every((entry) => typeof entry === "string");
-}
-
-function parseRepositoryId(value: string): number | null {
-  if (!/^(0|[1-9][0-9]*)$/u.test(value)) {
-    return null;
-  }
-
-  const parsed = Number(value);
-
-  return Number.isSafeInteger(parsed) ? parsed : null;
 }
 
 async function privateKeyFingerprint(privateKeyPem: string): Promise<string> {
