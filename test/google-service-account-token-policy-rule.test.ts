@@ -5,10 +5,10 @@ import type { VerifiedSubjectToken } from "@cyspbot/token-exchange/authenticatio
 import { googleServiceAccountInstallationTokenRule } from "@cyspbot/token-exchange/policy/google-service-account-token-policy-rule";
 import {
   evaluateConfiguredTokenPolicy,
-  normalizeInstallationAccessTokenRequest,
   validateTokenPolicyRules,
   type TokenPolicyRule,
 } from "@cyspbot/token-exchange/policy/token-policy";
+import { normalizeInstallationAccessTokenRequest } from "@cyspbot/token-exchange/installation-token-request";
 import { createVerifiedSubjectToken } from "./support/oidc.ts";
 
 const resource = "https://api.github.com/repos/fixture-owner/fixture-repository";
@@ -73,15 +73,6 @@ describe("Google service account installation-token policy rules", () => {
       reasons: ["permissions"],
     });
   });
-
-  it("rejects an omitted repository resource for a Google subject token", () => {
-    expect(
-      normalizeInstallationAccessTokenRequest(googleSubjectToken(claims), {
-        resource: null,
-        scope: "contents:write",
-      }),
-    ).toEqual({ error: "invalid_target", ok: false });
-  });
 });
 
 function googleRule(
@@ -102,7 +93,7 @@ function evaluate(
   request: { resource?: string; scope?: string } = {},
 ) {
   const subjectToken = googleSubjectToken(tokenClaims);
-  const tokenRequest = normalizeInstallationAccessTokenRequest(subjectToken, {
+  const tokenRequest = normalizeInstallationAccessTokenRequest({
     resource: request.resource ?? resource,
     scope: request.scope ?? "contents:write",
   });

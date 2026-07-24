@@ -77,7 +77,8 @@ _Avoid_: Permanent key store, token cache, caller-controlled key source
 - A verified **Caller** is represented internally as a **Verified Subject Token**.
 - The issuer adapter for each **Trusted OIDC Issuer** applies issuer-specific subject binding before an ID Token becomes a **Verified Subject Token**.
 - cyspbot verifies a **Caller** only against a **Trusted OIDC Issuer**.
-- **cyspbot** normalizes exactly one **Installation Token Request** from token-exchange `scope`, token-exchange `resource`, and, for GitHub Actions defaulting only, the verified `repository` claim.
+- **cyspbot** normalizes exactly one **Installation Token Request** from an explicit token-exchange `resource` and optional `scope` before authenticating the **Caller**.
+- The **Token Policy** is the first layer that combines a normalized **Installation Token Request** with a **Verified Subject Token**; subject-token claims never select the target **Repository Resource**.
 - **Installation Token Issuance** in **cyspbot** issues at most one **Installation Token** for one **Repository Resource**.
 - The **Token Policy** is fixed by **cyspbot** for subject-token issuer, repository resource, GitHub permission request, and CEL claim condition, while the GitHub App configuration remains the upper bound.
 - The **Token Policy** evaluates only verified **Subject Token Claims** named by a checked-in CEL condition, such as Fly `org_id`, `app_id`, and `machine_id`; GitHub `repository`, `sub`, `ref`, `event_name`, and `workflow_ref`; or Google `sub`, `email`, and `email_verified`.

@@ -27,6 +27,7 @@ Primary endpoint for Installation Token Issuance. It accepts `application/x-www-
 ```http
 grant_type=urn:ietf:params:oauth:grant-type:token-exchange
 requested_token_type=urn:chikachow:github-app-installation-access-token
+resource=https://api.github.com/repos/{owner}/{repo}
 subject_token=<openid-connect-id-token>
 subject_token_type=urn:ietf:params:oauth:token-type:id_token
 ```
@@ -34,7 +35,7 @@ subject_token_type=urn:ietf:params:oauth:token-type:id_token
 `subject_token_type` must be `urn:ietf:params:oauth:token-type:id_token`; cyspbot does not accept the generic JWT token-type identifier. `requested_token_type` is required and must be the cyspbot GitHub App installation token URN.
 Every OpenID Connect ID Token supplied as the RFC 8693 subject token must have non-empty Issuer Identifier (`iss`), Audience (`aud`), and Subject (`sub`) claims plus numeric Expiration Time (`exp`) and Issued At (`iat`) claims. It must be signed by a configured issuer, be unexpired, and have the single audience value `cyspbot`. The selected issuer adapter then applies its provider-specific subject binding before Token Policy evaluates the request. Non-empty RFC 8693 `audience` form parameters are rejected as unsupported target selectors.
 
-Requests may include RFC 8693 `scope` and `resource` fields to request a concrete GitHub App installation token shape. `resource` must be one canonical GitHub repository API URI in the form `https://api.github.com/repos/{owner}/{repo}` with no leading or trailing whitespace. `scope` is a single-ASCII-space-delimited list of exact GitHub App permission requests, such as `actions:read`, `actions:write`, or `contents:read pull_requests:read`; order is not significant, and repeated identical scope tokens are normalized once. Omitted or exactly empty `scope` defaults to `contents:write pull_requests:write`. Whitespace-only or padded values and duplicate or multi-value `scope` and `resource` form fields are rejected.
+Requests must contain exactly one effective RFC 8693 `resource` value and may include one effective `scope` value to request a concrete GitHub App installation token shape. Following OAuth token-endpoint rules, exactly empty occurrences are treated as omitted. The effective `resource` must be one canonical GitHub repository API URI in the form `https://api.github.com/repos/{owner}/{repo}` with no leading or trailing whitespace. cyspbot never infers the target resource from subject-token claims; no effective `resource` or more than one effective `resource` is rejected as `invalid_target`. `scope` is a single-ASCII-space-delimited list of exact GitHub App permission requests, such as `actions:read`, `actions:write`, or `contents:read pull_requests:read`; order is not significant, and repeated identical scope tokens are normalized once. Omitted or exactly empty `scope` defaults to `contents:write pull_requests:write`. Whitespace-only or padded values and multiple effective `scope` values are rejected.
 
 Empty `scope` is not a no-permissions request. Following OAuth token endpoint parameter handling for this optional field, `scope=` is treated as omitted and receives the cyspbot default scope. GitHub's installation-token API treats an omitted `permissions` object as the app installation's default permissions, and live testing showed that a present empty `permissions: {}` object receives the same default permissions. cyspbot therefore requires a non-empty explicit scope when the caller does not want the cyspbot default.
 
@@ -54,11 +55,13 @@ Successful responses use OAuth token response shape with `Cache-Control: no-stor
 
 #### Supported issuers
 
-| Token provider/profile           | Issuer Identifier (`iss`)                     | Additional subject binding                        | Omitted `resource`        |
-| -------------------------------- | --------------------------------------------- | ------------------------------------------------- | ------------------------- |
-| Fly.io                           | `https://oidc.fly.io/{org-slug}`              | Issuer organization and canonical Subject binding | Rejected                  |
-| GitHub Actions                   | `https://token.actions.githubusercontent.com` | `azp` is absent or equals `cyspbot`               | Signed `repository` claim |
-| Google service account ID Tokens | `https://accounts.google.com`                 | `azp` equals `sub`                                | Rejected                  |
+| Token provider/profile           | Issuer Identifier (`iss`)                     | Additional subject binding                        |
+| -------------------------------- | --------------------------------------------- | ------------------------------------------------- |
+| Fly.io                           | `https://oidc.fly.io/{org-slug}`              | Issuer organization and canonical Subject binding |
+| GitHub Actions                   | `https://token.actions.githubusercontent.com` | `azp` is absent or equals `cyspbot`               |
+| Google service account ID Tokens | `https://accounts.google.com`                 | `azp` equals `sub`                                |
+
+Every provider requires the caller to supply an explicit repository `resource`.
 
 ##### Fly.io
 
@@ -78,7 +81,7 @@ Fly callers must explicitly supply `resource`; it is not inferred from Fly claim
 
 ##### GitHub Actions
 
-A GitHub Actions OIDC token is an ID Token issued by `https://token.actions.githubusercontent.com`. An absent Authorized Party (`azp`) claim is accepted; when present, it must equal `cyspbot`. An omitted or exactly empty `resource` defaults to the token's signed `repository` claim. Authentication does not create a grant: Token Policy must still match the signed workflow identity, repository resource, and exact permissions.
+A GitHub Actions OIDC token is an ID Token issued by `https://token.actions.githubusercontent.com`. An absent Authorized Party (`azp`) claim is accepted; when present, it must equal `cyspbot`. GitHub Actions callers must explicitly supply `resource`; the signed `repository` claim remains subject identity available to Token Policy and is not used to select the token target. Authentication does not create a grant: Token Policy must still match the signed workflow identity, repository resource, and exact permissions.
 
 ##### Google service account ID Tokens
 
