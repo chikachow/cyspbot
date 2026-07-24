@@ -1,10 +1,10 @@
 import { CelScalar, celEnv, mapType, parse, plan, type CelInput } from "@bufbuild/cel";
-import type { TokenPolicyInput, TokenPolicyRule } from "./token-policy.ts";
+import type { VerifiedSubjectToken } from "../authentication.ts";
+import type { TokenPolicyRule } from "./token-policy.ts";
 
 const tokenPolicyCelEnv = celEnv({
   variables: {
     claims: mapType(CelScalar.STRING, CelScalar.DYN),
-    request: mapType(CelScalar.STRING, CelScalar.DYN),
     subject: mapType(CelScalar.STRING, CelScalar.DYN),
   },
 });
@@ -20,12 +20,12 @@ export function tokenPolicyConditionIsValid(rule: TokenPolicyRule): boolean {
 
 export function tokenPolicyConditionMatches(
   rule: TokenPolicyRule,
-  input: TokenPolicyInput,
+  subjectToken: VerifiedSubjectToken,
 ): boolean {
   try {
     const compiledRule = compileTokenPolicyRule(rule);
 
-    return compiledRule?.evaluate(tokenPolicyCelBindings(input)) === true;
+    return compiledRule?.evaluate(tokenPolicyCelBindings(subjectToken)) === true;
   } catch {
     return false;
   }
@@ -51,21 +51,16 @@ function compileTokenPolicyRule(rule: TokenPolicyRule): CompiledTokenPolicyRule 
   }
 }
 
-function tokenPolicyCelBindings(input: TokenPolicyInput): Record<string, CelInput> {
-  const claims = input.subjectToken.claims as Record<string, CelInput>;
+function tokenPolicyCelBindings(subjectToken: VerifiedSubjectToken): Record<string, CelInput> {
+  const claims = subjectToken.claims as Record<string, CelInput>;
 
   return {
     claims,
-    request: {
-      permissions: input.tokenRequest.permissions,
-      resource: input.tokenRequest.resource.href,
-      scope: input.tokenRequest.scope,
-    },
     subject: {
       claims,
-      issuer: input.subjectToken.issuer,
-      resolvedKeyId: input.subjectToken.resolvedKeyId,
-      subjectTokenType: input.subjectToken.subjectTokenType,
+      issuer: subjectToken.issuer,
+      resolvedKeyId: subjectToken.resolvedKeyId,
+      subjectTokenType: subjectToken.subjectTokenType,
     },
   };
 }

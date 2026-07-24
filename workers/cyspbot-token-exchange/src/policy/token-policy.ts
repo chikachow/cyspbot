@@ -129,7 +129,7 @@ function tokenPolicyRuleMatches(rule: TokenPolicyRule, input: TokenPolicyInput):
     input.subjectToken.issuer === rule.subject.issuer &&
     input.tokenRequest.resource.href === grant.resource &&
     installationAccessTokenPermissionsEqual(input.tokenRequest.permissions, grant.permissions) &&
-    tokenPolicyConditionMatches(rule, input)
+    tokenPolicyConditionMatches(rule, input.subjectToken)
   );
 }
 
@@ -167,7 +167,7 @@ function tokenPolicyDenyReasons(
 
   if (
     permissionRules.length > 0 &&
-    permissionRules.every((rule) => !tokenPolicyConditionMatches(rule, input))
+    permissionRules.every((rule) => !tokenPolicyConditionMatches(rule, input.subjectToken))
   ) {
     reasons.push("condition");
   }

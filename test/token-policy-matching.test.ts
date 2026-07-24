@@ -228,13 +228,6 @@ describe("Token Policy matching", () => {
       `subject["issuer"] == "${fixtureOtherIssuer}" && subject["subjectTokenType"] == "id_token"`,
       {},
     ],
-    [
-      "request binding",
-      `request["resource"] == "${fixtureTargetResource}" && ` +
-        'request["scope"] == "contents:write" && ' +
-        'request["permissions"]["contents"] == "write"',
-      {},
-    ],
   ])("allows typed CEL conditions over a %s", (_name, when, additionalClaims) => {
     const typedSubjectToken: VerifiedSubjectToken = {
       claims: {
@@ -330,22 +323,14 @@ describe("Token Policy matching", () => {
     });
   });
 
-  it("fails closed when CEL evaluation throws", () => {
-    const claims = { ...subjectToken.claims };
-
-    Object.defineProperty(claims, "unreadable", {
-      enumerable: true,
-      get: () => {
-        throw new Error("unreadable claim");
-      },
-    });
+  it("does not expose token request fields to CEL conditions", () => {
+    const rule = tokenPolicyRuleWithCondition('request["resource"] == "configured"');
 
     expect(
       evaluateConfiguredTokenPolicy(
         {
           subjectToken: {
             ...subjectToken,
-            claims,
             issuer: fixtureOtherIssuer,
           },
           tokenRequest: {
@@ -354,7 +339,7 @@ describe("Token Policy matching", () => {
             scope: "contents:write",
           },
         },
-        validateTokenPolicyRules([tokenPolicyRuleWithCondition('claims["unreadable"] == true')]),
+        validateTokenPolicyRules([rule]),
       ),
     ).toEqual({
       decision: "deny",

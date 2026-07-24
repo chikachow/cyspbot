@@ -109,7 +109,7 @@ Google callers must provide an explicit repository `resource`; omission or `reso
 
 ### Token Policy
 
-Installation Token Issuance is allowed only when the normalized installation token request matches an explicit checked-in Token Policy rule. Every rule binds a verified subject-token issuer, exact resource and permissions, and a fail-closed CEL condition over signed `claims`, `subject`, and normalized `request` data.
+Installation Token Issuance is allowed only when the normalized installation token request matches an explicit checked-in Token Policy rule. Every rule structurally binds a verified subject-token issuer, exact resource and permissions, and has a fail-closed CEL condition over signed `claims` and the verified `subject`. Target resources and permissions are deliberately unavailable to CEL.
 
 #### Fly.io
 

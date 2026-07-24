@@ -51,7 +51,7 @@ Project shorthand for the short-lived GitHub App installation access token issue
 _Avoid_: PAT, app JWT, repository secret
 
 **Token Policy**:
-The cyspbot-enforced static allow-list that decides whether a **Verified Subject Token** may receive exactly the normalized **Installation Token Request**. Each rule has a typed issuer guard, a typed GitHub installation-token grant, and a CEL condition over verified subject-token claims and normalized request fields.
+The cyspbot-enforced static allow-list that decides whether a **Verified Subject Token** may receive exactly the normalized **Installation Token Request**. Each rule has a typed issuer guard, a typed GitHub installation-token grant that structurally matches the resource and permissions, and a CEL condition over verified subject-token identity and claims.
 _Avoid_: Profile selector, grant builder, ad hoc caller-defined permissions, event-name-only policy, provider-specific principal mapper
 
 **Webhook Receiver**:
