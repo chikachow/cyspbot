@@ -5,9 +5,11 @@ import {
 import { GitHubApiError, type GitHubApiDependencies } from "@cyspbot/github/http";
 import type { AuthenticatedContext, VerifiedSubjectToken } from "../authentication.ts";
 import {
-  evaluateConfiguredTokenPolicy,
   parseGitHubRepositoryResource,
   type InstallationAccessTokenRequest,
+} from "./installation-token-request.ts";
+import {
+  evaluateConfiguredTokenPolicy,
   type TokenPolicyDecision,
   type TokenPolicyRule,
 } from "./token-policy.ts";

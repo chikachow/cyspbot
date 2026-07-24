@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   evaluateConfiguredTokenPolicy,
-  normalizeInstallationAccessTokenRequest,
   validateTokenPolicyRules,
   type TokenPolicyRule,
 } from "@cyspbot/token-exchange/policy/token-policy";
+import { normalizeInstallationAccessTokenRequest } from "@cyspbot/token-exchange/policy/installation-token-request";
 import { flyMachineInstallationTokenRule } from "@cyspbot/token-exchange/policy/fly-machine-token-policy-rule";
 import type { VerifiedSubjectToken } from "@cyspbot/token-exchange/authentication";
 import { createVerifiedSubjectToken } from "./support/oidc.ts";

@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   evaluateConfiguredTokenPolicy,
-  normalizeInstallationAccessTokenRequest,
   validateTokenPolicyRules,
   type TokenPolicyRule,
 } from "@cyspbot/token-exchange/policy/token-policy";
+import { normalizeInstallationAccessTokenRequest } from "@cyspbot/token-exchange/policy/installation-token-request";
 import type { VerifiedSubjectToken } from "@cyspbot/token-exchange/authentication";
 import { githubActionsInstallationTokenRule } from "../workers/cyspbot-token-exchange/src/policy/github-actions-token-policy-rule.ts";
 import {
@@ -508,7 +508,7 @@ describe("Token Policy rule validation", () => {
     ).toThrow("duplicate token policy rule id");
   });
 
-  it("rejects duplicate effective grants", () => {
+  it("rejects duplicate effective grants regardless of permission order", () => {
     const rule = testTokenPolicyRules[0] as TokenPolicyRule;
 
     expect(() =>
@@ -517,6 +517,15 @@ describe("Token Policy rule validation", () => {
         {
           ...rule,
           id: `${rule.id}-copy`,
+          issue: {
+            githubInstallationToken: {
+              ...rule.issue.githubInstallationToken,
+              permissions: {
+                pull_requests: "write",
+                contents: "write",
+              },
+            },
+          },
         },
       ]),
     ).toThrow("duplicate token policy rule");
