@@ -8,6 +8,24 @@ import { createVerifiedSubjectToken } from "./support/oidc.ts";
 import { testTokenPolicyRules } from "./support/token-policy.ts";
 import { testEnv } from "./support/worker-env.ts";
 
+const application = {
+  githubApp: testEnv,
+  tokenPolicy: testTokenPolicyRules,
+};
+
+const tokenRequest = {
+  permissions: {
+    contents: "write",
+    pull_requests: "write",
+  },
+  resource: {
+    href: "https://api.github.com/repos/fixture-owner/fixture-source-repository",
+    owner: "fixture-owner",
+    repository: "fixture-source-repository",
+  },
+  scope: "contents:write pull_requests:write",
+} as const;
+
 const subjectToken: VerifiedSubjectToken = createVerifiedSubjectToken({
   actor: "dependabot[bot]",
   event_name: "workflow_dispatch",
@@ -48,18 +66,11 @@ describe("installation token issuance", () => {
 
     await expect(
       issueInstallationTokenForContext(
-        testEnv,
+        application,
         {
           subjectToken,
         },
-        {
-          permissions: {
-            contents: "write",
-            pull_requests: "write",
-          },
-          resource: new URL("https://api.github.com/repos/fixture-owner/fixture-source-repository"),
-          scope: "contents:write pull_requests:write",
-        },
+        tokenRequest,
         {
           fetch: async (input, init) => {
             const request = new Request(input, init);
@@ -73,7 +84,6 @@ describe("installation token issuance", () => {
 
             return fetchGitHubTestDouble(input, init);
           },
-          tokenPolicyRules: testTokenPolicyRules,
         },
       ),
     ).resolves.toMatchObject({
@@ -91,21 +101,12 @@ describe("installation token issuance", () => {
     try {
       await expect(
         issueInstallationTokenForContext(
-          testEnv,
+          application,
           {
             subjectToken,
           },
-          {
-            permissions: {
-              contents: "write",
-              pull_requests: "write",
-            },
-            resource: new URL(
-              "https://api.github.com/repos/fixture-owner/fixture-source-repository",
-            ),
-            scope: "contents:write pull_requests:write",
-          },
-          { fetch: fetchGitHubTestDouble, tokenPolicyRules: testTokenPolicyRules },
+          tokenRequest,
+          { fetch: fetchGitHubTestDouble },
         ),
       ).resolves.toMatchObject({
         ok: true,
@@ -151,24 +152,9 @@ describe("installation token issuance", () => {
 
     try {
       await expect(
-        issueInstallationTokenForContext(
-          testEnv,
-          { subjectToken },
-          {
-            permissions: {
-              contents: "write",
-              pull_requests: "write",
-            },
-            resource: new URL(
-              "https://api.github.com/repos/fixture-owner/fixture-source-repository",
-            ),
-            scope: "contents:write pull_requests:write",
-          },
-          {
-            fetch: async () => new Response("upstream failure", { status: 500 }),
-            tokenPolicyRules: testTokenPolicyRules,
-          },
-        ),
+        issueInstallationTokenForContext(application, { subjectToken }, tokenRequest, {
+          fetch: async () => new Response("upstream failure", { status: 500 }),
+        }),
       ).resolves.toEqual({ ok: false, status: 502 });
     } finally {
       console.error = originalError;
@@ -197,7 +183,7 @@ describe("installation token issuance", () => {
     try {
       await expect(
         issueInstallationTokenForContext(
-          testEnv,
+          application,
           {
             subjectToken: {
               ...subjectToken,
@@ -207,17 +193,8 @@ describe("installation token issuance", () => {
               },
             },
           },
-          {
-            permissions: {
-              contents: "write",
-              pull_requests: "write",
-            },
-            resource: new URL(
-              "https://api.github.com/repos/fixture-owner/fixture-source-repository",
-            ),
-            scope: "contents:write pull_requests:write",
-          },
-          { fetch: fetchGitHubTestDouble, tokenPolicyRules: testTokenPolicyRules },
+          tokenRequest,
+          { fetch: fetchGitHubTestDouble },
         ),
       ).resolves.toEqual({ ok: false, status: 403 });
     } finally {

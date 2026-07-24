@@ -1,5 +1,4 @@
 import {
-  type InstallationTokenIssuanceDependencies,
   type InstallationTokenIssuanceResult,
   issueInstallationTokenForContext,
 } from "./policy/installation-token-issuance.ts";
@@ -10,8 +9,11 @@ import {
   type SubjectTokenType,
   cyspbotOidcAudience,
 } from "./authentication.ts";
-import { configuredOidcIssuerAdapters } from "./oidc-issuers.ts";
 import type { InstallationAccessTokenRequest } from "./installation-token-request.ts";
+import { configuredOidcIssuerAdapters } from "./oidc-issuers.ts";
+import type { TokenPolicy } from "./policy/token-policy.ts";
+import { tokenPolicyRules } from "./policy/token-policy-rules.ts";
+import type { TokenExchangeApplication } from "./token-exchange-application.ts";
 
 export interface TokenExchangeRequestRuntime {
   authenticateSubjectToken(input: {
@@ -27,20 +29,25 @@ export interface TokenExchangeRequestRuntime {
   rateLimit(key: string): Promise<boolean>;
 }
 
-export interface TokenExchangeWorkerDependencies extends InstallationTokenIssuanceDependencies {
+export interface TokenExchangeWorkerDependencies {
+  fetch: typeof fetch;
   fetchJwks?: typeof fetch;
   now(): Date;
+  tokenPolicy: TokenPolicy;
 }
 
 export const defaultTokenExchangeWorkerDependencies: TokenExchangeWorkerDependencies = {
   fetch: (input, init) => fetch(input, init),
   now: () => new Date(),
+  tokenPolicy: tokenPolicyRules,
 };
 
 export function createTokenExchangeRequestRuntime(
   env: TokenExchangeBindings,
   dependencies: TokenExchangeWorkerDependencies,
 ): TokenExchangeRequestRuntime {
+  const application = tokenExchangeApplication(env, dependencies.tokenPolicy);
+
   return {
     authenticateSubjectToken: ({ request, subjectToken, subjectTokenType }) =>
       defaultAuthenticateOidcToken(
@@ -52,12 +59,28 @@ export function createTokenExchangeRequestRuntime(
         dependencies.fetchJwks,
       ),
     issueInstallationToken: (context, tokenRequest) =>
-      issueInstallationTokenForContext(env, context, tokenRequest, dependencies),
+      issueInstallationTokenForContext(application, context, tokenRequest, dependencies),
     now: () => dependencies.now(),
     rateLimit: async (key) => {
       const result = await env.TOKEN_EXCHANGE_RATE_LIMIT.limit({ key });
 
       return result.success;
     },
+  };
+}
+
+function tokenExchangeApplication(
+  env: TokenExchangeBindings,
+  tokenPolicy: TokenPolicy,
+): TokenExchangeApplication {
+  return {
+    githubApp: {
+      ...(env.GITHUB_API_BASE_URL === undefined
+        ? {}
+        : { GITHUB_API_BASE_URL: env.GITHUB_API_BASE_URL }),
+      GITHUB_APP_ID: env.GITHUB_APP_ID,
+      GITHUB_APP_PRIVATE_KEY: env.GITHUB_APP_PRIVATE_KEY,
+    },
+    tokenPolicy,
   };
 }

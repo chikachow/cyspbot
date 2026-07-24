@@ -8,7 +8,7 @@ import {
 import type { InstallationAccessTokenRequest } from "@cyspbot/token-exchange/installation-token-request";
 import { tokenPolicyRules as productionTokenPolicyRules } from "@cyspbot/token-exchange/policy/token-policy-rules";
 import type { VerifiedSubjectToken } from "@cyspbot/token-exchange/authentication";
-import { subjectToken } from "./support/token-policy-fixtures.ts";
+import { mustParseRepositoryResource, subjectToken } from "./support/token-policy-fixtures.ts";
 
 interface ExpectedProductionRule {
   events: readonly string[];
@@ -240,7 +240,7 @@ function tokenRequestForExpectedRule(
 ): InstallationAccessTokenRequest {
   return {
     permissions: expected.permissions,
-    resource: new URL(expected.resource),
+    resource: mustParseRepositoryResource(expected.resource),
     scope: Object.entries(expected.permissions)
       .map(([permission, level]) => `${permission}:${level}`)
       .sort()
@@ -267,12 +267,12 @@ function expectExpectedRuleDenied(
   ).toMatchObject({ decision: "deny" });
 }
 
-function unconfiguredResource(resource: string): URL {
+function unconfiguredResource(resource: string) {
   const url = new URL(resource);
   const parts = url.pathname.split("/");
 
   parts[3] = `${parts[3] ?? "repository"}-unconfigured`;
   url.pathname = parts.join("/");
 
-  return url;
+  return mustParseRepositoryResource(url.href);
 }

@@ -19,7 +19,11 @@ describe("InstallationAccessTokenRequest normalization", () => {
         contents: "write",
         pull_requests: "write",
       },
-      resource: new URL(fixtureSourceResource),
+      resource: {
+        href: fixtureSourceResource,
+        owner: "fixture-owner",
+        repository: "fixture-source-repository",
+      },
       scope: "contents:write pull_requests:write",
     });
   });
@@ -35,7 +39,11 @@ describe("InstallationAccessTokenRequest normalization", () => {
         contents: "write",
         pull_requests: "write",
       },
-      resource: new URL(fixtureSourceResource),
+      resource: {
+        href: fixtureSourceResource,
+        owner: "fixture-owner",
+        repository: "fixture-source-repository",
+      },
       scope: "contents:write pull_requests:write",
     });
   });
@@ -51,7 +59,11 @@ describe("InstallationAccessTokenRequest normalization", () => {
         contents: "write",
         pull_requests: "write",
       },
-      resource: new URL(fixtureSourceResource),
+      resource: {
+        href: fixtureSourceResource,
+        owner: "fixture-owner",
+        repository: "fixture-source-repository",
+      },
       scope: "contents:write pull_requests:write",
     });
   });
@@ -68,7 +80,11 @@ describe("InstallationAccessTokenRequest normalization", () => {
         contents: "read",
         pull_requests: "read",
       },
-      resource: new URL(fixtureSourceResource),
+      resource: {
+        href: fixtureSourceResource,
+        owner: "fixture-owner",
+        repository: "fixture-source-repository",
+      },
       scope: "actions:read contents:read pull_requests:read",
     });
   });
