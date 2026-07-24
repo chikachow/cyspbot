@@ -1,0 +1,11 @@
+{
+  "extends": "@tsconfig/strictest/tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "customConditions": ["workerd", "worker"],
+    "module": "Preserve",
+    "noEmit": true,
+    "target": "ES2024",
+    "verbatimModuleSyntax": true
+  }
+}
