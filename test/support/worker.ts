@@ -24,7 +24,7 @@ export {
 export { testEnv };
 
 type TestDependencies = GitHubWebhookReceiverDependencies & TokenExchangeWorkerDependencies;
-type TestBindings = GitHubWebhookReceiverBindings & TokenExchangeBindings;
+type TestEnv = GitHubWebhookReceiverEnv & TokenExchangeEnv;
 
 const baseTestDependencies = {
   fetch: fetchGitHubTestDouble,
@@ -46,7 +46,7 @@ export function fetchTokenExchange(
 export function fetchTokenExchangeWithEnv(
   input: RequestInfo | URL,
   init: RequestInit | undefined,
-  env: TestBindings,
+  env: TestEnv,
 ): Promise<Response> {
   return fetchWorkerWithApp(tokenExchangeApp, input, init, env);
 }
@@ -85,10 +85,10 @@ export function fetchGitHubWebhookReceiver(
 }
 
 function fetchWorkerWithApp(
-  app: ExportedHandler<TestBindings>,
+  app: ExportedHandler<TestEnv>,
   input: RequestInfo | URL,
   init?: RequestInit,
-  env: TestBindings = testEnv,
+  env: TestEnv = testEnv,
 ): Promise<Response> {
   const handler = app.fetch;
 

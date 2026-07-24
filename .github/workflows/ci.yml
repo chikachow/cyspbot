@@ -16,8 +16,8 @@ jobs:
   lint:
     uses: ./.github/workflows/ci-lint.yml
 
-  worker-types:
-    uses: ./.github/workflows/ci-worker-types.yml
+  env-types:
+    uses: ./.github/workflows/ci-env-types.yml
 
   typecheck:
     uses: ./.github/workflows/ci-typecheck.yml
@@ -31,8 +31,8 @@ jobs:
       id-token: write
     uses: ./.github/workflows/ci-test.yml
 
-  wrangler-check:
-    uses: ./.github/workflows/ci-wrangler-check.yml
+  deploy-dry-run:
+    uses: ./.github/workflows/ci-deploy-dry-run.yml
 
   ci:
     name: ci
@@ -40,11 +40,11 @@ jobs:
     needs:
       - format
       - lint
-      - worker-types
+      - env-types
       - typecheck
       - knip
       - test
-      - wrangler-check
+      - deploy-dry-run
     if: ${{ always() }}
     steps:
       - name: Require all CI jobs to pass

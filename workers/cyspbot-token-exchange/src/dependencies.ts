@@ -43,7 +43,7 @@ export const defaultTokenExchangeWorkerDependencies: TokenExchangeWorkerDependen
 };
 
 export function createTokenExchangeRequestRuntime(
-  env: TokenExchangeBindings,
+  env: TokenExchangeEnv,
   dependencies: TokenExchangeWorkerDependencies,
 ): TokenExchangeRequestRuntime {
   const application = tokenExchangeApplication(env, dependencies.tokenPolicy);
@@ -70,7 +70,7 @@ export function createTokenExchangeRequestRuntime(
 }
 
 function tokenExchangeApplication(
-  env: TokenExchangeBindings,
+  env: TokenExchangeEnv,
   tokenPolicy: TokenPolicy,
 ): TokenExchangeApplication {
   return {

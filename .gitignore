@@ -1,6 +1,7 @@
 .dev.vars
 .env
 .wrangler
+workers/*/src/runtime.generated.d.ts
 .local-secrets/
 coverage
 node_modules

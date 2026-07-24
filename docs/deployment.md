@@ -16,8 +16,8 @@ This source repository owns:
 - public-safe deployable package templates under `workers/*`
 - package-owned Worker adapters, routes, dependency defaults, and Wrangler configs
 - shared package modules under `packages/*` for HTTP helpers, GitHub clients, OpenID Connect ID Token verification, and provider-specific issuer-adapter handling
-- Cloudflare binding declarations required by the source
-- tests and dry-run checks for the two Worker packages
+- generated Env types for the bindings required by the source
+- tests and Wrangler deploy dry runs for the two Worker packages
 
 The checked-in Worker configs are local-development and dry-run templates only.
 

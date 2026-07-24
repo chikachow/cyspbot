@@ -175,7 +175,11 @@ The repository check path is:
 node --run check
 ```
 
-That command validates the lockfile, formatting, generated Wrangler bindings, lint, TypeScript, Knip, Vitest, and Worker dry-runs.
+That command validates the lockfile, formatting, generated Env type freshness, type-checking against each Worker's runtime types, lint, Knip, Vitest, and Wrangler deploy dry runs.
+
+Each Worker package owns its Env type generation, runtime type generation, type-check, and Wrangler deploy dry-run commands. The root scripts aggregate those package interfaces with the shared-package and test/tooling TypeScript projects.
+
+The small `env.generated.d.ts` files are checked in because the combined test project consumes both generated environment interfaces without including either Worker's runtime types. Each Worker type-check generates its ignored `runtime.generated.d.ts` from that Worker's Wrangler compatibility date and flags immediately before invoking TypeScript. Runtime types are reproducible build artifacts rather than reviewable source.
 
 The public GitHub Actions `ci` workflow runs the same classes of checks as separate reusable jobs and gates on an aggregate `ci` job.
 
