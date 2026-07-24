@@ -131,6 +131,8 @@ OIDC/JWKS failures are classified at the verifier boundary:
 
 The Worker factory is `createGitHubWebhookReceiverWorker` in `workers/cyspbot-github-webhook-receiver/src/worker.ts`. Requests with any other path return problem-details `404`. Non-`POST` requests to `/github/webhooks` return problem-details `405` with `Allow: POST`.
 
+The Worker factory also owns the default runtime clock and accepts `GitHubWebhookReceiverDependencies` for test injection. The dependency interface lives with its consumer in `workers/cyspbot-github-webhook-receiver/src/github-webhooks/acceptance.ts`.
+
 `acceptGitHubWebhookDelivery` in `workers/cyspbot-github-webhook-receiver/src/github-webhooks/acceptance.ts` implements the delivery flow:
 
 1. Resolve `GITHUB_WEBHOOK_SECRET`.

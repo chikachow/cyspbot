@@ -1,6 +1,6 @@
 import { createGitHubWebhookReceiverWorker } from "@cyspbot/github-webhook-receiver/worker";
 import { createTokenExchangeWorker } from "@cyspbot/token-exchange/worker";
-import type { GitHubWebhookReceiverDependencies } from "@cyspbot/github-webhook-receiver/dependencies";
+import type { GitHubWebhookReceiverDependencies } from "@cyspbot/github-webhook-receiver/github-webhooks/acceptance";
 import {
   createTokenExchangeRequestRuntime,
   type TokenExchangeRequestRuntime,

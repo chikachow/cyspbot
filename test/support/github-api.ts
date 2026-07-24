@@ -148,14 +148,10 @@ export async function fetchGitHubTestDouble(
 }
 
 function hasSelectedRepository(body: Record<string, unknown>, repository: string): boolean {
-  const repositoryIds = body["repository_ids"];
   const repositories = body["repositories"];
 
-  if (repositoryIds !== undefined) {
-    return false;
-  }
-
   return (
+    body["repository_ids"] === undefined &&
     Array.isArray(repositories) &&
     repositories.length === 1 &&
     repositories[0] === repositoryName(repository)
