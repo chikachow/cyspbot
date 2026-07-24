@@ -1,15 +1,15 @@
 export type GitHubInstallationPermissions = Record<string, string>;
 
 export interface InstallationAccessTokenRequest {
-  permissions: GitHubInstallationPermissions;
-  resource: URL;
-  scope: string;
+  readonly permissions: GitHubInstallationPermissions;
+  readonly resource: GitHubRepositoryResource;
+  readonly scope: string;
 }
 
-export interface ParsedGitHubRepositoryResource {
-  owner: string;
-  repository: string;
-  resource: URL;
+export interface GitHubRepositoryResource {
+  readonly href: string;
+  readonly owner: string;
+  readonly repository: string;
 }
 
 const supportedPermissionScopes = new Map<string, readonly [string, string]>([
@@ -44,15 +44,13 @@ export function normalizeInstallationAccessTokenRequest(options: {
     ok: true,
     tokenRequest: {
       permissions: scope.permissions,
-      resource: resource.resource,
+      resource,
       scope: scope.scope,
     },
   };
 }
 
-export function parseGitHubRepositoryResource(
-  value: string,
-): ParsedGitHubRepositoryResource | null {
+export function parseGitHubRepositoryResource(value: string): GitHubRepositoryResource | null {
   if (value.length === 0) {
     return null;
   }
@@ -91,9 +89,9 @@ export function parseGitHubRepositoryResource(
   }
 
   return {
+    href: resource.href,
     owner: parts[2],
     repository: parts[3],
-    resource,
   };
 }
 

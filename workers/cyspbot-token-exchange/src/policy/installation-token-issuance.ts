@@ -4,20 +4,9 @@ import {
 } from "@cyspbot/github/app";
 import { GitHubApiError, type GitHubApiDependencies } from "@cyspbot/github/http";
 import type { AuthenticatedContext, VerifiedSubjectToken } from "../authentication.ts";
-import {
-  parseGitHubRepositoryResource,
-  type InstallationAccessTokenRequest,
-} from "../installation-token-request.ts";
-import {
-  evaluateConfiguredTokenPolicy,
-  type TokenPolicyDecision,
-  type TokenPolicyRule,
-} from "./token-policy.ts";
-import { tokenPolicyRules as defaultTokenPolicyRules } from "./token-policy-rules.ts";
-
-export interface InstallationTokenIssuanceDependencies extends GitHubApiDependencies {
-  tokenPolicyRules?: readonly TokenPolicyRule[];
-}
+import type { InstallationAccessTokenRequest } from "../installation-token-request.ts";
+import type { TokenExchangeApplication } from "../token-exchange-application.ts";
+import { evaluateConfiguredTokenPolicy, type TokenPolicyDecision } from "./token-policy.ts";
 
 export type InstallationTokenIssuanceResult =
   | { expiresAt: string; ok: true; token: string }
@@ -33,10 +22,10 @@ class TokenPolicyDeniedError extends Error {
 }
 
 export async function issueInstallationTokenForContext(
-  env: TokenExchangeBindings,
+  application: TokenExchangeApplication,
   authenticationContext: AuthenticatedContext,
   tokenRequest: InstallationAccessTokenRequest,
-  dependencies: InstallationTokenIssuanceDependencies,
+  dependencies: GitHubApiDependencies,
 ): Promise<InstallationTokenIssuanceResult> {
   const { subjectToken } = authenticationContext;
   let policyDecision: TokenPolicyDecision | undefined;
@@ -48,28 +37,22 @@ export async function issueInstallationTokenForContext(
         subjectToken,
         tokenRequest,
       },
-      dependencies.tokenPolicyRules ?? defaultTokenPolicyRules,
+      application.tokenPolicy,
     );
 
     if (policyDecision.decision !== "allow") {
       throw new TokenPolicyDeniedError(policyDecision);
     }
 
-    const requestedResource = parseGitHubRepositoryResource(tokenRequest.resource.href);
-
-    if (requestedResource === null) {
-      throw new GitHubApiError(400, "invalid token request resource");
-    }
-
-    const requestedResourceName = `${requestedResource.owner}/${requestedResource.repository}`;
+    const requestedResourceName = `${tokenRequest.resource.owner}/${tokenRequest.resource.repository}`;
     const targetInstallation = await resolveInstallationForRepository(
-      env,
+      application.githubApp,
       requestedResourceName,
       dependencies,
     );
     targetInstallationId = targetInstallation.id;
     const installationToken = await createInstallationTokenForRepository(
-      env,
+      application.githubApp,
       targetInstallation.id,
       requestedResourceName,
       tokenRequest.permissions,

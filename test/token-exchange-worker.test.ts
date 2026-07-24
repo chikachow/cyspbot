@@ -12,6 +12,7 @@ import {
 } from "./support/worker.ts";
 import { subjectToken } from "./support/token-policy-fixtures.ts";
 import { githubActionsInstallationTokenRule } from "../workers/cyspbot-token-exchange/src/policy/github-actions-token-policy-rule.ts";
+import { validateTokenPolicyRules } from "@cyspbot/token-exchange/policy/token-policy";
 
 describe("cyspbot-token-exchange", () => {
   it("short-circuits through the request runtime when rate limited", async () => {
@@ -71,7 +72,11 @@ describe("cyspbot-token-exchange", () => {
       context,
       expect.objectContaining({
         permissions: { contents: "write", pull_requests: "write" },
-        resource: new URL("https://api.github.com/repos/fixture-owner/fixture-source-repository"),
+        resource: {
+          href: "https://api.github.com/repos/fixture-owner/fixture-source-repository",
+          owner: "fixture-owner",
+          repository: "fixture-source-repository",
+        },
         scope: "contents:write pull_requests:write",
       }),
     );
@@ -196,7 +201,7 @@ describe("cyspbot-token-exchange", () => {
         method: "POST",
       },
       {
-        tokenPolicyRules: [
+        tokenPolicy: validateTokenPolicyRules([
           githubActionsInstallationTokenRule({
             eventNames: ["workflow_dispatch"],
             id: "test-github-read-permissions",
@@ -210,7 +215,7 @@ describe("cyspbot-token-exchange", () => {
               "fixture-owner/fixture-source-repository/.github/workflows/fixture-token-request.yml@refs/heads/fixture-base-branch",
             resource: "https://api.github.com/repos/fixture-owner/fixture-source-repository",
           }),
-        ],
+        ]),
       },
     );
 

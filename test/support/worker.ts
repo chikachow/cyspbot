@@ -30,7 +30,7 @@ const baseTestDependencies = {
   fetch: fetchGitHubTestDouble,
   fetchJwks: fetchOidcJwksTestDouble,
   now: () => testNow,
-  tokenPolicyRules: testTokenPolicyRules,
+  tokenPolicy: testTokenPolicyRules,
 } satisfies TestDependencies;
 
 const tokenExchangeApp = createTokenExchangeWorker(baseTestDependencies);

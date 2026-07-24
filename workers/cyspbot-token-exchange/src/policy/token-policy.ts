@@ -32,6 +32,12 @@ export interface TokenPolicyRule {
   when: string;
 }
 
+declare const validatedTokenPolicy: unique symbol;
+
+export type TokenPolicy = readonly TokenPolicyRule[] & {
+  readonly [validatedTokenPolicy]: true;
+};
+
 interface TokenPolicyAllowDecision {
   decision: "allow";
   matchedRule: TokenPolicyRule;
@@ -46,7 +52,7 @@ export type TokenPolicyDecision = TokenPolicyAllowDecision | TokenPolicyDenyDeci
 
 export function evaluateConfiguredTokenPolicy(
   input: TokenPolicyInput,
-  rules: readonly TokenPolicyRule[],
+  rules: TokenPolicy,
 ): TokenPolicyDecision {
   for (const rule of rules) {
     if (tokenPolicyRuleMatches(rule, input)) {
@@ -63,9 +69,7 @@ export function evaluateConfiguredTokenPolicy(
   };
 }
 
-export function validateTokenPolicyRules(
-  rules: readonly TokenPolicyRule[],
-): readonly TokenPolicyRule[] {
+export function validateTokenPolicyRules(rules: readonly TokenPolicyRule[]): TokenPolicy {
   const seenIds = new Set<string>();
   const seenEffectiveGrants = new Set<string>();
 
@@ -88,7 +92,7 @@ export function validateTokenPolicyRules(
 
     if (
       parsedResource === null ||
-      parsedResource.resource.href !== rule.issue.githubInstallationToken.resource
+      parsedResource.href !== rule.issue.githubInstallationToken.resource
     ) {
       throw new Error("invalid token policy rule resource");
     }
@@ -115,7 +119,7 @@ export function validateTokenPolicyRules(
     seenEffectiveGrants.add(effectiveGrantKey);
   }
 
-  return rules;
+  return rules as TokenPolicy;
 }
 
 function tokenPolicyRuleMatches(rule: TokenPolicyRule, input: TokenPolicyInput): boolean {

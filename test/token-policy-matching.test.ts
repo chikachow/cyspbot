@@ -14,6 +14,7 @@ import {
   fixtureSourceRepository,
   fixtureSourceResource,
   fixtureTargetResource,
+  mustParseRepositoryResource,
   sameRepositoryTokenRequest,
   subjectToken,
 } from "./support/token-policy-fixtures.ts";
@@ -127,7 +128,7 @@ describe("Token Policy matching", () => {
           subjectToken,
           tokenRequest: {
             ...crossOwnerActionsTokenRequest(),
-            resource: new URL(
+            resource: mustParseRepositoryResource(
               "https://api.github.com/repos/fixture-target-owner/fixture-unconfigured-target",
             ),
           },
@@ -285,33 +286,11 @@ describe("Token Policy matching", () => {
           },
           tokenRequest: {
             permissions: { contents: "write" },
-            resource: new URL(fixtureTargetResource),
+            resource: mustParseRepositoryResource(fixtureTargetResource),
             scope: "contents:write",
           },
         },
         validateTokenPolicyRules([rule]),
-      ),
-    ).toEqual({
-      decision: "deny",
-      reasons: ["condition"],
-    });
-  });
-
-  it("fails closed when an unvalidated CEL condition cannot be compiled", () => {
-    expect(
-      evaluateConfiguredTokenPolicy(
-        {
-          subjectToken: {
-            ...subjectToken,
-            issuer: fixtureOtherIssuer,
-          },
-          tokenRequest: {
-            permissions: { contents: "write" },
-            resource: new URL(fixtureTargetResource),
-            scope: "contents:write",
-          },
-        },
-        [tokenPolicyRuleWithCondition("claims[")],
       ),
     ).toEqual({
       decision: "deny",
@@ -339,7 +318,39 @@ describe("Token Policy matching", () => {
           },
           tokenRequest: {
             permissions: { contents: "write" },
-            resource: new URL(fixtureTargetResource),
+            resource: mustParseRepositoryResource(fixtureTargetResource),
+            scope: "contents:write",
+          },
+        },
+        validateTokenPolicyRules([tokenPolicyRuleWithCondition('claims["unreadable"] == true')]),
+      ),
+    ).toEqual({
+      decision: "deny",
+      reasons: ["condition"],
+    });
+  });
+
+  it("fails closed when CEL evaluation throws", () => {
+    const claims = { ...subjectToken.claims };
+
+    Object.defineProperty(claims, "unreadable", {
+      enumerable: true,
+      get: () => {
+        throw new Error("unreadable claim");
+      },
+    });
+
+    expect(
+      evaluateConfiguredTokenPolicy(
+        {
+          subjectToken: {
+            ...subjectToken,
+            claims,
+            issuer: fixtureOtherIssuer,
+          },
+          tokenRequest: {
+            permissions: { contents: "write" },
+            resource: mustParseRepositoryResource(fixtureTargetResource),
             scope: "contents:write",
           },
         },

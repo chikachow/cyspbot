@@ -1,6 +1,8 @@
 import { githubActionsTrustedIssuer } from "@cyspbot/oidc-issuer-github-actions";
 import {
   normalizeInstallationAccessTokenRequest,
+  parseGitHubRepositoryResource,
+  type GitHubRepositoryResource,
   type InstallationAccessTokenRequest,
 } from "@cyspbot/token-exchange/installation-token-request";
 import { createVerifiedSubjectToken } from "./oidc.ts";
@@ -61,4 +63,14 @@ export function mustNormalizeTokenRequest(options: {
   }
 
   return result.tokenRequest;
+}
+
+export function mustParseRepositoryResource(value: string): GitHubRepositoryResource {
+  const resource = parseGitHubRepositoryResource(value);
+
+  if (resource === null) {
+    throw new Error("invalid fixture repository resource");
+  }
+
+  return resource;
 }
