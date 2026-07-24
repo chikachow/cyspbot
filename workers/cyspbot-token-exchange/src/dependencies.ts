@@ -11,7 +11,7 @@ import {
   cyspbotOidcAudience,
 } from "./authentication.ts";
 import { configuredOidcIssuerAdapters } from "./oidc-issuers.ts";
-import type { InstallationAccessTokenRequest } from "./policy/token-policy.ts";
+import type { InstallationAccessTokenRequest } from "./policy/installation-token-request.ts";
 
 export interface TokenExchangeRequestRuntime {
   authenticateSubjectToken(input: {

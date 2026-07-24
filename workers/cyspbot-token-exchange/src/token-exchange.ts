@@ -1,6 +1,6 @@
 import { jsonResponse } from "@cyspbot/http/problem-details";
 import { readRequestBodyUpTo } from "@cyspbot/http/request-body";
-import { normalizeInstallationAccessTokenRequest } from "./policy/token-policy.ts";
+import { normalizeInstallationAccessTokenRequest } from "./policy/installation-token-request.ts";
 import type { TokenExchangeRequestRuntime } from "./dependencies.ts";
 
 const maxTokenExchangeBodyBytes = 64 * 1024;

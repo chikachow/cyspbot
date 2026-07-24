@@ -3,9 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   evaluateConfiguredTokenPolicy,
   validateTokenPolicyRules,
-  type InstallationAccessTokenRequest,
   type TokenPolicyRule,
 } from "@cyspbot/token-exchange/policy/token-policy";
+import type { InstallationAccessTokenRequest } from "@cyspbot/token-exchange/policy/installation-token-request";
 import { tokenPolicyRules as productionTokenPolicyRules } from "@cyspbot/token-exchange/policy/token-policy-rules";
 import type { VerifiedSubjectToken } from "@cyspbot/token-exchange/authentication";
 import { subjectToken } from "./support/token-policy-fixtures.ts";

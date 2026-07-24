@@ -5,10 +5,10 @@ import type { VerifiedSubjectToken } from "@cyspbot/token-exchange/authenticatio
 import { googleServiceAccountInstallationTokenRule } from "@cyspbot/token-exchange/policy/google-service-account-token-policy-rule";
 import {
   evaluateConfiguredTokenPolicy,
-  normalizeInstallationAccessTokenRequest,
   validateTokenPolicyRules,
   type TokenPolicyRule,
 } from "@cyspbot/token-exchange/policy/token-policy";
+import { normalizeInstallationAccessTokenRequest } from "@cyspbot/token-exchange/policy/installation-token-request";
 import { createVerifiedSubjectToken } from "./support/oidc.ts";
 
 const resource = "https://api.github.com/repos/fixture-owner/fixture-repository";

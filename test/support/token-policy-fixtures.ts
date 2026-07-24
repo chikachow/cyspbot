@@ -2,7 +2,7 @@ import { githubActionsTrustedIssuer } from "@cyspbot/oidc-issuer-github-actions"
 import {
   normalizeInstallationAccessTokenRequest,
   type InstallationAccessTokenRequest,
-} from "@cyspbot/token-exchange/policy/token-policy";
+} from "@cyspbot/token-exchange/policy/installation-token-request";
 import type { VerifiedSubjectToken } from "@cyspbot/token-exchange/authentication";
 import { createVerifiedSubjectToken } from "./oidc.ts";
 
