@@ -8,7 +8,7 @@ const defaultGitHubWebhookReceiverDependencies: GitHubWebhookReceiverDependencie
 
 export function createGitHubWebhookReceiverWorker(
   dependencies: GitHubWebhookReceiverDependencies = defaultGitHubWebhookReceiverDependencies,
-): ExportedHandler<GitHubWebhookReceiverBindings> {
+): ExportedHandler<GitHubWebhookReceiverEnv> {
   return {
     fetch(request, env) {
       const url = new URL(request.url);

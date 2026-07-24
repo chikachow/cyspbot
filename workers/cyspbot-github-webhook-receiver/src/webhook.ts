@@ -6,7 +6,7 @@ import {
 
 export async function handleGitHubWebhookRequest(
   request: Request,
-  env: GitHubWebhookReceiverBindings,
+  env: GitHubWebhookReceiverEnv,
   dependencies: GitHubWebhookReceiverDependencies,
 ): Promise<Response> {
   const result = await acceptGitHubWebhookDelivery(request, env, dependencies);

@@ -1,21 +1,10 @@
 {
-  "extends": "@tsconfig/strictest/tsconfig.json",
+  "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "allowImportingTsExtensions": true,
-    "customConditions": ["workerd", "worker"],
     "lib": ["ES2024", "WebWorker"],
-    "module": "Preserve",
-    "noEmit": true,
     "rootDir": ".",
-    "target": "ES2024",
-    "types": ["@cloudflare/vitest-pool-workers/types", "@cloudflare/workers-types", "node"],
-    "verbatimModuleSyntax": true
+    "types": ["@cloudflare/vitest-pool-workers/types", "@cloudflare/workers-types", "node"]
   },
-  "include": [
-    "packages/**/*.ts",
-    "src/**/*.ts",
-    "test/**/*.ts",
-    "vitest.config.ts",
-    "workers/**/*.ts"
-  ]
+  "include": ["packages/**/*.ts", "test/**/*.ts", "vitest.config.ts", "workers/**/*.ts"],
+  "exclude": ["workers/**/src/runtime.generated.d.ts"]
 }

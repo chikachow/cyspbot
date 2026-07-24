@@ -11,7 +11,7 @@ import {
 
 export function createTokenExchangeWorker(
   dependencies: TokenExchangeWorkerDependencies = defaultTokenExchangeWorkerDependencies,
-): ExportedHandler<TokenExchangeBindings> {
+): ExportedHandler<TokenExchangeEnv> {
   return {
     fetch(request, env) {
       const url = new URL(request.url);

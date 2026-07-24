@@ -203,6 +203,8 @@ Do not commit the downloaded key, converted key, `.dev.vars`, `.env`, `.wrangler
 
 The root Wrangler config is a test harness for Vitest bindings, not a deployable product runtime.
 
+Each Worker package generates ignored runtime types from its own Wrangler compatibility date and flags immediately before type-checking. The small Env types remain checked in so the combined test project can consume both generated environment interfaces without including either Worker's runtime types.
+
 The public Wrangler configs declare required secret names. Secret values live in Cloudflare for production and `.dev.vars` for local development.
 
 The token-exchange Worker uses the service-owned GitHub App from `GITHUB_APP_ID` and `GITHUB_APP_PRIVATE_KEY`.
@@ -241,7 +243,7 @@ The reusable GitHub Action for this hosted service lives in the separate `cyspbo
 
 This repository has public-safe service workflows:
 
-- `ci`: runs on pull requests and pushes to `main`; coordinates reusable jobs for formatting, linting, generated Worker bindings, type checking, Knip, tests, and Worker dry-runs.
+- `ci`: runs on pull requests and pushes to `main`; coordinates reusable jobs for formatting, linting, generated Env type freshness, type-checking against each Worker's runtime types, Knip, tests, and Wrangler deploy dry runs.
 - `run-cyspbot-deploy-update`: runs on `workflow_dispatch`, or on `workflow_run` after the `ci` workflow completes successfully on `main`; it starts the external deployment repository's update workflow.
 
 Production deployment workflows and secrets live outside this codebase.
