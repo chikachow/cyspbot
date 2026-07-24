@@ -5,7 +5,6 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./dependencies": "./src/dependencies.ts",
     "./github-webhooks/acceptance": "./src/github-webhooks/acceptance.ts",
     "./github-webhooks/signature": "./src/github-webhooks/signature.ts",
     "./worker": "./src/worker.ts"

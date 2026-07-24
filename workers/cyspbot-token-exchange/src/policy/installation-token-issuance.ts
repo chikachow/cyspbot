@@ -1,5 +1,5 @@
 import {
-  createInstallationTokenForRepository,
+  createInstallationTokenForRepositoryName,
   resolveInstallationForRepository,
 } from "@cyspbot/github/app";
 import { GitHubApiError, type GitHubApiDependencies } from "@cyspbot/github/http";
@@ -51,10 +51,10 @@ export async function issueInstallationTokenForContext(
       dependencies,
     );
     targetInstallationId = targetInstallation.id;
-    const installationToken = await createInstallationTokenForRepository(
+    const installationToken = await createInstallationTokenForRepositoryName(
       application.githubApp,
       targetInstallation.id,
-      requestedResourceName,
+      tokenRequest.resource.repository,
       tokenRequest.permissions,
       dependencies,
     );
