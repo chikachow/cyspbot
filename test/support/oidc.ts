@@ -8,6 +8,7 @@ import {
   oidcIdTokenType,
   testPrivateKeyPem,
   testPublicJwk,
+  testRepository,
   tokenExchangeGrantType,
 } from "./constants.ts";
 
@@ -67,6 +68,7 @@ export async function tokenExchangeRequestBody({
   const subjectToken = await createOidcToken(claims, tokenOptions);
   const form = new URLSearchParams({
     grant_type: tokenExchangeGrantType,
+    resource: `https://api.github.com/repos/${testRepository}`,
     subject_token: subjectToken,
     subject_token_type: oidcIdTokenType,
   });

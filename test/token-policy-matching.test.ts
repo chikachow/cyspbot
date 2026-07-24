@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   evaluateConfiguredTokenPolicy,
-  normalizeInstallationAccessTokenRequest,
   validateTokenPolicyRules,
   type TokenPolicyRule,
 } from "@cyspbot/token-exchange/policy/token-policy";
+import { normalizeInstallationAccessTokenRequest } from "@cyspbot/token-exchange/installation-token-request";
 import type { VerifiedSubjectToken } from "@cyspbot/token-exchange/authentication";
 import { githubActionsInstallationTokenRule } from "../workers/cyspbot-token-exchange/src/policy/github-actions-token-policy-rule.ts";
 import {
@@ -188,7 +188,7 @@ describe("Token Policy matching", () => {
         `claims["email_verified"] == true && ` +
         `claims["email"] == "fixture-service-account@fixture-project.iam.gserviceaccount.com"`,
     };
-    const tokenRequest = normalizeInstallationAccessTokenRequest(otherSubjectToken, {
+    const tokenRequest = normalizeInstallationAccessTokenRequest({
       resource: fixtureTargetResource,
       scope: "contents:write",
     });
@@ -246,7 +246,7 @@ describe("Token Policy matching", () => {
       subjectTokenType: "id_token",
     };
     const rule = tokenPolicyRuleWithCondition(when);
-    const tokenRequest = normalizeInstallationAccessTokenRequest(typedSubjectToken, {
+    const tokenRequest = normalizeInstallationAccessTokenRequest({
       resource: fixtureTargetResource,
       scope: "contents:write",
     });
@@ -348,45 +348,6 @@ describe("Token Policy matching", () => {
     ).toEqual({
       decision: "deny",
       reasons: ["condition"],
-    });
-  });
-});
-
-describe("InstallationAccessTokenRequest normalization", () => {
-  it("derives omitted GitHub Actions resources from the verified repository claim", () => {
-    expect(
-      normalizeInstallationAccessTokenRequest(subjectToken, {
-        resource: null,
-        scope: null,
-      }),
-    ).toEqual({
-      ok: true,
-      tokenRequest: {
-        permissions: {
-          contents: "write",
-          pull_requests: "write",
-        },
-        resource: new URL(fixtureSourceResource),
-        scope: "contents:write pull_requests:write",
-      },
-    });
-  });
-
-  it("requires explicit resource for non-GitHub subject tokens", () => {
-    expect(
-      normalizeInstallationAccessTokenRequest(
-        {
-          ...subjectToken,
-          issuer: fixtureOtherIssuer,
-        },
-        {
-          resource: null,
-          scope: null,
-        },
-      ),
-    ).toEqual({
-      error: "invalid_target",
-      ok: false,
     });
   });
 });
@@ -508,7 +469,7 @@ describe("Token Policy rule validation", () => {
     ).toThrow("duplicate token policy rule id");
   });
 
-  it("rejects duplicate effective grants", () => {
+  it("rejects duplicate effective grants regardless of permission order", () => {
     const rule = testTokenPolicyRules[0] as TokenPolicyRule;
 
     expect(() =>
@@ -517,6 +478,15 @@ describe("Token Policy rule validation", () => {
         {
           ...rule,
           id: `${rule.id}-copy`,
+          issue: {
+            githubInstallationToken: {
+              ...rule.issue.githubInstallationToken,
+              permissions: {
+                pull_requests: "write",
+                contents: "write",
+              },
+            },
+          },
         },
       ]),
     ).toThrow("duplicate token policy rule");

@@ -1,6 +1,6 @@
 import { jsonResponse } from "@cyspbot/http/problem-details";
 import { readRequestBodyUpTo } from "@cyspbot/http/request-body";
-import { normalizeInstallationAccessTokenRequest } from "./policy/token-policy.ts";
+import { normalizeInstallationAccessTokenRequest } from "./installation-token-request.ts";
 import type { TokenExchangeRequestRuntime } from "./dependencies.ts";
 
 const maxTokenExchangeBodyBytes = 64 * 1024;
@@ -80,6 +80,12 @@ export async function handleTokenExchangeRequest(
     return oauthErrorResponse(400, tokenRequestOptions.error);
   }
 
+  const tokenRequest = normalizeInstallationAccessTokenRequest(tokenRequestOptions.options);
+
+  if (!tokenRequest.ok) {
+    return oauthErrorResponse(400, tokenRequest.error);
+  }
+
   const authentication = await runtime.authenticateSubjectToken({
     request,
     subjectToken,
@@ -92,18 +98,6 @@ export async function handleTokenExchangeRequest(
       oauthErrorCodeForAuthenticationFailure(authentication.reason),
       authentication.responseHeaders,
     );
-  }
-
-  const tokenRequest = normalizeInstallationAccessTokenRequest(
-    authentication.context.subjectToken,
-    {
-      resource: tokenRequestOptions.options.resource,
-      scope: tokenRequestOptions.options.scope,
-    },
-  );
-
-  if (!tokenRequest.ok) {
-    return oauthErrorResponse(400, tokenRequest.error);
   }
 
   const result = await runtime.issueInstallationToken(
@@ -202,11 +196,23 @@ function optionalTokenRequestFormValue(
   return { ok: true, value: parsed.value };
 }
 
+function requiredResourceFormValue(
+  form: URLSearchParams,
+): { ok: true; value: string } | { error: "invalid_target"; ok: false } {
+  const value = singleFormValue(form, "resource");
+
+  if (value === null || value.trim().length === 0) {
+    return { error: "invalid_target", ok: false };
+  }
+
+  return { ok: true, value };
+}
+
 function parseInstallationAccessTokenRequestOptions(form: URLSearchParams):
   | {
       ok: true;
       options: {
-        resource: string | null;
+        resource: string;
         scope: string | null;
       };
     }
@@ -224,7 +230,7 @@ function parseInstallationAccessTokenRequestOptions(form: URLSearchParams):
   }
 
   const scope = optionalTokenRequestFormValue(form, "scope", "invalid_scope");
-  const resource = optionalTokenRequestFormValue(form, "resource", "invalid_target");
+  const resource = requiredResourceFormValue(form);
 
   if (!scope.ok) {
     return { error: scope.error, ok: false };

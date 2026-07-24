@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   evaluateConfiguredTokenPolicy,
-  normalizeInstallationAccessTokenRequest,
   validateTokenPolicyRules,
   type TokenPolicyRule,
 } from "@cyspbot/token-exchange/policy/token-policy";
+import { normalizeInstallationAccessTokenRequest } from "@cyspbot/token-exchange/installation-token-request";
 import { flyMachineInstallationTokenRule } from "@cyspbot/token-exchange/policy/fly-machine-token-policy-rule";
 import type { VerifiedSubjectToken } from "@cyspbot/token-exchange/authentication";
 import { createVerifiedSubjectToken } from "./support/oidc.ts";
@@ -80,15 +80,6 @@ describe("Fly Machine installation-token policy rules", () => {
     ).toEqual({ decision: "deny", reasons: ["resource"] });
   });
 
-  it("rejects an omitted repository resource for a Fly subject token", () => {
-    expect(
-      normalizeInstallationAccessTokenRequest(flySubjectToken(claims), {
-        resource: null,
-        scope: "contents:write",
-      }),
-    ).toEqual({ error: "invalid_target", ok: false });
-  });
-
   it("denies a different permission request", () => {
     expect(evaluate(flyRule(), claims, { scope: "contents:read" })).toEqual({
       decision: "deny",
@@ -128,7 +119,7 @@ function evaluate(
   request: { resource?: string; scope?: string } = {},
 ) {
   const subjectToken = flySubjectToken(tokenClaims);
-  const tokenRequest = normalizeInstallationAccessTokenRequest(subjectToken, {
+  const tokenRequest = normalizeInstallationAccessTokenRequest({
     resource: request.resource ?? resource,
     scope: request.scope ?? "contents:write",
   });

@@ -615,15 +615,11 @@ describe("cyspbot-token-exchange", () => {
     });
   });
 
-  it("rejects duplicate resource parameters", async () => {
+  it("rejects multiple non-empty resource parameters as unsupported targets", async () => {
     const body = new URLSearchParams(await tokenExchangeRequestBody());
     body.append(
       "resource",
       "https://api.github.com/repos/fixture-target-owner/fixture-target-repository",
-    );
-    body.append(
-      "resource",
-      "https://api.github.com/repos/fixture-target-owner/fixture-other-target",
     );
 
     const response = await fetchTokenExchange("https://example.test/token", {
@@ -636,7 +632,52 @@ describe("cyspbot-token-exchange", () => {
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
-      error: "invalid_request",
+      error: "invalid_target",
+    });
+  });
+
+  it.each([
+    ["before", ["", `https://api.github.com/repos/fixture-owner/fixture-source-repository`]],
+    ["after", [`https://api.github.com/repos/fixture-owner/fixture-source-repository`, ""]],
+  ])("treats an empty resource occurrence %s the target as omitted", async (_order, values) => {
+    const body = new URLSearchParams(await tokenExchangeRequestBody());
+    body.delete("resource");
+
+    for (const value of values) {
+      body.append("resource", value);
+    }
+
+    const response = await fetchTokenExchange("https://example.test/token", {
+      body,
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      access_token: "ghs_test_token",
+    });
+  });
+
+  it("rejects repeated empty resource occurrences as a missing target", async () => {
+    const body = new URLSearchParams(await tokenExchangeRequestBody());
+    body.delete("resource");
+    body.append("resource", "");
+    body.append("resource", "");
+
+    const response = await fetchTokenExchange("https://example.test/token", {
+      body,
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_target",
     });
   });
 
@@ -750,11 +791,10 @@ describe("cyspbot-token-exchange", () => {
     });
   });
 
-  it("treats empty optional scope and resource parameters as omitted", async () => {
+  it("treats an empty optional scope as omitted", async () => {
     const response = await fetchTokenExchange("https://example.test/token", {
       body: await tokenExchangeRequestBody({
         form: {
-          resource: "",
           scope: "",
         },
       }),
@@ -771,6 +811,39 @@ describe("cyspbot-token-exchange", () => {
       scope: "contents:write pull_requests:write",
       token_type: "Bearer",
     });
+  });
+
+  it.each([
+    ["omitted", null],
+    ["empty", ""],
+  ])("rejects an %s target resource before authentication", async (_caseName, resource) => {
+    const authenticateSubjectToken = vi.fn();
+    const issueInstallationToken = vi.fn();
+    const response = await fetchTokenExchangeWithRuntime(
+      "https://example.test/token",
+      {
+        body: await tokenExchangeRequestBody({
+          form: {
+            resource,
+          },
+        }),
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        method: "POST",
+      },
+      {
+        authenticateSubjectToken,
+        issueInstallationToken,
+      },
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_target",
+    });
+    expect(authenticateSubjectToken).not.toHaveBeenCalled();
+    expect(issueInstallationToken).not.toHaveBeenCalled();
   });
 
   it.each([

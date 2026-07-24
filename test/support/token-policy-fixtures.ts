@@ -2,8 +2,7 @@ import { githubActionsTrustedIssuer } from "@cyspbot/oidc-issuer-github-actions"
 import {
   normalizeInstallationAccessTokenRequest,
   type InstallationAccessTokenRequest,
-} from "@cyspbot/token-exchange/policy/token-policy";
-import type { VerifiedSubjectToken } from "@cyspbot/token-exchange/authentication";
+} from "@cyspbot/token-exchange/installation-token-request";
 import { createVerifiedSubjectToken } from "./oidc.ts";
 
 export const fixtureRef = "refs/heads/fixture-base-branch";
@@ -35,24 +34,24 @@ export const subjectToken = createVerifiedSubjectToken(
 );
 
 export function sameRepositoryTokenRequest(): InstallationAccessTokenRequest {
-  return mustNormalizeTokenRequest(subjectToken, {
-    resource: null,
+  return mustNormalizeTokenRequest({
+    resource: fixtureSourceResource,
     scope: null,
   });
 }
 
 export function crossOwnerActionsTokenRequest(): InstallationAccessTokenRequest {
-  return mustNormalizeTokenRequest(subjectToken, {
+  return mustNormalizeTokenRequest({
     resource: fixtureTargetResource,
     scope: "actions:write",
   });
 }
 
-export function mustNormalizeTokenRequest(
-  testSubjectToken: VerifiedSubjectToken,
-  options: { resource: string | null; scope: string | null },
-): InstallationAccessTokenRequest {
-  const result = normalizeInstallationAccessTokenRequest(testSubjectToken, {
+export function mustNormalizeTokenRequest(options: {
+  resource: string;
+  scope: string | null;
+}): InstallationAccessTokenRequest {
+  const result = normalizeInstallationAccessTokenRequest({
     resource: options.resource,
     scope: options.scope,
   });

@@ -21,20 +21,20 @@ Unknown routes return `404` problem details. Unsupported methods on `/github/web
 - `subject_token=<openid-connect-id-token>`
 - `subject_token_type=urn:ietf:params:oauth:token-type:id_token`
 - `requested_token_type=urn:chikachow:github-app-installation-access-token`
+- `resource=<canonical-github-repository-api-uri>`
 - optional `scope=<github-permission-request-list>`
-- optional `resource=<canonical-github-repository-api-uri>`
 
 Request bodies are bounded to `64 KiB`.
 
 Requests are rate limited by the `TOKEN_EXCHANGE_RATE_LIMIT` Cloudflare binding before the body is parsed.
 
-`resource`, when present, must be exactly one canonical GitHub repository API URI:
+`resource` must be exactly one canonical GitHub repository API URI:
 
 ```text
 https://api.github.com/repos/{owner}/{repo}
 ```
 
-Repository shorthand, GitHub HTML URLs, endpoint URLs, duplicate resource fields, query strings, fragments, userinfo, encoded slashes, dot segments, leading or trailing whitespace, arrays, and multi-resource forms are rejected. A whitespace-only `resource` field is rejected as `invalid_target`; omission and `resource=` are equivalent.
+Exactly empty `resource` occurrences are treated as omitted under [OAuth token endpoint parameter rules](https://www.rfc-editor.org/rfc/rfc6749#section-3.2). After omission, exactly one effective value is required. No effective resource or multiple effective resources are rejected as `invalid_target`, consistent with the repeatable `resource` parameter and `invalid_target` response defined by [OAuth 2.0 Token Exchange](https://www.rfc-editor.org/rfc/rfc8693#section-2.1). Repository shorthand, GitHub HTML URLs, endpoint URLs, query strings, fragments, userinfo, encoded slashes, dot segments, leading or trailing whitespace, arrays, and malformed resources are also rejected. cyspbot never infers the target resource from subject-token claims. Target syntax is normalized before subject-token authentication.
 
 `scope`, when present, is a single-ASCII-space-delimited list of exact GitHub App permission requests, such as `actions:read`, `actions:write`, or `contents:read pull_requests:read`. Scope order is not significant, and repeated identical scope tokens are normalized once. Leading whitespace, trailing whitespace, repeated spaces, tabs, newlines, and other non-`0x20` separators are rejected. When `scope` is omitted or exactly empty, cyspbot normalizes it to `contents:write pull_requests:write`. A whitespace-only `scope` field is rejected as `invalid_scope`; omission and `scope=` are equivalent.
 
@@ -73,7 +73,7 @@ OAuth error responses use JSON with the same no-store headers:
 - rate limit exceeded: `429 {"error":"temporarily_unavailable"}`
 - body too large: `413 {"error":"invalid_request"}`
 - OIDC/JWKS provider unavailable: `503 {"error":"temporarily_unavailable"}`
-- unsupported target selector or policy denial: `400 {"error":"invalid_target"}`
+- missing, empty, malformed, or unsupported target selector, or policy denial: `400 {"error":"invalid_target"}`
 - upstream GitHub server failure: `502 {"error":"server_error"}`
 - internal server failure: `500 {"error":"server_error"}`
 
@@ -81,11 +81,13 @@ Issuer JWKS unavailability means cyspbot cannot obtain a usable trusted key set:
 
 ### Supported issuers
 
-| Token provider/profile           | Issuer Identifier (`iss`)                     | Additional subject binding                        | Omitted `resource`        |
-| -------------------------------- | --------------------------------------------- | ------------------------------------------------- | ------------------------- |
-| Fly.io                           | `https://oidc.fly.io/{org-slug}`              | Issuer organization and canonical Subject binding | Rejected                  |
-| GitHub Actions                   | `https://token.actions.githubusercontent.com` | `azp` is absent or equals `cyspbot`               | Signed `repository` claim |
-| Google service account ID Tokens | `https://accounts.google.com`                 | `azp` equals `sub`                                | Rejected                  |
+| Token provider/profile           | Issuer Identifier (`iss`)                     | Additional subject binding                        |
+| -------------------------------- | --------------------------------------------- | ------------------------------------------------- |
+| Fly.io                           | `https://oidc.fly.io/{org-slug}`              | Issuer organization and canonical Subject binding |
+| GitHub Actions                   | `https://token.actions.githubusercontent.com` | `azp` is absent or equals `cyspbot`               |
+| Google service account ID Tokens | `https://accounts.google.com`                 | `azp` equals `sub`                                |
+
+Every provider requires the caller to supply an explicit repository `resource`.
 
 #### Fly.io
 
@@ -97,7 +99,7 @@ Fly callers must provide an explicit repository `resource`; omission or `resourc
 
 #### GitHub Actions
 
-GitHub Actions callers present a [GitHub Actions OIDC token](https://docs.github.com/en/actions/concepts/security/openid-connect), which is an ID Token issued by `https://token.actions.githubusercontent.com`. An absent Authorized Party (`azp`) claim is accepted; when present, it must equal `cyspbot`. When `resource` is omitted or exactly empty, cyspbot derives it from the signed `repository` claim. Authentication produces a Verified Subject Token but does not create a grant: the matching Token Policy rule must still authorize the signed workflow identity, normalized repository resource, and exact permissions.
+GitHub Actions callers present a [GitHub Actions OIDC token](https://docs.github.com/en/actions/concepts/security/openid-connect), which is an ID Token issued by `https://token.actions.githubusercontent.com`. An absent Authorized Party (`azp`) claim is accepted; when present, it must equal `cyspbot`. GitHub Actions callers must provide an explicit repository `resource`; the signed `repository` claim remains subject identity available to Token Policy and is not used to select the token target. Authentication produces a Verified Subject Token but does not create a grant: the matching Token Policy rule must still authorize the signed workflow identity, normalized repository resource, and exact permissions.
 
 #### Google service account ID Tokens
 
@@ -149,7 +151,7 @@ Claims that the matching rule does not use, such as GitHub's `actor` metadata, d
 
 Token Policy intentionally uses GitHub owner/repository names as the externally meaningful repository identifier, even though [GitHub Actions OIDC](https://docs.github.com/en/actions/reference/security/oidc) also exposes immutable repository and owner IDs and GitHub's installation-token API can scope by `repository_ids`. Those IDs participate in the immutable-subject consistency condition but are not independent policy keys. A repository that is deleted and recreated with the same owner/name can continue to match policy for that name when the GitHub App installation still grants sufficient permissions.
 
-The omitted `scope` and `resource` default produces this normalized permission request for cyspbot's service-owned GitHub App and the Verified Subject Token's repository:
+An omitted `scope` for an explicit repository resource produces this normalized permission request for cyspbot's service-owned GitHub App:
 
 ```json
 {

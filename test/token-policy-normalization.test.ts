@@ -1,17 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeInstallationAccessTokenRequest } from "@cyspbot/token-exchange/policy/token-policy";
+import { normalizeInstallationAccessTokenRequest } from "@cyspbot/token-exchange/installation-token-request";
 import {
   fixtureSourceResource,
   fixtureTargetResource,
   mustNormalizeTokenRequest,
-  subjectToken,
 } from "./support/token-policy-fixtures.ts";
 
 describe("InstallationAccessTokenRequest normalization", () => {
-  it("defaults omitted GitHub Actions resource and scope from verified claims", () => {
-    const tokenRequest = mustNormalizeTokenRequest(subjectToken, {
-      resource: null,
+  it("defaults an omitted scope for an explicit resource", () => {
+    const tokenRequest = mustNormalizeTokenRequest({
+      resource: fixtureSourceResource,
       scope: null,
     });
 
@@ -26,7 +25,7 @@ describe("InstallationAccessTokenRequest normalization", () => {
   });
 
   it("normalizes reordered GitHub permission scopes", () => {
-    const tokenRequest = mustNormalizeTokenRequest(subjectToken, {
+    const tokenRequest = mustNormalizeTokenRequest({
       resource: fixtureSourceResource,
       scope: "pull_requests:write contents:write",
     });
@@ -42,7 +41,7 @@ describe("InstallationAccessTokenRequest normalization", () => {
   });
 
   it("normalizes duplicate GitHub permission scopes", () => {
-    const tokenRequest = mustNormalizeTokenRequest(subjectToken, {
+    const tokenRequest = mustNormalizeTokenRequest({
       resource: fixtureSourceResource,
       scope: "contents:write contents:write pull_requests:write",
     });
@@ -58,7 +57,7 @@ describe("InstallationAccessTokenRequest normalization", () => {
   });
 
   it("normalizes read GitHub permission scopes", () => {
-    const tokenRequest = mustNormalizeTokenRequest(subjectToken, {
+    const tokenRequest = mustNormalizeTokenRequest({
       resource: fixtureSourceResource,
       scope: "pull_requests:read contents:read actions:read",
     });
@@ -88,7 +87,7 @@ describe("InstallationAccessTokenRequest normalization", () => {
     "https://api.github.com/repos/fixture-target-owner/fixture-target-repository/actions/workflows/x.yml",
   ])("rejects non-canonical resource %s", (resource) => {
     expect(
-      normalizeInstallationAccessTokenRequest(subjectToken, {
+      normalizeInstallationAccessTokenRequest({
         resource,
         scope: "actions:write",
       }),
@@ -111,7 +110,7 @@ describe("InstallationAccessTokenRequest normalization", () => {
     "actions",
   ])("rejects unsupported scope %s", (scope) => {
     expect(
-      normalizeInstallationAccessTokenRequest(subjectToken, {
+      normalizeInstallationAccessTokenRequest({
         resource: fixtureTargetResource,
         scope,
       }),
