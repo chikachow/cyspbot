@@ -107,7 +107,7 @@ Signed `ping` deliveries return `202 {"accepted":true,"event":"ping"}`. Any othe
 
 ## Token Policy
 
-Installation Token Issuance is allowed only when a normalized token request matches an explicit checked-in Token Policy rule. Rules bind the verified subject-token issuer, exact resource and permissions, and a CEL condition over signed `claims`, `subject`, and normalized `request` data.
+Installation Token Issuance is allowed only when a normalized token request matches an explicit checked-in Token Policy rule. Rules structurally bind the verified subject-token issuer, exact resource and permissions; their CEL conditions can inspect only signed `claims` and the verified `subject`.
 
 ### Fly.io
 
