@@ -1,0 +1,16 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "ignorePatterns": ["workers/**/src/*.generated.d.ts"],
+  "options": {
+    "typeAware": true
+  },
+  "overrides": [
+    {
+      "files": ["packages/**/*.ts", "workers/**/*.ts"],
+      "plugins": ["unicorn", "typescript", "oxc", "import"],
+      "rules": {
+        "import/no-nodejs-modules": "deny"
+      }
+    }
+  ]
+}
