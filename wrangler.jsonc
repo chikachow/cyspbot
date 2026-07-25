@@ -3,7 +3,13 @@
   "name": "cyspbot-test-harness",
   "main": "test/support/root-test-harness.ts",
   "compatibility_date": "2026-07-24",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": [
+    "no_nodejs_compat",
+    "no_nodejs_compat_v2",
+    "no_nodejs_als",
+    "disallow_eval_during_startup",
+    "global_fetch_strictly_public",
+  ],
   "observability": {
     "enabled": true,
   },
