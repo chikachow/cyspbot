@@ -27,7 +27,7 @@
     "wrangler:whoami": "WRANGLER_LOG=none WRANGLER_LOG_PATH=.wrangler/logs WRANGLER_REGISTRY_PATH=.wrangler/registry wrangler whoami"
   },
   "dependencies": {
-    "jose": "6.2.3"
+    "jose": "6.2.4"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "0.18.6",
