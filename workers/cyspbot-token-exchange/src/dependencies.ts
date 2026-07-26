@@ -1,37 +1,35 @@
 import {
-  type InstallationTokenIssuanceResult,
-  issueInstallationTokenForContext,
-} from "./policy/installation-token-issuance.ts";
+  type InstallationAccessTokenIssuanceResult,
+  issueInstallationAccessTokenForContext,
+} from "./policy/installation-access-token-issuance.ts";
 import {
-  authenticateOidcToken as defaultAuthenticateOidcToken,
+  authenticateOidcIdToken,
   type AuthenticateRequestResult,
   type AuthenticatedContext,
-  type SubjectTokenType,
-  cyspbotOidcAudience,
 } from "./authentication.ts";
-import type { InstallationAccessTokenRequest } from "./installation-token-request.ts";
-import { configuredOidcIssuerAdapters } from "./oidc-issuers.ts";
+import type { InstallationAccessTokenRequest } from "./installation-access-token-request.ts";
+import { createOidcIdTokenAuthenticatorResolver } from "./oidc-authentication.ts";
 import type { TokenPolicy } from "./policy/token-policy.ts";
 import { tokenPolicyRules } from "./policy/token-policy-rules.ts";
 import type { TokenExchangeApplication } from "./token-exchange-application.ts";
+import type { OidcIdTokenAuthenticatorDependencies } from "@cyspbot/oidc/id-token-authenticator";
 
 export interface TokenExchangeRequestRuntime {
-  authenticateSubjectToken(input: {
+  authenticateIdToken(input: {
     request: Request;
     subjectToken: string;
-    subjectTokenType: SubjectTokenType;
   }): Promise<AuthenticateRequestResult>;
-  issueInstallationToken(
+  issueInstallationAccessToken(
     context: AuthenticatedContext,
     tokenRequest: InstallationAccessTokenRequest,
-  ): Promise<InstallationTokenIssuanceResult>;
+  ): Promise<InstallationAccessTokenIssuanceResult>;
   now(): Date;
   rateLimit(key: string): Promise<boolean>;
 }
 
 export interface TokenExchangeWorkerDependencies {
   fetch: typeof fetch;
-  fetchJwks?: typeof fetch;
+  fetchOidcRemoteDocumentResponse?: typeof fetch;
   now(): Date;
   tokenPolicy: TokenPolicy;
 }
@@ -42,30 +40,36 @@ export const defaultTokenExchangeWorkerDependencies: TokenExchangeWorkerDependen
   tokenPolicy: tokenPolicyRules,
 };
 
-export function createTokenExchangeRequestRuntime(
-  env: TokenExchangeEnv,
+export function createTokenExchangeRequestRuntimeFactory(
   dependencies: TokenExchangeWorkerDependencies,
-): TokenExchangeRequestRuntime {
-  const application = tokenExchangeApplication(env, dependencies.tokenPolicy);
-
-  return {
-    authenticateSubjectToken: ({ request, subjectToken, subjectTokenType }) =>
-      defaultAuthenticateOidcToken(
-        subjectToken,
-        subjectTokenType,
-        request,
-        cyspbotOidcAudience,
-        configuredOidcIssuerAdapters(env),
-        dependencies.fetchJwks,
-      ),
-    issueInstallationToken: (context, tokenRequest) =>
-      issueInstallationTokenForContext(application, context, tokenRequest, dependencies),
+): (env: TokenExchangeEnv) => TokenExchangeRequestRuntime {
+  const oidcIdTokenAuthenticatorDependencies: OidcIdTokenAuthenticatorDependencies = {
+    fetch: (input, init) =>
+      (dependencies.fetchOidcRemoteDocumentResponse ?? dependencies.fetch)(input, init),
     now: () => dependencies.now(),
-    rateLimit: async (key) => {
-      const result = await env.TOKEN_EXCHANGE_RATE_LIMIT.limit({ key });
+    observe: (event) => console.warn(event),
+  };
+  const resolveOidcIdTokenAuthenticator = createOidcIdTokenAuthenticatorResolver(
+    oidcIdTokenAuthenticatorDependencies,
+    dependencies.tokenPolicy,
+  );
 
-      return result.success;
-    },
+  return (env) => {
+    const application = tokenExchangeApplication(env, dependencies.tokenPolicy);
+    const oidcIdTokenAuthenticator = resolveOidcIdTokenAuthenticator(env);
+
+    return {
+      authenticateIdToken: ({ request, subjectToken }) =>
+        authenticateOidcIdToken(subjectToken, request, oidcIdTokenAuthenticator),
+      issueInstallationAccessToken: (context, tokenRequest) =>
+        issueInstallationAccessTokenForContext(application, context, tokenRequest, dependencies),
+      now: () => dependencies.now(),
+      rateLimit: async (key) => {
+        const result = await env.TOKEN_EXCHANGE_RATE_LIMIT.limit({ key });
+
+        return result.success;
+      },
+    };
   };
 }
 

@@ -2,6 +2,7 @@ import { createPrivateKey } from "node:crypto";
 
 import { SignJWT } from "jose";
 
+import { parseOidcIssuerIdentifier } from "@cyspbot/oidc/provider-registration";
 import type { VerifiedSubjectToken } from "@cyspbot/token-exchange/authentication";
 import {
   githubInstallationAccessTokenType,
@@ -12,7 +13,7 @@ import {
   tokenExchangeGrantType,
 } from "./constants.ts";
 
-export { githubInstallationAccessTokenType, testPublicJwk } from "./constants.ts";
+export { githubInstallationAccessTokenType } from "./constants.ts";
 
 export interface CreateOidcTokenOptions {
   audience?: string | string[] | null;
@@ -30,10 +31,16 @@ export interface TokenExchangeRequestBodyOptions {
 
 export function createVerifiedSubjectToken(
   claims: Partial<VerifiedSubjectToken["claims"]> = {},
-  options: { issuer?: string; resolvedKeyId?: string } = {},
+  options: { issuer?: string } = {},
 ): VerifiedSubjectToken {
   const now = Math.floor(Date.now() / 1000);
-  const issuer = options.issuer ?? "https://token.actions.githubusercontent.com";
+  const issuer = parseOidcIssuerIdentifier(
+    options.issuer ?? "https://token.actions.githubusercontent.com",
+  );
+
+  if (issuer === null) {
+    throw new TypeError("test Verified Subject Token requires a valid OIDC Issuer Identifier");
+  }
 
   return {
     claims: {
@@ -45,8 +52,6 @@ export function createVerifiedSubjectToken(
       ...claims,
     },
     issuer,
-    resolvedKeyId: options.resolvedKeyId ?? "test-key-1",
-    subjectTokenType: "id_token",
   };
 }
 
@@ -88,7 +93,7 @@ export async function tokenExchangeRequestBody({
   return form.toString();
 }
 
-export async function createOidcToken(
+async function createOidcToken(
   overrides?: Partial<Record<string, unknown>>,
   options?: CreateOidcTokenOptions,
 ): Promise<string> {
@@ -133,8 +138,46 @@ export async function createOidcToken(
   return jwt.sign(privateKey);
 }
 
-export async function fetchOidcJwksTestDouble(input: RequestInfo | URL, init?: RequestInit) {
-  const request = new Request(input, init);
+export async function fetchOidcRemoteDocumentResponseTestDouble(input: RequestInfo | URL) {
+  const request = new Request(input);
+  const providerMetadata = new Map<string, { issuer: string; jwksUri: string }>([
+    [
+      "https://token.actions.githubusercontent.com/.well-known/openid-configuration",
+      {
+        issuer: "https://token.actions.githubusercontent.com",
+        jwksUri: "https://token.actions.githubusercontent.com/.well-known/jwks",
+      },
+    ],
+    [
+      "https://accounts.google.com/.well-known/openid-configuration",
+      {
+        issuer: "https://accounts.google.com",
+        jwksUri: "https://www.googleapis.com/oauth2/v3/certs",
+      },
+    ],
+    ...["example-org", "first-org", "second-org"].map(
+      (organizationSlug) =>
+        [
+          `https://oidc.fly.io/${organizationSlug}/.well-known/openid-configuration`,
+          {
+            issuer: `https://oidc.fly.io/${organizationSlug}`,
+            jwksUri: `https://oidc.fly.io/${organizationSlug}/.well-known/jwks`,
+          },
+        ] as const,
+    ),
+  ]);
+  const metadata = providerMetadata.get(request.url);
+
+  if (request.method === "GET" && metadata !== undefined) {
+    return Response.json(
+      {
+        id_token_signing_alg_values_supported: ["RS256"],
+        issuer: metadata.issuer,
+        jwks_uri: metadata.jwksUri,
+      },
+      { headers: { "cache-control": "max-age=300" } },
+    );
+  }
 
   const supportedJwksUrls = new Set([
     "https://token.actions.githubusercontent.com/.well-known/jwks",

@@ -12,7 +12,7 @@ describe("Token Policy documentation contract", () => {
 
     for (const rule of productionTokenPolicyRules) {
       expect(documentation).not.toContain(rule.id);
-      expect(documentation).not.toContain(rule.issue.githubInstallationToken.resource);
+      expect(documentation).not.toContain(rule.issue.githubInstallationAccessToken.resource);
       expect(documentation).not.toContain(rule.when);
     }
   });

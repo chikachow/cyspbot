@@ -7,8 +7,8 @@
     ".": "./src/index.ts",
     "./authentication": "./src/authentication.ts",
     "./dependencies": "./src/dependencies.ts",
-    "./installation-token-request": "./src/installation-token-request.ts",
-    "./oidc-issuers": "./src/oidc-issuers.ts",
+    "./installation-access-token-request": "./src/installation-access-token-request.ts",
+    "./oidc-authentication": "./src/oidc-authentication.ts",
     "./policy/fly-machine-token-policy-rule": "./src/policy/fly-machine-token-policy-rule.ts",
     "./policy/google-service-account-token-policy-rule": "./src/policy/google-service-account-token-policy-rule.ts",
     "./policy/token-policy": "./src/policy/token-policy.ts",
@@ -32,9 +32,8 @@
     "@cyspbot/github": "workspace:*",
     "@cyspbot/http": "workspace:*",
     "@cyspbot/oidc": "workspace:*",
-    "@cyspbot/oidc-issuer-fly": "workspace:*",
-    "@cyspbot/oidc-issuer-github-actions": "workspace:*",
-    "@cyspbot/oidc-issuer-google-service-account": "workspace:*",
-    "jose": "6.2.4"
+    "@cyspbot/oidc-provider-fly": "workspace:*",
+    "@cyspbot/oidc-provider-github-actions": "workspace:*",
+    "@cyspbot/oidc-provider-google-service-account": "workspace:*"
   }
 }

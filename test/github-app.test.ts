@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveInstallationForRepository } from "../packages/github/src/app.ts";
+import {
+  createInstallationAccessTokenForRepositoryName,
+  resolveInstallationForRepository,
+} from "../packages/github/src/app.ts";
 import { testPrivateKeyPem, testRepository } from "./support/constants.ts";
 
 describe("GitHub App authentication", () => {
@@ -37,5 +40,29 @@ describe("GitHub App authentication", () => {
     );
 
     expect(installation).toEqual({ id: 12345 });
+  });
+
+  it("rejects a malformed installation access token response", async () => {
+    await expect(
+      createInstallationAccessTokenForRepositoryName(
+        {
+          GITHUB_APP_ID: "2419473",
+          GITHUB_APP_PRIVATE_KEY: testPrivateKeyPem,
+        },
+        12345,
+        "fixture-repository",
+        { contents: "read" },
+        {
+          fetch: async () =>
+            Response.json({
+              expires_at: "2030-01-01T00:00:00Z",
+              permissions: { contents: "read" },
+            }),
+        },
+      ),
+    ).rejects.toMatchObject({
+      message: "invalid installation access token response",
+      status: 502,
+    });
   });
 });

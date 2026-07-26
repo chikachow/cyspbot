@@ -5,10 +5,13 @@ import {
   validateTokenPolicyRules,
   type TokenPolicyRule,
 } from "@cyspbot/token-exchange/policy/token-policy";
-import type { InstallationAccessTokenRequest } from "@cyspbot/token-exchange/installation-token-request";
+import type { InstallationAccessTokenRequest } from "@cyspbot/token-exchange/installation-access-token-request";
 import { tokenPolicyRules as productionTokenPolicyRules } from "@cyspbot/token-exchange/policy/token-policy-rules";
 import type { VerifiedSubjectToken } from "@cyspbot/token-exchange/authentication";
-import { mustParseRepositoryResource, subjectToken } from "./support/token-policy-fixtures.ts";
+import {
+  mustParseRepositoryResource,
+  verifiedSubjectToken,
+} from "./support/token-policy-fixtures.ts";
 
 interface ExpectedProductionRule {
   events: readonly string[];
@@ -117,18 +120,20 @@ describe("Production Token Policy rules", () => {
   });
 
   it("has valid checked-in rules", () => {
-    expect(validateTokenPolicyRules(productionTokenPolicyRules)).toBe(productionTokenPolicyRules);
+    expect(validateTokenPolicyRules(productionTokenPolicyRules)).toEqual(
+      productionTokenPolicyRules,
+    );
   });
 
   it.each(productionRuleEventCases())(
-    "allows %s through explicit expected claims and request inputs",
+    "allows %s through explicit verified claims and a structurally matched request",
     (_caseName, expected, eventName) => {
       const rule = productionRule(expected);
 
       expect(
         evaluateConfiguredTokenPolicy(
           {
-            subjectToken: subjectTokenForExpectedRule(expected, eventName),
+            verifiedSubjectToken: verifiedSubjectTokenForExpectedRule(expected, eventName),
             tokenRequest: tokenRequestForExpectedRule(expected),
           },
           productionTokenPolicyRules,
@@ -139,39 +144,58 @@ describe("Production Token Policy rules", () => {
 
   it.each(expectedProductionRules)("denies $id when the repository claim changes", (expected) => {
     expectExpectedRuleDenied(expected, {
-      subjectToken: subjectTokenForExpectedRule(expected, expected.events[0] ?? "", {
-        repository: `${expected.repository}-unconfigured`,
-      }),
+      verifiedSubjectToken: verifiedSubjectTokenForExpectedRule(
+        expected,
+        expected.events[0] ?? "",
+        {
+          repository: `${expected.repository}-unconfigured`,
+        },
+      ),
     });
   });
 
   it.each(expectedProductionRules)("denies $id when the event changes", (expected) => {
     expectExpectedRuleDenied(expected, {
-      subjectToken: subjectTokenForExpectedRule(expected, "fixture-unconfigured-event"),
+      verifiedSubjectToken: verifiedSubjectTokenForExpectedRule(
+        expected,
+        "fixture-unconfigured-event",
+      ),
     });
   });
 
   it.each(expectedProductionRules)("denies $id when the ref changes", (expected) => {
     expectExpectedRuleDenied(expected, {
-      subjectToken: subjectTokenForExpectedRule(expected, expected.events[0] ?? "", {
-        ref: `${expected.ref}-unconfigured`,
-      }),
+      verifiedSubjectToken: verifiedSubjectTokenForExpectedRule(
+        expected,
+        expected.events[0] ?? "",
+        {
+          ref: `${expected.ref}-unconfigured`,
+        },
+      ),
     });
   });
 
   it.each(expectedProductionRules)("denies $id when the workflow ref changes", (expected) => {
     expectExpectedRuleDenied(expected, {
-      subjectToken: subjectTokenForExpectedRule(expected, expected.events[0] ?? "", {
-        workflow_ref: `${expected.workflowRef}-unconfigured`,
-      }),
+      verifiedSubjectToken: verifiedSubjectTokenForExpectedRule(
+        expected,
+        expected.events[0] ?? "",
+        {
+          workflow_ref: `${expected.workflowRef}-unconfigured`,
+        },
+      ),
     });
   });
 
   it.each(expectedProductionRules)("denies $id when the subject changes", (expected) => {
     expectExpectedRuleDenied(expected, {
-      subjectToken: subjectTokenForExpectedRule(expected, expected.events[0] ?? "", {
-        sub: "repo:unconfigured/repository:ref:refs/heads/main",
-      }),
+      verifiedSubjectToken: verifiedSubjectTokenForExpectedRule(
+        expected,
+        expected.events[0] ?? "",
+        {
+          sub: "repo:unconfigured/repository:ref:refs/heads/main",
+        },
+      ),
     });
   });
 
@@ -212,7 +236,7 @@ function productionRule(expected: ExpectedProductionRule): TokenPolicyRule {
   return rule;
 }
 
-function subjectTokenForExpectedRule(
+function verifiedSubjectTokenForExpectedRule(
   expected: ExpectedProductionRule,
   eventName: string,
   claims: Record<string, unknown> = {},
@@ -222,9 +246,9 @@ function subjectTokenForExpectedRule(
     typeof claims["repository"] === "string" ? claims["repository"] : expected.repository;
 
   return {
-    ...subjectToken,
+    ...verifiedSubjectToken,
     claims: {
-      ...subjectToken.claims,
+      ...verifiedSubjectToken.claims,
       event_name: eventName,
       ref,
       repository,
@@ -251,15 +275,16 @@ function tokenRequestForExpectedRule(
 function expectExpectedRuleDenied(
   expected: ExpectedProductionRule,
   overrides: {
-    subjectToken?: VerifiedSubjectToken;
+    verifiedSubjectToken?: VerifiedSubjectToken;
     tokenRequest?: InstallationAccessTokenRequest;
   },
 ): void {
   expect(
     evaluateConfiguredTokenPolicy(
       {
-        subjectToken:
-          overrides.subjectToken ?? subjectTokenForExpectedRule(expected, expected.events[0] ?? ""),
+        verifiedSubjectToken:
+          overrides.verifiedSubjectToken ??
+          verifiedSubjectTokenForExpectedRule(expected, expected.events[0] ?? ""),
         tokenRequest: overrides.tokenRequest ?? tokenRequestForExpectedRule(expected),
       },
       productionTokenPolicyRules,

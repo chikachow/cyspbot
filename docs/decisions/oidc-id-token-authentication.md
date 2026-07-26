@@ -4,10 +4,9 @@
 
 Decision status: Accepted.
 
-Implementation status: Partial. The shared OIDC authentication boundary is
-implemented and validated in this commit. The token-exchange Worker continues
-to use issuer-specific verification until the atomic cutover in the following
-commit.
+Implementation status: Complete. The shared authenticator, OIDC Provider
+Registrations, token-exchange Worker composition, and Token Policy boundaries
+described below are active.
 
 ## Context
 
