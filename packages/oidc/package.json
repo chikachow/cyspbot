@@ -5,10 +5,15 @@
   "type": "module",
   "exports": {
     ".": "./src/verifier.ts",
+    "./id-token-authenticator": "./src/id-token-authenticator.ts",
     "./issuer-adapter": "./src/issuer-adapter.ts",
+    "./provider-metadata": "./src/provider-metadata.ts",
+    "./provider-registration": "./src/provider-registration.ts",
+    "./verified-id-token": "./src/verified-id-token.ts",
     "./verifier": "./src/verifier.ts"
   },
   "dependencies": {
+    "@cyspbot/http": "workspace:*",
     "jose": "6.2.4"
   }
 }

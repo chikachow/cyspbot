@@ -1,3 +1,5 @@
+import { readBodyUpTo } from "./body.ts";
+
 export type BoundedRequestBodyRead =
   | {
       bytes: Uint8Array;
@@ -26,40 +28,9 @@ export async function readRequestBodyUpTo(
     }
   }
 
-  if (request.body === null) {
-    return { bytes: new Uint8Array(), ok: true };
-  }
+  const result = await readBodyUpTo(request.body, maxBytes);
 
-  const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let totalBytes = 0;
-
-  for (;;) {
-    const read = await reader.read();
-
-    if (read.done) {
-      break;
-    }
-
-    totalBytes += read.value.byteLength;
-
-    if (totalBytes > maxBytes) {
-      await reader.cancel().catch(() => undefined);
-      return { ok: false, status: 413 };
-    }
-
-    chunks.push(read.value);
-  }
-
-  const bytes = new Uint8Array(totalBytes);
-  let offset = 0;
-
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-
-  return { bytes, ok: true };
+  return result.ok ? result : { ok: false, status: 413 };
 }
 
 function parseContentLength(value: string): bigint | null {
