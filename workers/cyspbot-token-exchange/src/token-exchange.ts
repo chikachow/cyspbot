@@ -1,6 +1,6 @@
 import { jsonResponse } from "@cyspbot/http/problem-details";
 import { readRequestBodyUpTo } from "@cyspbot/http/request-body";
-import { normalizeInstallationAccessTokenRequest } from "./installation-token-request.ts";
+import { normalizeInstallationAccessTokenRequest } from "./installation-access-token-request.ts";
 import type { TokenExchangeRequestRuntime } from "./dependencies.ts";
 
 const maxTokenExchangeBodyBytes = 64 * 1024;
@@ -86,10 +86,9 @@ export async function handleTokenExchangeRequest(
     return oauthErrorResponse(400, tokenRequest.error);
   }
 
-  const authentication = await runtime.authenticateSubjectToken({
+  const authentication = await runtime.authenticateIdToken({
     request,
     subjectToken,
-    subjectTokenType: "id_token",
   });
 
   if (!authentication.ok) {
@@ -100,7 +99,7 @@ export async function handleTokenExchangeRequest(
     );
   }
 
-  const result = await runtime.issueInstallationToken(
+  const result = await runtime.issueInstallationAccessToken(
     authentication.context,
     tokenRequest.tokenRequest,
   );
@@ -274,13 +273,13 @@ function oauthErrorResponse(status: number, error: string, headers?: HeadersInit
 }
 
 function oauthErrorCodeForAuthenticationFailure(
-  reason: "invalid_token" | "oidc_provider_failure" | "oidc_verifier_failure",
+  reason: "invalid_token" | "oidc_internal_failure" | "oidc_provider_failure",
 ): string {
   if (reason === "oidc_provider_failure") {
     return "temporarily_unavailable";
   }
 
-  if (reason === "oidc_verifier_failure") {
+  if (reason === "oidc_internal_failure") {
     return "server_error";
   }
 
@@ -288,13 +287,13 @@ function oauthErrorCodeForAuthenticationFailure(
 }
 
 function oauthStatusForAuthenticationFailure(
-  reason: "invalid_token" | "oidc_provider_failure" | "oidc_verifier_failure",
+  reason: "invalid_token" | "oidc_internal_failure" | "oidc_provider_failure",
 ): number {
   if (reason === "oidc_provider_failure") {
     return 503;
   }
 
-  if (reason === "oidc_verifier_failure") {
+  if (reason === "oidc_internal_failure") {
     return 500;
   }
 

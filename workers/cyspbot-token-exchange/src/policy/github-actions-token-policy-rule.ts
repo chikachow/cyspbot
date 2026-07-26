@@ -1,8 +1,8 @@
-import { githubActionsTrustedIssuer } from "@cyspbot/oidc-issuer-github-actions";
+import { githubActionsOidcProviderRegistration } from "@cyspbot/oidc-provider-github-actions";
 import { celString } from "./cel-literals.ts";
-import type { TokenPolicyRule } from "./token-policy.ts";
+import type { TokenPolicyRuleDefinition } from "./token-policy.ts";
 
-export function githubActionsInstallationTokenRule(options: {
+export function githubActionsInstallationAccessTokenRule(options: {
   eventNames: readonly string[];
   id: string;
   permissions: Record<string, string>;
@@ -10,7 +10,7 @@ export function githubActionsInstallationTokenRule(options: {
   repository: string;
   resource: string;
   workflowRef: string;
-}): TokenPolicyRule {
+}): TokenPolicyRuleDefinition {
   const [owner, repository, extra] = options.repository.split("/");
 
   if (!owner || !repository || extra !== undefined) {
@@ -25,13 +25,13 @@ export function githubActionsInstallationTokenRule(options: {
     effect: "allow",
     id: options.id,
     issue: {
-      githubInstallationToken: {
+      githubInstallationAccessToken: {
         permissions: options.permissions,
         resource: options.resource,
       },
     },
     subject: {
-      issuer: githubActionsTrustedIssuer.issuer,
+      issuer: githubActionsOidcProviderRegistration.issuer,
     },
     when: [
       `claims["repository"] == ${celString(options.repository)}`,

@@ -30,15 +30,12 @@ importers:
       '@cyspbot/oidc':
         specifier: workspace:*
         version: link:packages/oidc
-      '@cyspbot/oidc-issuer-fly':
+      '@cyspbot/oidc-provider-github-actions':
         specifier: workspace:*
-        version: link:packages/oidc-issuer-fly
-      '@cyspbot/oidc-issuer-github-actions':
+        version: link:packages/oidc-provider-github-actions
+      '@cyspbot/oidc-provider-google-service-account':
         specifier: workspace:*
-        version: link:packages/oidc-issuer-github-actions
-      '@cyspbot/oidc-issuer-google-service-account':
-        specifier: workspace:*
-        version: link:packages/oidc-issuer-google-service-account
+        version: link:packages/oidc-provider-google-service-account
       '@cyspbot/token-exchange':
         specifier: workspace:*
         version: link:workers/cyspbot-token-exchange
@@ -90,19 +87,19 @@ importers:
         specifier: 6.2.4
         version: 6.2.4
 
-  packages/oidc-issuer-fly:
+  packages/oidc-provider-fly:
     dependencies:
       '@cyspbot/oidc':
         specifier: workspace:*
         version: link:../oidc
 
-  packages/oidc-issuer-github-actions:
+  packages/oidc-provider-github-actions:
     dependencies:
       '@cyspbot/oidc':
         specifier: workspace:*
         version: link:../oidc
 
-  packages/oidc-issuer-google-service-account:
+  packages/oidc-provider-google-service-account:
     dependencies:
       '@cyspbot/oidc':
         specifier: workspace:*
@@ -134,18 +131,15 @@ importers:
       '@cyspbot/oidc':
         specifier: workspace:*
         version: link:../../packages/oidc
-      '@cyspbot/oidc-issuer-fly':
+      '@cyspbot/oidc-provider-fly':
         specifier: workspace:*
-        version: link:../../packages/oidc-issuer-fly
-      '@cyspbot/oidc-issuer-github-actions':
+        version: link:../../packages/oidc-provider-fly
+      '@cyspbot/oidc-provider-github-actions':
         specifier: workspace:*
-        version: link:../../packages/oidc-issuer-github-actions
-      '@cyspbot/oidc-issuer-google-service-account':
+        version: link:../../packages/oidc-provider-github-actions
+      '@cyspbot/oidc-provider-google-service-account':
         specifier: workspace:*
-        version: link:../../packages/oidc-issuer-google-service-account
-      jose:
-        specifier: 6.2.4
-        version: 6.2.4
+        version: link:../../packages/oidc-provider-google-service-account
 
 packages:
 

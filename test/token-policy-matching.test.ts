@@ -4,10 +4,12 @@ import {
   evaluateConfiguredTokenPolicy,
   validateTokenPolicyRules,
   type TokenPolicyRule,
+  type TokenPolicyRuleDefinition,
 } from "@cyspbot/token-exchange/policy/token-policy";
-import { normalizeInstallationAccessTokenRequest } from "@cyspbot/token-exchange/installation-token-request";
+import { parseOidcIssuerIdentifier } from "@cyspbot/oidc/provider-registration";
+import { normalizeInstallationAccessTokenRequest } from "@cyspbot/token-exchange/installation-access-token-request";
 import type { VerifiedSubjectToken } from "@cyspbot/token-exchange/authentication";
-import { githubActionsInstallationTokenRule } from "../workers/cyspbot-token-exchange/src/policy/github-actions-token-policy-rule.ts";
+import { githubActionsInstallationAccessTokenRule } from "../workers/cyspbot-token-exchange/src/policy/github-actions-token-policy-rule.ts";
 import {
   crossOwnerActionsTokenRequest,
   fixtureRef,
@@ -16,19 +18,19 @@ import {
   fixtureTargetResource,
   mustParseRepositoryResource,
   sameRepositoryTokenRequest,
-  subjectToken,
+  verifiedSubjectToken,
 } from "./support/token-policy-fixtures.ts";
 import { createVerifiedSubjectToken } from "./support/oidc.ts";
 import { testTokenPolicyRules } from "./support/token-policy.ts";
 
-const fixtureOtherIssuer = "https://issuer.example";
+const fixtureOtherIssuer = mustParseTestIssuer("https://issuer.example");
 
 describe("Token Policy matching", () => {
   it("allows an exact same-repository PR-authoring request", () => {
     expect(
       evaluateConfiguredTokenPolicy(
         {
-          subjectToken,
+          verifiedSubjectToken,
           tokenRequest: sameRepositoryTokenRequest(),
         },
         testTokenPolicyRules,
@@ -40,7 +42,7 @@ describe("Token Policy matching", () => {
     expect(
       evaluateConfiguredTokenPolicy(
         {
-          subjectToken,
+          verifiedSubjectToken,
           tokenRequest: crossOwnerActionsTokenRequest(),
         },
         testTokenPolicyRules,
@@ -63,10 +65,10 @@ describe("Token Policy matching", () => {
     expect(
       evaluateConfiguredTokenPolicy(
         {
-          subjectToken: {
-            ...subjectToken,
+          verifiedSubjectToken: {
+            ...verifiedSubjectToken,
             claims: {
-              ...subjectToken.claims,
+              ...verifiedSubjectToken.claims,
               ...claimsPatch,
             },
           },
@@ -81,13 +83,13 @@ describe("Token Policy matching", () => {
   });
 
   it("treats missing CEL claims as non-matching conditions", () => {
-    const { repository: _repository, ...claims } = subjectToken.claims;
+    const { repository: _repository, ...claims } = verifiedSubjectToken.claims;
 
     expect(
       evaluateConfiguredTokenPolicy(
         {
-          subjectToken: {
-            ...subjectToken,
+          verifiedSubjectToken: {
+            ...verifiedSubjectToken,
             claims,
           },
           tokenRequest: sameRepositoryTokenRequest(),
@@ -104,10 +106,10 @@ describe("Token Policy matching", () => {
     expect(
       evaluateConfiguredTokenPolicy(
         {
-          subjectToken: {
-            ...subjectToken,
+          verifiedSubjectToken: {
+            ...verifiedSubjectToken,
             claims: {
-              ...subjectToken.claims,
+              ...verifiedSubjectToken.claims,
               repository: [fixtureSourceRepository],
             },
           },
@@ -125,7 +127,7 @@ describe("Token Policy matching", () => {
     expect(
       evaluateConfiguredTokenPolicy(
         {
-          subjectToken,
+          verifiedSubjectToken,
           tokenRequest: {
             ...crossOwnerActionsTokenRequest(),
             resource: mustParseRepositoryResource(
@@ -145,7 +147,7 @@ describe("Token Policy matching", () => {
     expect(
       evaluateConfiguredTokenPolicy(
         {
-          subjectToken,
+          verifiedSubjectToken,
           tokenRequest: {
             ...sameRepositoryTokenRequest(),
             permissions: {
@@ -168,13 +170,13 @@ describe("Token Policy matching", () => {
         email_verified: true,
         sub: "107517467455664443765",
       },
-      { issuer: fixtureOtherIssuer, resolvedKeyId: "fixture-other-key" },
+      { issuer: fixtureOtherIssuer },
     );
     const otherIssuerRule: TokenPolicyRule = {
       effect: "allow",
       id: "test-other-issuer",
       issue: {
-        githubInstallationToken: {
+        githubInstallationAccessToken: {
           permissions: {
             contents: "write",
           },
@@ -198,7 +200,7 @@ describe("Token Policy matching", () => {
     expect(
       evaluateConfiguredTokenPolicy(
         {
-          subjectToken: otherSubjectToken,
+          verifiedSubjectToken: otherSubjectToken,
           tokenRequest: tokenRequest.ok ? tokenRequest.tokenRequest : sameRepositoryTokenRequest(),
         },
         validateTokenPolicyRules([otherIssuerRule]),
@@ -223,21 +225,14 @@ describe("Token Policy matching", () => {
       'claims["metadata"]["environment"] == "production"',
       { metadata: { environment: "production" } },
     ],
-    [
-      "subject binding",
-      `subject["issuer"] == "${fixtureOtherIssuer}" && subject["subjectTokenType"] == "id_token"`,
-      {},
-    ],
   ])("allows typed CEL conditions over a %s", (_name, when, additionalClaims) => {
     const typedSubjectToken: VerifiedSubjectToken = {
       claims: {
-        ...subjectToken.claims,
+        ...verifiedSubjectToken.claims,
         iss: fixtureOtherIssuer,
         ...additionalClaims,
       },
       issuer: fixtureOtherIssuer,
-      resolvedKeyId: "fixture-other-key",
-      subjectTokenType: "id_token",
     };
     const rule = tokenPolicyRuleWithCondition(when);
     const tokenRequest = normalizeInstallationAccessTokenRequest({
@@ -249,7 +244,7 @@ describe("Token Policy matching", () => {
     expect(
       evaluateConfiguredTokenPolicy(
         {
-          subjectToken: typedSubjectToken,
+          verifiedSubjectToken: typedSubjectToken,
           tokenRequest: tokenRequest.ok ? tokenRequest.tokenRequest : sameRepositoryTokenRequest(),
         },
         validateTokenPolicyRules([rule]),
@@ -269,10 +264,10 @@ describe("Token Policy matching", () => {
     expect(
       evaluateConfiguredTokenPolicy(
         {
-          subjectToken: {
-            ...subjectToken,
+          verifiedSubjectToken: {
+            ...verifiedSubjectToken,
             claims: {
-              ...subjectToken.claims,
+              ...verifiedSubjectToken.claims,
               ...claimsPatch,
             },
             issuer: fixtureOtherIssuer,
@@ -292,7 +287,7 @@ describe("Token Policy matching", () => {
   });
 
   it("fails closed when CEL evaluation throws", () => {
-    const claims = { ...subjectToken.claims };
+    const claims = { ...verifiedSubjectToken.claims };
 
     Object.defineProperty(claims, "unreadable", {
       enumerable: true,
@@ -304,8 +299,8 @@ describe("Token Policy matching", () => {
     expect(
       evaluateConfiguredTokenPolicy(
         {
-          subjectToken: {
-            ...subjectToken,
+          verifiedSubjectToken: {
+            ...verifiedSubjectToken,
             claims,
             issuer: fixtureOtherIssuer,
           },
@@ -329,8 +324,8 @@ describe("Token Policy matching", () => {
     expect(
       evaluateConfiguredTokenPolicy(
         {
-          subjectToken: {
-            ...subjectToken,
+          verifiedSubjectToken: {
+            ...verifiedSubjectToken,
             issuer: fixtureOtherIssuer,
           },
           tokenRequest: {
@@ -350,20 +345,27 @@ describe("Token Policy matching", () => {
 
 describe("Token Policy rule validation", () => {
   it.each([
-    ["empty id", (rule: TokenPolicyRule) => ({ ...rule, id: "" }), "id"],
-    ["empty issuer", (rule: TokenPolicyRule) => ({ ...rule, subject: { issuer: "" } }), "id"],
+    ["empty id", (rule: TokenPolicyRuleDefinition) => ({ ...rule, id: "" }), "id"],
+    [
+      "empty issuer",
+      (rule: TokenPolicyRuleDefinition) => ({ ...rule, subject: { issuer: "" } }),
+      "OIDC Issuer Identifier",
+    ],
     [
       "unsupported effect",
-      (rule: TokenPolicyRule) => ({ ...rule, effect: "deny" as TokenPolicyRule["effect"] }),
+      (rule: TokenPolicyRuleDefinition) => ({
+        ...rule,
+        effect: "deny" as TokenPolicyRuleDefinition["effect"],
+      }),
       "effect",
     ],
     [
       "empty resource",
-      (rule: TokenPolicyRule) => ({
+      (rule: TokenPolicyRuleDefinition) => ({
         ...rule,
         issue: {
-          githubInstallationToken: {
-            ...rule.issue.githubInstallationToken,
+          githubInstallationAccessToken: {
+            ...rule.issue.githubInstallationAccessToken,
             resource: "",
           },
         },
@@ -372,11 +374,11 @@ describe("Token Policy rule validation", () => {
     ],
     [
       "empty permissions",
-      (rule: TokenPolicyRule) => ({
+      (rule: TokenPolicyRuleDefinition) => ({
         ...rule,
         issue: {
-          githubInstallationToken: {
-            ...rule.issue.githubInstallationToken,
+          githubInstallationAccessToken: {
+            ...rule.issue.githubInstallationAccessToken,
             permissions: {},
           },
         },
@@ -385,18 +387,18 @@ describe("Token Policy rule validation", () => {
     ],
     [
       "unsupported permission",
-      (rule: TokenPolicyRule) => ({
+      (rule: TokenPolicyRuleDefinition) => ({
         ...rule,
         issue: {
-          githubInstallationToken: {
-            ...rule.issue.githubInstallationToken,
+          githubInstallationAccessToken: {
+            ...rule.issue.githubInstallationAccessToken,
             permissions: { administration: "write" },
           },
         },
       }),
       "permissions",
     ],
-    ["empty condition", (rule: TokenPolicyRule) => ({ ...rule, when: "" }), "condition"],
+    ["empty condition", (rule: TokenPolicyRuleDefinition) => ({ ...rule, when: "" }), "condition"],
   ])("rejects a policy rule with %s", (_name, mutateRule, errorKind) => {
     const rule = testTokenPolicyRules[0] as TokenPolicyRule;
 
@@ -414,11 +416,47 @@ describe("Token Policy rule validation", () => {
     expect(validateTokenPolicyRules([rule])).toEqual([rule]);
   });
 
+  it.each([
+    "issuer.example",
+    "http://issuer.example",
+    "https://issuer.example?query",
+    "https://issuer.example#fragment",
+  ])("rejects an invalid policy OIDC Issuer Identifier: %s", (issuer) => {
+    const definition: TokenPolicyRuleDefinition = {
+      ...(testTokenPolicyRules[0] as TokenPolicyRule),
+      id: "invalid-issuer",
+      subject: { issuer },
+    };
+
+    expect(() => validateTokenPolicyRules([definition])).toThrow(
+      "invalid token policy rule OIDC Issuer Identifier",
+    );
+  });
+
+  it("returns new deeply frozen rules with exact branded Issuer Identifiers", () => {
+    const definition: TokenPolicyRuleDefinition = {
+      ...(testTokenPolicyRules[0] as TokenPolicyRule),
+      id: "frozen-rule",
+    };
+    const definitions = [definition];
+    const policy = validateTokenPolicyRules(definitions);
+    const rule = policy[0];
+
+    expect(policy).not.toBe(definitions);
+    expect(rule).not.toBe(definition);
+    expect(rule?.subject.issuer).toBe(definition.subject.issuer);
+    expect(Object.isFrozen(policy)).toBe(true);
+    expect(Object.isFrozen(rule)).toBe(true);
+    expect(Object.isFrozen(rule?.subject)).toBe(true);
+    expect(Object.isFrozen(rule?.issue.githubInstallationAccessToken)).toBe(true);
+    expect(Object.isFrozen(rule?.issue.githubInstallationAccessToken.permissions)).toBe(true);
+  });
+
   it.each(["owner", "/repository", "owner/", "owner/repository/extra"])(
     "rejects invalid GitHub Actions policy repository %s",
     (repository) => {
       expect(() =>
-        githubActionsInstallationTokenRule({
+        githubActionsInstallationAccessTokenRule({
           eventNames: ["workflow_dispatch"],
           id: "invalid-repository",
           permissions: { contents: "write" },
@@ -438,7 +476,7 @@ describe("Token Policy rule validation", () => {
     ["workflow ref", { workflowRef: "" }],
   ])("rejects a GitHub Actions policy rule without %s", (_name, optionsPatch) => {
     expect(() =>
-      githubActionsInstallationTokenRule({
+      githubActionsInstallationAccessTokenRule({
         eventNames: ["workflow_dispatch"],
         id: "missing-required-input",
         permissions: { contents: "write" },
@@ -475,8 +513,8 @@ describe("Token Policy rule validation", () => {
           ...rule,
           id: `${rule.id}-copy`,
           issue: {
-            githubInstallationToken: {
-              ...rule.issue.githubInstallationToken,
+            githubInstallationAccessToken: {
+              ...rule.issue.githubInstallationAccessToken,
               permissions: {
                 pull_requests: "write",
                 contents: "write",
@@ -504,7 +542,7 @@ describe("Token Policy rule validation", () => {
 
   it("validates non-boolean CEL structurally and denies it at runtime", () => {
     const rule = {
-      ...githubActionsInstallationTokenRule({
+      ...githubActionsInstallationAccessTokenRule({
         eventNames: ["workflow_dispatch"],
         id: "non-boolean-cel",
         permissions: {
@@ -523,7 +561,7 @@ describe("Token Policy rule validation", () => {
     expect(
       evaluateConfiguredTokenPolicy(
         {
-          subjectToken,
+          verifiedSubjectToken,
           tokenRequest: sameRepositoryTokenRequest(),
         },
         validateTokenPolicyRules([rule]),
@@ -536,7 +574,7 @@ describe("Token Policy rule validation", () => {
 
   it("validates unknown CEL identifiers structurally and denies them at runtime", () => {
     const rule = {
-      ...githubActionsInstallationTokenRule({
+      ...githubActionsInstallationAccessTokenRule({
         eventNames: ["workflow_dispatch"],
         id: "unknown-cel-identifier",
         permissions: {
@@ -555,7 +593,7 @@ describe("Token Policy rule validation", () => {
     expect(
       evaluateConfiguredTokenPolicy(
         {
-          subjectToken,
+          verifiedSubjectToken,
           tokenRequest: sameRepositoryTokenRequest(),
         },
         validateTokenPolicyRules([rule]),
@@ -570,8 +608,8 @@ describe("Token Policy rule validation", () => {
     expect(
       evaluateConfiguredTokenPolicy(
         {
-          subjectToken: {
-            ...subjectToken,
+          verifiedSubjectToken: {
+            ...verifiedSubjectToken,
             issuer: fixtureOtherIssuer,
           },
           tokenRequest: sameRepositoryTokenRequest(),
@@ -585,12 +623,12 @@ describe("Token Policy rule validation", () => {
   });
 });
 
-function tokenPolicyRuleWithCondition(when: string): TokenPolicyRule {
+function tokenPolicyRuleWithCondition(when: string): TokenPolicyRuleDefinition {
   return {
     effect: "allow",
     id: "test-typed-cel-condition",
     issue: {
-      githubInstallationToken: {
+      githubInstallationAccessToken: {
         permissions: {
           contents: "write",
         },
@@ -602,4 +640,14 @@ function tokenPolicyRuleWithCondition(when: string): TokenPolicyRule {
     },
     when,
   };
+}
+
+function mustParseTestIssuer(value: string) {
+  const issuer = parseOidcIssuerIdentifier(value);
+
+  if (issuer === null) {
+    throw new TypeError("test fixture issuer must be a valid OIDC Issuer Identifier");
+  }
+
+  return issuer;
 }

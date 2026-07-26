@@ -1,37 +1,36 @@
 import { CelScalar, celEnv, mapType, parse, plan, type CelInput } from "@bufbuild/cel";
 import type { VerifiedSubjectToken } from "../authentication.ts";
-import type { TokenPolicyRule } from "./token-policy.ts";
+import type { TokenPolicyRuleDefinition } from "./token-policy.ts";
 
 const tokenPolicyCelEnv = celEnv({
   variables: {
     claims: mapType(CelScalar.STRING, CelScalar.DYN),
-    subject: mapType(CelScalar.STRING, CelScalar.DYN),
   },
 });
-const compiledTokenPolicyRules = new WeakMap<TokenPolicyRule, CompiledTokenPolicyRule>();
+const compiledTokenPolicyRules = new WeakMap<TokenPolicyRuleDefinition, CompiledTokenPolicyRule>();
 
 interface CompiledTokenPolicyRule {
   evaluate(bindings: Record<string, CelInput>): unknown;
 }
 
-export function tokenPolicyConditionIsValid(rule: TokenPolicyRule): boolean {
+export function tokenPolicyConditionIsValid(rule: TokenPolicyRuleDefinition): boolean {
   return compileTokenPolicyRule(rule) !== null;
 }
 
 export function tokenPolicyConditionMatches(
-  rule: TokenPolicyRule,
-  subjectToken: VerifiedSubjectToken,
+  rule: TokenPolicyRuleDefinition,
+  verifiedSubjectToken: VerifiedSubjectToken,
 ): boolean {
   try {
     const compiledRule = compileTokenPolicyRule(rule);
 
-    return compiledRule?.evaluate(tokenPolicyCelBindings(subjectToken)) === true;
+    return compiledRule?.evaluate(tokenPolicyCelBindings(verifiedSubjectToken)) === true;
   } catch {
     return false;
   }
 }
 
-function compileTokenPolicyRule(rule: TokenPolicyRule): CompiledTokenPolicyRule | null {
+function compileTokenPolicyRule(rule: TokenPolicyRuleDefinition): CompiledTokenPolicyRule | null {
   const compiledRule = compiledTokenPolicyRules.get(rule);
 
   if (compiledRule !== undefined) {
@@ -51,16 +50,10 @@ function compileTokenPolicyRule(rule: TokenPolicyRule): CompiledTokenPolicyRule 
   }
 }
 
-function tokenPolicyCelBindings(subjectToken: VerifiedSubjectToken): Record<string, CelInput> {
-  const claims = subjectToken.claims as Record<string, CelInput>;
-
+function tokenPolicyCelBindings(
+  verifiedSubjectToken: VerifiedSubjectToken,
+): Record<string, CelInput> {
   return {
-    claims,
-    subject: {
-      claims,
-      issuer: subjectToken.issuer,
-      resolvedKeyId: subjectToken.resolvedKeyId,
-      subjectTokenType: subjectToken.subjectTokenType,
-    },
+    claims: verifiedSubjectToken.claims as Record<string, CelInput>,
   };
 }

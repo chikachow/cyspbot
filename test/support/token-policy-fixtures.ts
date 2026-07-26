@@ -1,10 +1,10 @@
-import { githubActionsTrustedIssuer } from "@cyspbot/oidc-issuer-github-actions";
+import { githubActionsOidcProviderRegistration } from "@cyspbot/oidc-provider-github-actions";
 import {
   normalizeInstallationAccessTokenRequest,
   parseGitHubRepositoryResource,
   type GitHubRepositoryResource,
   type InstallationAccessTokenRequest,
-} from "@cyspbot/token-exchange/installation-token-request";
+} from "@cyspbot/token-exchange/installation-access-token-request";
 import { createVerifiedSubjectToken } from "./oidc.ts";
 
 export const fixtureRef = "refs/heads/fixture-base-branch";
@@ -15,7 +15,7 @@ export const fixtureTargetResource =
 
 const fixtureWorkflowRef = `${fixtureSourceRepository}/.github/workflows/fixture-token-request.yml@${fixtureRef}`;
 
-export const subjectToken = createVerifiedSubjectToken(
+export const verifiedSubjectToken = createVerifiedSubjectToken(
   {
     actor: "dependabot[bot]",
     event_name: "workflow_dispatch",
@@ -32,7 +32,7 @@ export const subjectToken = createVerifiedSubjectToken(
     workflow: "fixture token request",
     workflow_ref: fixtureWorkflowRef,
   },
-  { issuer: githubActionsTrustedIssuer.issuer, resolvedKeyId: "fixture-key" },
+  { issuer: githubActionsOidcProviderRegistration.issuer },
 );
 
 export function sameRepositoryTokenRequest(): InstallationAccessTokenRequest {

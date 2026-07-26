@@ -3,10 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   evaluateConfiguredTokenPolicy,
   validateTokenPolicyRules,
-  type TokenPolicyRule,
+  type TokenPolicyRuleDefinition,
 } from "@cyspbot/token-exchange/policy/token-policy";
-import { normalizeInstallationAccessTokenRequest } from "@cyspbot/token-exchange/installation-token-request";
-import { flyMachineInstallationTokenRule } from "@cyspbot/token-exchange/policy/fly-machine-token-policy-rule";
+import { normalizeInstallationAccessTokenRequest } from "@cyspbot/token-exchange/installation-access-token-request";
+import { flyMachineInstallationAccessTokenRule } from "@cyspbot/token-exchange/policy/fly-machine-token-policy-rule";
 import type { VerifiedSubjectToken } from "@cyspbot/token-exchange/authentication";
 import { createVerifiedSubjectToken } from "./support/oidc.ts";
 
@@ -19,7 +19,7 @@ const claims = {
   org_id: "fly-org-id",
 };
 
-describe("Fly Machine installation-token policy rules", () => {
+describe("Fly Machine installation-access-token policy rules", () => {
   it("allows an exact organization and app identity by provider-assigned IDs", () => {
     const rule = flyRule();
 
@@ -100,9 +100,9 @@ describe("Fly Machine installation-token policy rules", () => {
 });
 
 function flyRule(
-  overrides: Partial<Parameters<typeof flyMachineInstallationTokenRule>[0]> = {},
-): TokenPolicyRule {
-  return flyMachineInstallationTokenRule({
+  overrides: Partial<Parameters<typeof flyMachineInstallationAccessTokenRule>[0]> = {},
+): TokenPolicyRuleDefinition {
+  return flyMachineInstallationAccessTokenRule({
     appId: "fly-app-id",
     id: "test-fly-machine",
     orgId: "fly-org-id",
@@ -114,11 +114,11 @@ function flyRule(
 }
 
 function evaluate(
-  rule: TokenPolicyRule,
+  rule: TokenPolicyRuleDefinition,
   tokenClaims: Record<string, unknown>,
   request: { resource?: string; scope?: string } = {},
 ) {
-  const subjectToken = flySubjectToken(tokenClaims);
+  const verifiedSubjectToken = flySubjectToken(tokenClaims);
   const tokenRequest = normalizeInstallationAccessTokenRequest({
     resource: request.resource ?? resource,
     scope: request.scope ?? "contents:write",
@@ -129,7 +129,7 @@ function evaluate(
   }
 
   return evaluateConfiguredTokenPolicy(
-    { subjectToken, tokenRequest: tokenRequest.tokenRequest },
+    { verifiedSubjectToken, tokenRequest: tokenRequest.tokenRequest },
     validateTokenPolicyRules([rule]),
   );
 }
@@ -137,6 +137,5 @@ function evaluate(
 function flySubjectToken(tokenClaims: Record<string, unknown>): VerifiedSubjectToken {
   return createVerifiedSubjectToken(tokenClaims, {
     issuer,
-    resolvedKeyId: "fly-key",
   });
 }

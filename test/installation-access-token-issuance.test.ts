@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { VerifiedSubjectToken } from "@cyspbot/token-exchange/authentication";
 
-import { issueInstallationTokenForContext } from "../workers/cyspbot-token-exchange/src/policy/installation-token-issuance.ts";
+import { issueInstallationAccessTokenForContext } from "../workers/cyspbot-token-exchange/src/policy/installation-access-token-issuance.ts";
 import { testRepository, testInstallationId } from "./support/constants.ts";
 import { fetchGitHubTestDouble } from "./support/github-api.ts";
 import { createVerifiedSubjectToken } from "./support/oidc.ts";
@@ -26,7 +26,7 @@ const tokenRequest = {
   scope: "contents:write pull_requests:write",
 } as const;
 
-const subjectToken: VerifiedSubjectToken = createVerifiedSubjectToken({
+const verifiedSubjectToken: VerifiedSubjectToken = createVerifiedSubjectToken({
   actor: "dependabot[bot]",
   event_name: "workflow_dispatch",
   ref: "refs/heads/fixture-base-branch",
@@ -36,9 +36,10 @@ const subjectToken: VerifiedSubjectToken = createVerifiedSubjectToken({
   workflow_ref:
     "fixture-owner/fixture-source-repository/.github/workflows/fixture-token-request.yml@refs/heads/fixture-base-branch",
 });
+const verificationEvidence = { resolvedKeyId: "test-key-1" };
 
-describe("installation token issuance", () => {
-  it("rejects installation token requests that select extra repositories", async () => {
+describe("Installation Access Token Issuance", () => {
+  it("rejects Installation Access Token Requests that select extra repositories", async () => {
     const response = await fetchGitHubTestDouble(
       `https://api.github.com/app/installations/${testInstallationId}/access_tokens`,
       {
@@ -65,10 +66,11 @@ describe("installation token issuance", () => {
     const requestedPaths: string[] = [];
 
     await expect(
-      issueInstallationTokenForContext(
+      issueInstallationAccessTokenForContext(
         application,
         {
-          subjectToken,
+          verifiedSubjectToken,
+          verificationEvidence,
         },
         tokenRequest,
         {
@@ -100,10 +102,11 @@ describe("installation token issuance", () => {
 
     try {
       await expect(
-        issueInstallationTokenForContext(
+        issueInstallationAccessTokenForContext(
           application,
           {
-            subjectToken,
+            verifiedSubjectToken,
+            verificationEvidence,
           },
           tokenRequest,
           { fetch: fetchGitHubTestDouble },
@@ -117,7 +120,7 @@ describe("installation token issuance", () => {
     }
 
     expect(consoleInfo).toHaveBeenCalledWith({
-      event: "installation_token_issuance_succeeded",
+      event: "installation_access_token_issuance_succeeded",
       expires_at: "2030-01-01T00:00:00Z",
       subject_token: expect.objectContaining({
         issuer: "https://token.actions.githubusercontent.com",
@@ -133,7 +136,7 @@ describe("installation token issuance", () => {
         matched: true,
         rule_id: "test-github-same-repository",
       },
-      token_request: {
+      installation_access_token_request: {
         permissions: {
           contents: "write",
           pull_requests: "write",
@@ -152,9 +155,14 @@ describe("installation token issuance", () => {
 
     try {
       await expect(
-        issueInstallationTokenForContext(application, { subjectToken }, tokenRequest, {
-          fetch: async () => new Response("upstream failure", { status: 500 }),
-        }),
+        issueInstallationAccessTokenForContext(
+          application,
+          { verifiedSubjectToken, verificationEvidence },
+          tokenRequest,
+          {
+            fetch: async () => new Response("upstream failure", { status: 500 }),
+          },
+        ),
       ).resolves.toEqual({ ok: false, status: 502 });
     } finally {
       console.error = originalError;
@@ -162,7 +170,7 @@ describe("installation token issuance", () => {
 
     expect(consoleError).toHaveBeenCalledWith(
       expect.objectContaining({
-        event: "installation_token_issuance_failed",
+        event: "installation_access_token_issuance_failed",
         subject_token: expect.objectContaining({
           issuer: "https://token.actions.githubusercontent.com",
           sub: "repo:fixture-owner/fixture-source-repository:ref:refs/heads/fixture-base-branch",
@@ -182,16 +190,17 @@ describe("installation token issuance", () => {
 
     try {
       await expect(
-        issueInstallationTokenForContext(
+        issueInstallationAccessTokenForContext(
           application,
           {
-            subjectToken: {
-              ...subjectToken,
+            verifiedSubjectToken: {
+              ...verifiedSubjectToken,
               claims: {
-                ...subjectToken.claims,
+                ...verifiedSubjectToken.claims,
                 event_name: "push",
               },
             },
+            verificationEvidence,
           },
           tokenRequest,
           { fetch: fetchGitHubTestDouble },
@@ -203,7 +212,7 @@ describe("installation token issuance", () => {
 
     expect(consoleError).toHaveBeenCalledWith(
       expect.objectContaining({
-        event: "installation_token_issuance_failed",
+        event: "installation_access_token_issuance_failed",
         subject_token: expect.objectContaining({
           issuer: "https://token.actions.githubusercontent.com",
           sub: "repo:fixture-owner/fixture-source-repository:ref:refs/heads/fixture-base-branch",

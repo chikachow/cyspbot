@@ -1,32 +1,26 @@
-import type { OidcIssuerAdapter } from "@cyspbot/oidc/issuer-adapter";
-import type { TrustedOidcIssuer, VerifiedOidcIdToken } from "@cyspbot/oidc";
-import { OidcIdTokenVerifier } from "@cyspbot/oidc/verifier";
-import { decodeJwt } from "jose";
+import type {
+  OidcIdTokenAuthenticationFailure,
+  OidcIdTokenAuthenticator,
+  OidcVerificationEvidence,
+  VerifiedSubjectToken,
+} from "@cyspbot/oidc/id-token-authenticator";
 
-export const cyspbotOidcAudience = "cyspbot";
-
-export type SubjectTokenType = "id_token";
-
-export interface VerifiedSubjectToken {
-  claims: VerifiedOidcIdToken["claims"];
-  issuer: string;
-  resolvedKeyId: string | null;
-  subjectTokenType: SubjectTokenType;
-}
+export type { VerifiedSubjectToken } from "@cyspbot/oidc/id-token-authenticator";
 
 export interface AuthenticatedContext {
-  subjectToken: VerifiedSubjectToken;
+  readonly verificationEvidence: OidcVerificationEvidence;
+  readonly verifiedSubjectToken: VerifiedSubjectToken;
 }
 
 type AuthenticateRequestFailureReason =
   | "invalid_token"
-  | "oidc_provider_failure"
-  | "oidc_verifier_failure";
+  | "oidc_internal_failure"
+  | "oidc_provider_failure";
 
 interface AuthenticateRequestFailure {
-  errorCode?: string;
+  diagnosticCode?: string;
   ok: false;
-  providerStatus?: number;
+  providerHttpStatus?: number;
   reason: AuthenticateRequestFailureReason;
   responseHeaders?: HeadersInit;
 }
@@ -38,63 +32,24 @@ interface AuthenticateRequestSuccess {
 
 export type AuthenticateRequestResult = AuthenticateRequestFailure | AuthenticateRequestSuccess;
 
-export async function authenticateOidcToken(
-  token: string,
-  subjectTokenType: SubjectTokenType,
+export async function authenticateOidcIdToken(
+  subjectToken: string,
   request: Request,
-  expectedAudience: string,
-  issuerAdapters: readonly OidcIssuerAdapter[],
-  fetchJwks?: typeof fetch,
+  authenticator: OidcIdTokenAuthenticator,
 ): Promise<AuthenticateRequestResult> {
-  const issuerResolution = trustedIssuerForSubjectToken(token, issuerAdapters);
+  const authentication = await authenticator.authenticateIdToken(subjectToken);
 
-  if (!issuerResolution.ok) {
-    logAuthFailure(request, issuerResolution.reason);
+  if (!authentication.ok) {
+    const { failure } = authentication;
+    const reason = authenticationFailureReason(failure);
+    const diagnostics = authenticationFailureDiagnostics(failure);
 
-    return {
-      ok: false,
-      reason: issuerResolution.reason,
-      responseHeaders: {
-        "www-authenticate": "Bearer",
-      },
-    };
-  }
-
-  const verified = await oidcVerifierForTrustedIssuer(
-    issuerResolution.trustedIssuer,
-    fetchJwks,
-  ).verify(token);
-
-  if (!verified.ok) {
-    const reason = authenticationFailureReasonForVerifierFailure(verified.reason);
-    logAuthFailure(request, reason, {
-      ...(verified.errorCode === undefined ? {} : { errorCode: verified.errorCode }),
-      ...(verified.providerStatus === undefined ? {} : { providerStatus: verified.providerStatus }),
-    });
+    logAuthenticationFailure(request, reason, diagnostics);
 
     return {
-      ...(verified.errorCode === undefined ? {} : { errorCode: verified.errorCode }),
+      ...diagnostics,
       ok: false,
-      ...(verified.providerStatus === undefined ? {} : { providerStatus: verified.providerStatus }),
       reason,
-      responseHeaders: {
-        "www-authenticate": "Bearer",
-      },
-    };
-  }
-
-  if (
-    !hasMatchingAudience(verified.token.claims.aud, expectedAudience) ||
-    !issuerResolution.adapter.validateSubjectTokenBinding({
-      expectedAudience,
-      verifiedToken: verified.token,
-    })
-  ) {
-    logAuthFailure(request, "invalid_token");
-
-    return {
-      ok: false,
-      reason: "invalid_token",
       responseHeaders: {
         "www-authenticate": "Bearer",
       },
@@ -103,129 +58,51 @@ export async function authenticateOidcToken(
 
   return {
     context: {
-      subjectToken: {
-        claims: verified.token.claims,
-        issuer: verified.token.issuer,
-        resolvedKeyId: verified.token.resolvedKeyId,
-        subjectTokenType,
-      },
+      verificationEvidence: authentication.verificationEvidence,
+      verifiedSubjectToken: authentication.verifiedSubjectToken,
     },
     ok: true,
   };
 }
 
-interface CachedOidcIdTokenVerifiers {
-  defaultVerifier?: OidcIdTokenVerifier;
-  injectedFetchVerifiers: WeakMap<typeof fetch, OidcIdTokenVerifier>;
-}
-
-const oidcVerifiers = new WeakMap<TrustedOidcIssuer, CachedOidcIdTokenVerifiers>();
-
-function trustedIssuerForSubjectToken(
-  token: string,
-  issuerAdapters: readonly OidcIssuerAdapter[],
-):
-  | {
-      adapter: OidcIssuerAdapter;
-      trustedIssuer: TrustedOidcIssuer;
-      ok: true;
-    }
-  | { ok: false; reason: AuthenticateRequestFailureReason } {
-  const unverifiedTokenIssuer = unverifiedIssuer(token);
-
-  if (unverifiedTokenIssuer === null) {
-    return { ok: false, reason: "invalid_token" };
-  }
-
-  for (const adapter of issuerAdapters) {
-    const resolution = adapter.resolveIssuer(unverifiedTokenIssuer);
-
-    if (resolution.status === "unhandled") {
-      continue;
-    }
-
-    return { adapter, ok: true, trustedIssuer: resolution.trustedIssuer };
-  }
-
-  return { ok: false, reason: "invalid_token" };
-}
-
-function oidcVerifierForTrustedIssuer(
-  issuer: TrustedOidcIssuer,
-  fetchJwks: typeof fetch | undefined,
-): OidcIdTokenVerifier {
-  let cachedVerifiers = oidcVerifiers.get(issuer);
-
-  if (cachedVerifiers === undefined) {
-    cachedVerifiers = { injectedFetchVerifiers: new WeakMap() };
-    oidcVerifiers.set(issuer, cachedVerifiers);
-  }
-
-  if (fetchJwks !== undefined) {
-    const injectedFetchVerifier = cachedVerifiers.injectedFetchVerifiers.get(fetchJwks);
-
-    if (injectedFetchVerifier !== undefined) {
-      return injectedFetchVerifier;
-    }
-
-    const verifier = new OidcIdTokenVerifier({ fetchJwks, issuer });
-    cachedVerifiers.injectedFetchVerifiers.set(fetchJwks, verifier);
-
-    return verifier;
-  }
-
-  if (cachedVerifiers.defaultVerifier !== undefined) {
-    return cachedVerifiers.defaultVerifier;
-  }
-
-  const verifier = new OidcIdTokenVerifier({ issuer });
-  cachedVerifiers.defaultVerifier = verifier;
-
-  return verifier;
-}
-
-function unverifiedIssuer(token: string): string | null {
-  try {
-    const issuer = decodeJwt(token).iss;
-
-    return typeof issuer === "string" && issuer.length > 0 ? issuer : null;
-  } catch {
-    return null;
-  }
-}
-
-function hasMatchingAudience(audienceClaim: unknown, expectedAudience: string): boolean {
-  return typeof audienceClaim === "string" && audienceClaim === expectedAudience;
-}
-
-function logAuthFailure(
+function logAuthenticationFailure(
   request: Request,
   reason: AuthenticateRequestFailureReason,
-  diagnostics: { errorCode?: string; providerStatus?: number } = {},
+  diagnostics: Pick<AuthenticateRequestFailure, "diagnosticCode" | "providerHttpStatus">,
 ): void {
   const url = new URL(request.url);
 
   console.warn("OIDC authentication failed", {
+    ...diagnostics,
     path: url.pathname,
     rayId: request.headers.get("cf-ray"),
     reason,
-    ...(diagnostics.errorCode === undefined ? {} : { errorCode: diagnostics.errorCode }),
-    ...(diagnostics.providerStatus === undefined
-      ? {}
-      : { providerStatus: diagnostics.providerStatus }),
     userAgent: request.headers.get("user-agent"),
   });
 }
 
-function authenticationFailureReasonForVerifierFailure(
-  reason: "invalid_token" | "provider_failure" | "verifier_failure",
+function authenticationFailureDiagnostics(
+  failure: OidcIdTokenAuthenticationFailure,
+): Pick<AuthenticateRequestFailure, "diagnosticCode" | "providerHttpStatus"> {
+  const { diagnosticCode } = failure.diagnostics;
+  const providerHttpStatus =
+    failure.kind === "provider_unavailable" ? failure.diagnostics.providerHttpStatus : undefined;
+
+  return {
+    ...(diagnosticCode === undefined ? {} : { diagnosticCode }),
+    ...(providerHttpStatus === undefined ? {} : { providerHttpStatus }),
+  };
+}
+
+function authenticationFailureReason(
+  failure: OidcIdTokenAuthenticationFailure,
 ): AuthenticateRequestFailureReason {
-  if (reason === "provider_failure") {
+  if (failure.kind === "provider_unavailable") {
     return "oidc_provider_failure";
   }
 
-  if (reason === "verifier_failure") {
-    return "oidc_verifier_failure";
+  if (failure.kind === "internal_failure") {
+    return "oidc_internal_failure";
   }
 
   return "invalid_token";

@@ -8,14 +8,14 @@ Production deployment is handled by a separate pipeline outside this codebase.
 
 The implementation is split into two deployable workspace packages:
 
-- `@cyspbot/token-exchange` deploys Worker `cyspbot-token-exchange`: `/token`, OpenID Connect ID Token verification, token policy, GitHub App installation token issuance
+- `@cyspbot/token-exchange` deploys Worker `cyspbot-token-exchange`: `/token`, OpenID Connect ID Token verification, Token Policy, GitHub App installation access token issuance
 - `@cyspbot/github-webhook-receiver` deploys Worker `cyspbot-github-webhook-receiver`: `/github/webhooks`, signature validation, target app validation, JSON validation, and acknowledgement
 
 This source repository owns:
 
 - public-safe deployable package templates under `workers/*`
 - package-owned Worker adapters, routes, dependency defaults, and Wrangler configs
-- shared package modules under `packages/*` for HTTP helpers, GitHub clients, OpenID Connect ID Token verification, and provider-specific issuer-adapter handling
+- shared package modules under `packages/*` for HTTP helpers, GitHub clients, OpenID Connect ID Token verification, and provider-specific OIDC ID Token Profile handling
 - generated Env types for the bindings required by the source
 - tests and Wrangler deploy dry runs for the two Worker packages
 
@@ -33,13 +33,13 @@ The separate deployment pipeline should:
 
 Local `pnpm run dev` uses Wrangler's multi-worker mode for separated Worker configs. Wrangler exposes only the first config locally and runs the rest as auxiliary Workers, so local dev does not replace same-origin route proof in the deployment environment. Local dev uses repository-local `.wrangler` state for Wrangler logs and the dev registry.
 
-## Fly.io Issuer Trust Configuration
+## Fly.io OIDC Provider Registration Configuration
 
-`FLY_OIDC_ORG_SLUGS` is non-secret but security-sensitive trust configuration owned by the production deployment pipeline. Set it to a comma-delimited list of reviewed Fly Organization Slugs to configure organization-specific Trusted OIDC Issuers. An empty value configures no Fly Trusted OIDC Issuer, which is the intentional default in the public-safe Wrangler template. A missing binding is logged and treated as no Fly trust without disabling other configured OIDC providers.
+`FLY_OIDC_ORG_SLUGS` is non-secret but security-sensitive trust configuration owned by the production deployment pipeline. Set it to a comma-delimited list of reviewed Fly Organization Slugs to configure organization-specific OIDC Provider Registrations. A missing or exactly empty binding creates no Fly OIDC Provider Registration, which is the intentional default in the public-safe Wrangler template.
 
-Each accepted entry configures one independent Trusted OIDC Issuer with an Issuer Identifier of the form `https://oidc.fly.io/{org-slug}`. Empty and duplicate entries are ignored. An entry with unsupported Fly issuer-path syntax is logged without its value and skipped without affecting other configured Fly issuers. Syntax acceptance does not establish that the organization exists.
+Each accepted entry configures one independent OIDC Provider Registration with an Issuer Identifier of the form `https://oidc.fly.io/{org-slug}`. For a non-empty binding, every trimmed entry must be non-empty, unique, and use the supported lowercase alphanumeric/hyphen syntax. An empty, duplicate, or unsupported entry rejects the complete configuration so cyspbot never serves with an unintended partial trust set. Syntax acceptance does not establish that the organization exists.
 
-Changing this binding changes which Fly issuers cyspbot trusts for authentication and requires security review. Configuring a Trusted OIDC Issuer does not create an authorization grant; Token Policy separately controls Installation Token Issuance.
+Changing this binding changes which Fly issuers cyspbot trusts for authentication and requires security review. Configuring an OIDC Provider Registration does not create an authorization grant; Token Policy separately controls Installation Access Token Issuance.
 
 ## Token Exchange Protocol Rollouts
 

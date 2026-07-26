@@ -4,7 +4,7 @@ import {
   tokenExchangeMethodNotAllowedResponse,
 } from "./token-exchange.ts";
 import {
-  createTokenExchangeRequestRuntime,
+  createTokenExchangeRequestRuntimeFactory,
   defaultTokenExchangeWorkerDependencies,
   type TokenExchangeWorkerDependencies,
 } from "./dependencies.ts";
@@ -12,6 +12,8 @@ import {
 export function createTokenExchangeWorker(
   dependencies: TokenExchangeWorkerDependencies = defaultTokenExchangeWorkerDependencies,
 ): ExportedHandler<TokenExchangeEnv> {
+  const createTokenExchangeRequestRuntime = createTokenExchangeRequestRuntimeFactory(dependencies);
+
   return {
     fetch(request, env) {
       const url = new URL(request.url);
@@ -24,10 +26,7 @@ export function createTokenExchangeWorker(
         return tokenExchangeMethodNotAllowedResponse();
       }
 
-      return handleTokenExchangeRequest(
-        request,
-        createTokenExchangeRequestRuntime(env, dependencies),
-      );
+      return handleTokenExchangeRequest(request, createTokenExchangeRequestRuntime(env));
     },
   };
 }

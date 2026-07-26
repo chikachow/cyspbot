@@ -25,7 +25,7 @@ export interface ResolvedGitHubAppInstallation {
   id: number;
 }
 
-export interface InstallationToken {
+export interface InstallationAccessToken {
   expiresAt: string;
   permissions: Record<string, string>;
   token: string;
@@ -40,7 +40,7 @@ interface GitHubInstallationResponse {
   id: number;
 }
 
-interface GitHubInstallationTokenResponse {
+interface GitHubInstallationAccessTokenResponse {
   expires_at: string;
   permissions?: Record<string, unknown>;
   token: string;
@@ -67,13 +67,13 @@ export async function resolveInstallationForRepository(
   return { id: body.id };
 }
 
-export async function createInstallationTokenForRepositoryName(
+export async function createInstallationAccessTokenForRepositoryName(
   env: GitHubAppEnv,
   installationId: number,
   repositoryName: string,
   permissions: Record<string, string>,
   dependencies: GitHubApiDependencies,
-): Promise<InstallationToken> {
+): Promise<InstallationAccessToken> {
   const requestBody = {
     permissions,
     repositories: [repositoryName],
@@ -94,14 +94,14 @@ export async function createInstallationTokenForRepositoryName(
     },
   );
 
-  const responseBody = (await response.json()) as GitHubInstallationTokenResponse;
+  const responseBody = (await response.json()) as GitHubInstallationAccessTokenResponse;
 
   if (
     typeof responseBody.token !== "string" ||
     typeof responseBody.expires_at !== "string" ||
     !isStringRecord(responseBody.permissions)
   ) {
-    throw new GitHubApiError(502, "invalid installation token response");
+    throw new GitHubApiError(502, "invalid installation access token response");
   }
 
   return {

@@ -1,8 +1,8 @@
 import {
   validateTokenPolicyRules,
-  type TokenPolicyRule,
+  type TokenPolicyRuleDefinition,
 } from "@cyspbot/token-exchange/policy/token-policy";
-import { githubActionsInstallationTokenRule } from "../../workers/cyspbot-token-exchange/src/policy/github-actions-token-policy-rule.ts";
+import { githubActionsInstallationAccessTokenRule } from "../../workers/cyspbot-token-exchange/src/policy/github-actions-token-policy-rule.ts";
 
 import { testRepository, testWorkflowDispatchRepository } from "./constants.ts";
 
@@ -10,7 +10,7 @@ const testPrincipalRef = "refs/heads/fixture-base-branch";
 const testPrincipalWorkflowRef = `${testRepository}/.github/workflows/fixture-token-request.yml@${testPrincipalRef}`;
 
 export const testTokenPolicyRules = validateTokenPolicyRules([
-  githubActionsInstallationTokenRule({
+  githubActionsInstallationAccessTokenRule({
     eventNames: ["schedule", "workflow_dispatch"],
     id: "test-github-same-repository",
     permissions: {
@@ -22,7 +22,7 @@ export const testTokenPolicyRules = validateTokenPolicyRules([
     resource: `https://api.github.com/repos/${testRepository}`,
     workflowRef: testPrincipalWorkflowRef,
   }),
-  githubActionsInstallationTokenRule({
+  githubActionsInstallationAccessTokenRule({
     eventNames: ["workflow_dispatch"],
     id: "test-github-cross-repository-actions",
     permissions: {
@@ -33,4 +33,4 @@ export const testTokenPolicyRules = validateTokenPolicyRules([
     resource: `https://api.github.com/repos/${testWorkflowDispatchRepository}`,
     workflowRef: testPrincipalWorkflowRef,
   }),
-] satisfies readonly TokenPolicyRule[]);
+] satisfies readonly TokenPolicyRuleDefinition[]);

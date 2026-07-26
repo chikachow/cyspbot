@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { googleServiceAccountTrustedIssuer } from "@cyspbot/oidc-issuer-google-service-account";
+import { googleServiceAccountOidcProviderRegistration } from "@cyspbot/oidc-provider-google-service-account";
 import type { VerifiedSubjectToken } from "@cyspbot/token-exchange/authentication";
-import { googleServiceAccountInstallationTokenRule } from "@cyspbot/token-exchange/policy/google-service-account-token-policy-rule";
+import { googleServiceAccountInstallationAccessTokenRule } from "@cyspbot/token-exchange/policy/google-service-account-token-policy-rule";
 import {
   evaluateConfiguredTokenPolicy,
   validateTokenPolicyRules,
-  type TokenPolicyRule,
+  type TokenPolicyRuleDefinition,
 } from "@cyspbot/token-exchange/policy/token-policy";
-import { normalizeInstallationAccessTokenRequest } from "@cyspbot/token-exchange/installation-token-request";
+import { normalizeInstallationAccessTokenRequest } from "@cyspbot/token-exchange/installation-access-token-request";
 import { createVerifiedSubjectToken } from "./support/oidc.ts";
 
 const resource = "https://api.github.com/repos/fixture-owner/fixture-repository";
@@ -17,7 +17,7 @@ const uniqueId = "107517467455664443765";
 const email = "fixture@fixture-project.iam.gserviceaccount.com";
 const claims = { azp: uniqueId, email, email_verified: true, sub: uniqueId };
 
-describe("Google service account installation-token policy rules", () => {
+describe("Google service account installation-access-token policy rules", () => {
   it("allows an exact service account unique ID", () => {
     const rule = googleRule();
 
@@ -76,9 +76,9 @@ describe("Google service account installation-token policy rules", () => {
 });
 
 function googleRule(
-  overrides: Partial<Parameters<typeof googleServiceAccountInstallationTokenRule>[0]> = {},
-): TokenPolicyRule {
-  return googleServiceAccountInstallationTokenRule({
+  overrides: Partial<Parameters<typeof googleServiceAccountInstallationAccessTokenRule>[0]> = {},
+): TokenPolicyRuleDefinition {
+  return googleServiceAccountInstallationAccessTokenRule({
     id: "test-google-service-account",
     permissions,
     resource,
@@ -88,11 +88,11 @@ function googleRule(
 }
 
 function evaluate(
-  rule: TokenPolicyRule,
+  rule: TokenPolicyRuleDefinition,
   tokenClaims: Record<string, unknown>,
   request: { resource?: string; scope?: string } = {},
 ) {
-  const subjectToken = googleSubjectToken(tokenClaims);
+  const verifiedSubjectToken = googleSubjectToken(tokenClaims);
   const tokenRequest = normalizeInstallationAccessTokenRequest({
     resource: request.resource ?? resource,
     scope: request.scope ?? "contents:write",
@@ -103,14 +103,13 @@ function evaluate(
   }
 
   return evaluateConfiguredTokenPolicy(
-    { subjectToken, tokenRequest: tokenRequest.tokenRequest },
+    { verifiedSubjectToken, tokenRequest: tokenRequest.tokenRequest },
     validateTokenPolicyRules([rule]),
   );
 }
 
 function googleSubjectToken(tokenClaims: Record<string, unknown>): VerifiedSubjectToken {
   return createVerifiedSubjectToken(tokenClaims, {
-    issuer: googleServiceAccountTrustedIssuer.issuer,
-    resolvedKeyId: "google-key",
+    issuer: googleServiceAccountOidcProviderRegistration.issuer,
   });
 }

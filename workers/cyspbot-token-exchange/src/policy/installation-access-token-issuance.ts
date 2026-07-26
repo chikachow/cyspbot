@@ -1,14 +1,14 @@
 import {
-  createInstallationTokenForRepositoryName,
+  createInstallationAccessTokenForRepositoryName,
   resolveInstallationForRepository,
 } from "@cyspbot/github/app";
 import { GitHubApiError, type GitHubApiDependencies } from "@cyspbot/github/http";
-import type { AuthenticatedContext, VerifiedSubjectToken } from "../authentication.ts";
-import type { InstallationAccessTokenRequest } from "../installation-token-request.ts";
+import type { AuthenticatedContext } from "../authentication.ts";
+import type { InstallationAccessTokenRequest } from "../installation-access-token-request.ts";
 import type { TokenExchangeApplication } from "../token-exchange-application.ts";
 import { evaluateConfiguredTokenPolicy, type TokenPolicyDecision } from "./token-policy.ts";
 
-export type InstallationTokenIssuanceResult =
+export type InstallationAccessTokenIssuanceResult =
   | { expiresAt: string; ok: true; token: string }
   | { ok: false; status: number };
 
@@ -16,26 +16,26 @@ class TokenPolicyDeniedError extends Error {
   public readonly policyDecision: TokenPolicyDecision;
 
   public constructor(policyDecision: TokenPolicyDecision) {
-    super("Token Policy denied Installation Token Issuance");
+    super("Token Policy denied Installation Access Token Issuance");
     this.policyDecision = policyDecision;
   }
 }
 
-export async function issueInstallationTokenForContext(
+export async function issueInstallationAccessTokenForContext(
   application: TokenExchangeApplication,
   authenticationContext: AuthenticatedContext,
-  tokenRequest: InstallationAccessTokenRequest,
+  installationAccessTokenRequest: InstallationAccessTokenRequest,
   dependencies: GitHubApiDependencies,
-): Promise<InstallationTokenIssuanceResult> {
-  const { subjectToken } = authenticationContext;
+): Promise<InstallationAccessTokenIssuanceResult> {
+  const { verifiedSubjectToken } = authenticationContext;
   let policyDecision: TokenPolicyDecision | undefined;
   let targetInstallationId: number | undefined;
 
   try {
     policyDecision = evaluateConfiguredTokenPolicy(
       {
-        subjectToken,
-        tokenRequest,
+        verifiedSubjectToken,
+        tokenRequest: installationAccessTokenRequest,
       },
       application.tokenPolicy,
     );
@@ -44,24 +44,27 @@ export async function issueInstallationTokenForContext(
       throw new TokenPolicyDeniedError(policyDecision);
     }
 
-    const requestedResourceName = `${tokenRequest.resource.owner}/${tokenRequest.resource.repository}`;
+    const requestedResourceName = `${installationAccessTokenRequest.resource.owner}/${installationAccessTokenRequest.resource.repository}`;
     const targetInstallation = await resolveInstallationForRepository(
       application.githubApp,
       requestedResourceName,
       dependencies,
     );
     targetInstallationId = targetInstallation.id;
-    const installationToken = await createInstallationTokenForRepositoryName(
+    const installationAccessToken = await createInstallationAccessTokenForRepositoryName(
       application.githubApp,
       targetInstallation.id,
-      tokenRequest.resource.repository,
-      tokenRequest.permissions,
+      installationAccessTokenRequest.resource.repository,
+      installationAccessTokenRequest.permissions,
       dependencies,
     );
 
     console.info({
-      event: "installation_token_issuance_succeeded",
-      expires_at: installationToken.expiresAt,
+      event: "installation_access_token_issuance_succeeded",
+      expires_at: installationAccessToken.expiresAt,
+      installation_access_token_request: installationAccessTokenRequestLogFields(
+        installationAccessTokenRequest,
+      ),
       subject_token: subjectTokenLogFields(authenticationContext),
       target_installation: {
         id: targetInstallation.id,
@@ -71,37 +74,38 @@ export async function issueInstallationTokenForContext(
         matched: true,
         rule_id: policyDecision.matchedRule.id,
       },
-      token_request: tokenRequestLogFields(tokenRequest),
     });
 
     return {
-      expiresAt: installationToken.expiresAt,
+      expiresAt: installationAccessToken.expiresAt,
       ok: true,
-      token: installationToken.token,
+      token: installationAccessToken.token,
     };
   } catch (error) {
-    const status = statusForInstallationTokenIssuanceError(error);
+    const status = statusForInstallationAccessTokenIssuanceError(error);
 
     console.error({
       error: {
-        message: logMessageForInstallationTokenIssuanceError(error),
+        message: logMessageForInstallationAccessTokenIssuanceError(error),
         name: error instanceof Error ? error.name : typeof error,
         status: error instanceof GitHubApiError ? error.status : undefined,
       },
-      event: "installation_token_issuance_failed",
+      event: "installation_access_token_issuance_failed",
+      installation_access_token_request: installationAccessTokenRequestLogFields(
+        installationAccessTokenRequest,
+      ),
       subject_token: subjectTokenLogFields(authenticationContext),
       target_installation: {
         id: targetInstallationId,
       },
       token_policy: tokenPolicyLogFields(error, policyDecision),
-      token_request: tokenRequestLogFields(tokenRequest),
     });
 
     return { ok: false, status };
   }
 }
 
-function statusForInstallationTokenIssuanceError(error: unknown): number {
+function statusForInstallationAccessTokenIssuanceError(error: unknown): number {
   if (error instanceof TokenPolicyDeniedError) {
     return 403;
   }
@@ -127,38 +131,32 @@ function statusForInstallationTokenIssuanceError(error: unknown): number {
   return 500;
 }
 
-function logMessageForInstallationTokenIssuanceError(error: unknown): string {
+function logMessageForInstallationAccessTokenIssuanceError(error: unknown): string {
   if (error instanceof GitHubApiError || error instanceof TokenPolicyDeniedError) {
     return error.message;
   }
 
-  return "unexpected Installation Token Issuance error";
+  return "unexpected Installation Access Token Issuance error";
 }
 
 function subjectTokenLogFields(
   authenticationContext: AuthenticatedContext,
 ): Record<string, unknown> {
   return {
-    issuer: authenticationContext.subjectToken.issuer,
-    resolved_key_id: authenticationContext.subjectToken.resolvedKeyId,
-    sub: subjectTokenSubjectLogValue(authenticationContext.subjectToken),
-    subject_token_type: authenticationContext.subjectToken.subjectTokenType,
+    issuer: authenticationContext.verifiedSubjectToken.issuer,
+    resolved_key_id: authenticationContext.verificationEvidence.resolvedKeyId,
+    sub: authenticationContext.verifiedSubjectToken.claims.sub,
+    subject_token_type: "id_token",
   };
 }
 
-function subjectTokenSubjectLogValue(subjectToken: VerifiedSubjectToken): string | null {
-  const subject = subjectToken.claims.sub;
-
-  return typeof subject === "string" ? subject : null;
-}
-
-function tokenRequestLogFields(
-  tokenRequest: InstallationAccessTokenRequest,
+function installationAccessTokenRequestLogFields(
+  installationAccessTokenRequest: InstallationAccessTokenRequest,
 ): Record<string, unknown> {
   return {
-    permissions: tokenRequest.permissions,
-    resource: tokenRequest.resource.href,
-    scope: tokenRequest.scope,
+    permissions: installationAccessTokenRequest.permissions,
+    resource: installationAccessTokenRequest.resource.href,
+    scope: installationAccessTokenRequest.scope,
   };
 }
 

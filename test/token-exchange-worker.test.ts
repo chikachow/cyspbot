@@ -10,14 +10,19 @@ import {
   testEnv,
   tokenExchangeRequestBody,
 } from "./support/worker.ts";
-import { subjectToken } from "./support/token-policy-fixtures.ts";
-import { githubActionsInstallationTokenRule } from "../workers/cyspbot-token-exchange/src/policy/github-actions-token-policy-rule.ts";
+import { fetchGitHubTestDouble } from "./support/github-api.ts";
+import { fetchOidcRemoteDocumentResponseTestDouble } from "./support/oidc.ts";
+import { testNow } from "./support/constants.ts";
+import { testTokenPolicyRules } from "./support/token-policy.ts";
+import { verifiedSubjectToken } from "./support/token-policy-fixtures.ts";
+import { githubActionsInstallationAccessTokenRule } from "../workers/cyspbot-token-exchange/src/policy/github-actions-token-policy-rule.ts";
 import { validateTokenPolicyRules } from "@cyspbot/token-exchange/policy/token-policy";
+import { createTokenExchangeWorker } from "@cyspbot/token-exchange/worker";
 
 describe("cyspbot-token-exchange", () => {
   it("short-circuits through the request runtime when rate limited", async () => {
-    const authenticateSubjectToken = vi.fn();
-    const issueInstallationToken = vi.fn();
+    const authenticateIdToken = vi.fn();
+    const issueInstallationAccessToken = vi.fn();
 
     const response = await fetchTokenExchangeWithRuntime(
       "https://example.test/token",
@@ -27,23 +32,24 @@ describe("cyspbot-token-exchange", () => {
         method: "POST",
       },
       {
-        authenticateSubjectToken,
-        issueInstallationToken,
+        authenticateIdToken,
+        issueInstallationAccessToken,
         rateLimit: async () => false,
       },
     );
 
     expect(response.status).toBe(429);
-    expect(authenticateSubjectToken).not.toHaveBeenCalled();
-    expect(issueInstallationToken).not.toHaveBeenCalled();
+    expect(authenticateIdToken).not.toHaveBeenCalled();
+    expect(issueInstallationAccessToken).not.toHaveBeenCalled();
   });
 
   it("delegates authenticated context and normalized token request through the runtime", async () => {
     const context = {
-      subjectToken,
+      verificationEvidence: { resolvedKeyId: "test-key-1" },
+      verifiedSubjectToken,
     };
-    const authenticateSubjectToken = vi.fn(async () => ({ context, ok: true }) as const);
-    const issueInstallationToken = vi.fn(async () => ({
+    const authenticateIdToken = vi.fn(async () => ({ context, ok: true }) as const);
+    const issueInstallationAccessToken = vi.fn(async () => ({
       expiresAt: "2026-05-24T00:01:00.000Z",
       ok: true as const,
       token: "runtime-test-token",
@@ -57,18 +63,17 @@ describe("cyspbot-token-exchange", () => {
         method: "POST",
       },
       {
-        authenticateSubjectToken,
-        issueInstallationToken,
+        authenticateIdToken,
+        issueInstallationAccessToken,
         now: () => new Date("2026-05-24T00:00:00.000Z"),
       },
     );
 
-    expect(authenticateSubjectToken).toHaveBeenCalledWith({
+    expect(authenticateIdToken).toHaveBeenCalledWith({
       request: expect.any(Request),
       subjectToken: expect.any(String),
-      subjectTokenType: "id_token",
     });
-    expect(issueInstallationToken).toHaveBeenCalledWith(
+    expect(issueInstallationAccessToken).toHaveBeenCalledWith(
       context,
       expect.objectContaining({
         permissions: { contents: "write", pull_requests: "write" },
@@ -100,7 +105,7 @@ describe("cyspbot-token-exchange", () => {
     });
   });
 
-  it("does not expose the legacy installation token endpoint", async () => {
+  it("does not expose the legacy installation access token endpoint", async () => {
     const response = await fetchTokenExchange("https://example.test/github/installations/token", {
       headers: await authorizationHeaders(),
       method: "POST",
@@ -185,6 +190,50 @@ describe("cyspbot-token-exchange", () => {
     });
   });
 
+  it("uses the shared fetch dependency and reuses OIDC caches for the Worker lifetime", async () => {
+    const sharedFetch = vi.fn<typeof fetch>((input, init) => {
+      const url = new Request(input).url;
+
+      return url.startsWith("https://token.actions.githubusercontent.com/")
+        ? fetchOidcRemoteDocumentResponseTestDouble(input)
+        : fetchGitHubTestDouble(input, init);
+    });
+    const app = createTokenExchangeWorker({
+      fetch: sharedFetch,
+      now: () => testNow,
+      tokenPolicy: testTokenPolicyRules,
+    });
+    const exchangeToken = async () =>
+      app.fetch?.(
+        new Request("https://example.test/token", {
+          body: await tokenExchangeRequestBody(),
+          headers: {
+            "content-type": "application/x-www-form-urlencoded",
+          },
+          method: "POST",
+        }) as Parameters<NonNullable<typeof app.fetch>>[0],
+        testEnv,
+        {} as ExecutionContext,
+      );
+
+    expect((await exchangeToken())?.status).toBe(200);
+    expect((await exchangeToken())?.status).toBe(200);
+    expect(
+      sharedFetch.mock.calls.filter(
+        ([input, init]) =>
+          new Request(input).url ===
+            "https://token.actions.githubusercontent.com/.well-known/openid-configuration" &&
+          init?.redirect === "error",
+      ),
+    ).toHaveLength(1);
+    expect(
+      sharedFetch.mock.calls.filter(
+        ([input]) =>
+          new Request(input).url === "https://token.actions.githubusercontent.com/.well-known/jwks",
+      ),
+    ).toHaveLength(1);
+  });
+
   it("exchanges a read permission request when token policy allows it", async () => {
     const response = await fetchTokenExchangeWithDependencies(
       "https://example.test/token",
@@ -202,7 +251,7 @@ describe("cyspbot-token-exchange", () => {
       },
       {
         tokenPolicy: validateTokenPolicyRules([
-          githubActionsInstallationTokenRule({
+          githubActionsInstallationAccessTokenRule({
             eventNames: ["workflow_dispatch"],
             id: "test-github-read-permissions",
             permissions: {
@@ -434,7 +483,7 @@ describe("cyspbot-token-exchange", () => {
         method: "POST",
       },
       {
-        authenticateSubjectToken: async () => ({
+        authenticateIdToken: async () => ({
           ok: false,
           reason: "invalid_token",
         }),
@@ -477,7 +526,7 @@ describe("cyspbot-token-exchange", () => {
         method: "POST",
       },
       {
-        authenticateSubjectToken: async () => ({
+        authenticateIdToken: async () => ({
           ok: false,
           reason: "invalid_token",
           responseHeaders: {
@@ -507,7 +556,7 @@ describe("cyspbot-token-exchange", () => {
         method: "POST",
       },
       {
-        authenticateSubjectToken: async () => ({
+        authenticateIdToken: async () => ({
           ok: false,
           reason: "oidc_provider_failure",
         }),
@@ -520,7 +569,7 @@ describe("cyspbot-token-exchange", () => {
     });
   });
 
-  it("maps oidc verifier failures to server errors", async () => {
+  it("maps internal OIDC authentication failures to server errors", async () => {
     const response = await fetchTokenExchangeWithRuntime(
       "https://example.test/token",
       {
@@ -531,9 +580,9 @@ describe("cyspbot-token-exchange", () => {
         method: "POST",
       },
       {
-        authenticateSubjectToken: async () => ({
+        authenticateIdToken: async () => ({
           ok: false,
-          reason: "oidc_verifier_failure",
+          reason: "oidc_internal_failure",
         }),
       },
     );
@@ -822,8 +871,8 @@ describe("cyspbot-token-exchange", () => {
     ["omitted", null],
     ["empty", ""],
   ])("rejects an %s target resource before authentication", async (_caseName, resource) => {
-    const authenticateSubjectToken = vi.fn();
-    const issueInstallationToken = vi.fn();
+    const authenticateIdToken = vi.fn();
+    const issueInstallationAccessToken = vi.fn();
     const response = await fetchTokenExchangeWithRuntime(
       "https://example.test/token",
       {
@@ -838,8 +887,8 @@ describe("cyspbot-token-exchange", () => {
         method: "POST",
       },
       {
-        authenticateSubjectToken,
-        issueInstallationToken,
+        authenticateIdToken,
+        issueInstallationAccessToken,
       },
     );
 
@@ -847,8 +896,8 @@ describe("cyspbot-token-exchange", () => {
     await expect(response.json()).resolves.toEqual({
       error: "invalid_target",
     });
-    expect(authenticateSubjectToken).not.toHaveBeenCalled();
-    expect(issueInstallationToken).not.toHaveBeenCalled();
+    expect(authenticateIdToken).not.toHaveBeenCalled();
+    expect(issueInstallationAccessToken).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -1021,7 +1070,7 @@ describe("cyspbot-token-exchange", () => {
     });
   });
 
-  it("maps an empty subject binding to invalid_request", async () => {
+  it("maps an empty Subject claim to invalid_request", async () => {
     const response = await fetchTokenExchange("https://example.test/token", {
       body: await tokenExchangeRequestBody({ claims: { sub: "" } }),
       headers: {

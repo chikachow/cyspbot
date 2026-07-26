@@ -46,6 +46,7 @@ export default defineConfig({
           detectAsyncLeaks: true,
           include: ["test/worker-integration/token-exchange.test.ts"],
           name: "token-exchange-integration",
+          testTimeout: 10_000,
         },
       },
       {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeInstallationAccessTokenRequest } from "@cyspbot/token-exchange/installation-token-request";
+import { normalizeInstallationAccessTokenRequest } from "@cyspbot/token-exchange/installation-access-token-request";
 import {
   fixtureSourceResource,
   fixtureTargetResource,

@@ -1,8 +1,8 @@
-import { flyIssuerIdentifierForOrganizationSlug } from "@cyspbot/oidc-issuer-fly";
+import { flyOidcIssuerIdentifierForOrganizationSlug } from "@cyspbot/oidc-provider-fly";
 import { celString } from "./cel-literals.ts";
-import type { TokenPolicyRule } from "./token-policy.ts";
+import type { TokenPolicyRuleDefinition } from "./token-policy.ts";
 
-export function flyMachineInstallationTokenRule(options: {
+export function flyMachineInstallationAccessTokenRule(options: {
   appId: string;
   id: string;
   machineId?: string;
@@ -10,8 +10,8 @@ export function flyMachineInstallationTokenRule(options: {
   orgSlug: string;
   permissions: Record<string, string>;
   resource: string;
-}): TokenPolicyRule {
-  const issuerIdentifier = flyIssuerIdentifierForOrganizationSlug(options.orgSlug);
+}): TokenPolicyRuleDefinition {
+  const issuerIdentifier = flyOidcIssuerIdentifierForOrganizationSlug(options.orgSlug);
 
   if (issuerIdentifier === null || !options.orgId || !options.appId) {
     throw new Error(
@@ -27,7 +27,7 @@ export function flyMachineInstallationTokenRule(options: {
     effect: "allow",
     id: options.id,
     issue: {
-      githubInstallationToken: {
+      githubInstallationAccessToken: {
         permissions: options.permissions,
         resource: options.resource,
       },

@@ -2,7 +2,7 @@ import { createGitHubWebhookReceiverWorker } from "@cyspbot/github-webhook-recei
 import { createTokenExchangeWorker } from "@cyspbot/token-exchange/worker";
 import type { GitHubWebhookReceiverDependencies } from "@cyspbot/github-webhook-receiver/github-webhooks/acceptance";
 import {
-  createTokenExchangeRequestRuntime,
+  createTokenExchangeRequestRuntimeFactory,
   type TokenExchangeRequestRuntime,
   type TokenExchangeWorkerDependencies,
 } from "@cyspbot/token-exchange/dependencies";
@@ -10,15 +10,13 @@ import { handleTokenExchangeRequest } from "@cyspbot/token-exchange/token-exchan
 
 import { testNow } from "./constants.ts";
 import { fetchGitHubTestDouble } from "./github-api.ts";
-import { fetchOidcJwksTestDouble } from "./oidc.ts";
+import { fetchOidcRemoteDocumentResponseTestDouble } from "./oidc.ts";
 import { testTokenPolicyRules } from "./token-policy.ts";
 import { testEnv } from "./worker-env.ts";
 
 export {
   authorizationHeaders,
-  createOidcToken,
   githubInstallationAccessTokenType,
-  testPublicJwk,
   tokenExchangeRequestBody,
 } from "./oidc.ts";
 export { testEnv };
@@ -28,12 +26,14 @@ type TestEnv = GitHubWebhookReceiverEnv & TokenExchangeEnv;
 
 const baseTestDependencies = {
   fetch: fetchGitHubTestDouble,
-  fetchJwks: fetchOidcJwksTestDouble,
+  fetchOidcRemoteDocumentResponse: fetchOidcRemoteDocumentResponseTestDouble,
   now: () => testNow,
   tokenPolicy: testTokenPolicyRules,
 } satisfies TestDependencies;
 
 const tokenExchangeApp = createTokenExchangeWorker(baseTestDependencies);
+const createTestTokenExchangeRequestRuntime =
+  createTokenExchangeRequestRuntimeFactory(baseTestDependencies);
 const githubWebhookReceiverApp = createGitHubWebhookReceiverWorker(baseTestDependencies);
 
 export function fetchTokenExchange(
@@ -72,7 +72,7 @@ export function fetchTokenExchangeWithRuntime(
   runtime: Partial<TokenExchangeRequestRuntime>,
 ): Promise<Response> {
   return handleTokenExchangeRequest(new Request(input, init), {
-    ...createTokenExchangeRequestRuntime(testEnv, baseTestDependencies),
+    ...createTestTokenExchangeRequestRuntime(testEnv),
     ...runtime,
   });
 }
