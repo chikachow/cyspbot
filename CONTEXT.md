@@ -80,6 +80,10 @@ _Avoid_: Generic expression, Claim mapping, unverified Claim test
 The pointwise maximum permission map contributed by applicable **Permit Statements**, ordered `omitted < read < write < admin`.
 _Avoid_: First matching statement, whole-map equality, GitHub installation permissions
 
+**Target Policy View**:
+The canonical read-only projection of every distinct **Permit Statement** for one **Repository Resource**, produced from the same compiled **Token Issuance Policy** used for authorization.
+_Avoid_: Authorization result, contributor list, unconditional Effective Permissions, source-file inventory
+
 **Webhook Receiver**:
 A cyspbot endpoint that authenticates and acknowledges GitHub webhook deliveries.
 _Avoid_: Business event processor, schema-normalizer

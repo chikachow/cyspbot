@@ -14,6 +14,11 @@ This directory documents the current cyspbot implementation and public service c
 - [Repository README](../README.md) is the setup and local development entrypoint.
 - [Domain glossary](../CONTEXT.md) defines project terminology used by the code and docs.
 
+## Proposed Work
+
+- [Target-oriented Token Issuance Policy ADR](adr/0001-target-oriented-token-issuance-policy.md) proposes canonical target inspection and explicit many-target TypeScript reuse over the accepted Permit Statement model.
+- [Target-oriented Token Issuance Policy implementation plan](plans/target-oriented-token-issuance-policy.md) details the proposed interface, authoring refactor, tooling, tests, and rollout.
+
 ## Capability and Configured Policy
 
 Decision records may describe capabilities that the source supports without
