@@ -18,7 +18,7 @@ import {
   type OidcIdTokenSigningAlgorithm,
 } from "@cyspbot/oidc/provider-registration";
 
-import { testPrivateKeyPem, testPublicJwk } from "./support/constants.ts";
+import { testPrivateKeyPem, testPublicJwk } from "./support/rsa-test-key-pair.ts";
 
 const issuer = "https://issuer.example/tenant";
 const jwksUri = "https://keys.example/tenant/jwks";
@@ -121,8 +121,8 @@ describe("OIDC ID Token Authenticator", () => {
       fetchOidcRemoteDocumentResponse.mock.calls.map(([input]) => new Request(input).url),
     ).toEqual([`${issuer}/.well-known/openid-configuration`, jwksUri]);
     expect(fetchOidcRemoteDocumentResponse.mock.calls.map(([, init]) => init?.redirect)).toEqual([
-      "error",
-      "error",
+      "manual",
+      "manual",
     ]);
   });
 
@@ -135,15 +135,7 @@ describe("OIDC ID Token Authenticator", () => {
 
       if (url === `${issuer}/.well-known/openid-configuration`) {
         if (!configurationIsDirect) {
-          if (init?.redirect === "error") {
-            throw new TypeError("redirect rejected");
-          }
-
-          return Response.json({
-            id_token_signing_alg_values_supported: ["RS256"],
-            issuer,
-            jwks_uri: "https://attacker.example/jwks",
-          });
+          return oidcRedirectResponse();
         }
 
         return successfulProviderFetch(input, init);
@@ -165,7 +157,10 @@ describe("OIDC ID Token Authenticator", () => {
     const subjectToken = await signedIdToken();
 
     await expect(authenticator.authenticateIdToken(subjectToken)).resolves.toEqual(
-      expectedFailure("provider_unavailable", "ERR_OIDC_PROVIDER_CONFIGURATION_FETCH_FAILED"),
+      expectedFailure("provider_unavailable", "ERR_OIDC_PROVIDER_CONFIGURATION_HTTP_STATUS", 302),
+    );
+    await expect(authenticator.authenticateIdToken(subjectToken)).resolves.toEqual(
+      expectedFailure("provider_unavailable", "ERR_OIDC_PROVIDER_CONFIGURATION_HTTP_STATUS", 302),
     );
     expect(fetchOidcRemoteDocumentResponse).toHaveBeenCalledOnce();
     expect(events).not.toContainEqual(
@@ -184,11 +179,6 @@ describe("OIDC ID Token Authenticator", () => {
       `${issuer}/.well-known/openid-configuration`,
       jwksUri,
     ]);
-    expect(fetchOidcRemoteDocumentResponse.mock.calls.map(([, init]) => init?.redirect)).toEqual([
-      "error",
-      "error",
-      "error",
-    ]);
   });
 
   it("rejects an initial JWK Set redirect without using or caching its document", async () => {
@@ -198,11 +188,7 @@ describe("OIDC ID Token Authenticator", () => {
       const url = new Request(input).url;
 
       if (url === jwksUri && !jwksIsDirect) {
-        if (init?.redirect === "error") {
-          throw new TypeError("redirect rejected");
-        }
-
-        return Response.json({ keys: [testPublicJwk] });
+        return oidcRedirectResponse();
       }
 
       return successfulProviderFetch(input, init);
@@ -211,10 +197,10 @@ describe("OIDC ID Token Authenticator", () => {
     const subjectToken = await signedIdToken();
 
     await expect(authenticator.authenticateIdToken(subjectToken)).resolves.toEqual(
-      expectedFailure("provider_unavailable", "ERR_OIDC_JWKS_FETCH_FAILED"),
+      expectedFailure("provider_unavailable", "ERR_OIDC_JWKS_HTTP_STATUS", 302),
     );
     await expect(authenticator.authenticateIdToken(subjectToken)).resolves.toEqual(
-      expectedFailure("provider_unavailable", "ERR_OIDC_JWKS_FETCH_FAILED"),
+      expectedFailure("provider_unavailable", "ERR_OIDC_JWKS_HTTP_STATUS", 302),
     );
     expect(
       fetchOidcRemoteDocumentResponse.mock.calls.filter(
@@ -232,11 +218,6 @@ describe("OIDC ID Token Authenticator", () => {
         ([input]) => new Request(input).url === jwksUri,
       ),
     ).toHaveLength(2);
-    expect(fetchOidcRemoteDocumentResponse.mock.calls.map(([, init]) => init?.redirect)).toEqual([
-      "error",
-      "error",
-      "error",
-    ]);
   });
 
   it("names Provider Configuration refresh events and diagnostics precisely", async () => {
@@ -366,13 +347,7 @@ describe("OIDC ID Token Authenticator", () => {
       }
 
       if (jwksMode === "redirect") {
-        if (init?.redirect === "error") {
-          throw new TypeError("redirect rejected");
-        }
-
-        return Response.json({
-          keys: [{ ...testPublicJwk, kid: "unknown-key" }],
-        });
+        return oidcRedirectResponse();
       }
 
       return Response.json({
@@ -389,11 +364,14 @@ describe("OIDC ID Token Authenticator", () => {
     now = new Date(now.getTime() + 10_001);
     const rotatedSubjectToken = await signedIdToken({ kid: "unknown-key" });
     await expect(authenticator.authenticateIdToken(rotatedSubjectToken)).resolves.toEqual(
-      expectedFailure("provider_unavailable", "ERR_OIDC_JWKS_FETCH_FAILED"),
+      expectedFailure("provider_unavailable", "ERR_OIDC_JWKS_HTTP_STATUS", 302),
     );
     await expect(authenticator.authenticateIdToken(rotatedSubjectToken)).resolves.toEqual(
-      expectedFailure("provider_unavailable", "ERR_OIDC_JWKS_FETCH_FAILED"),
+      expectedFailure("provider_unavailable", "ERR_OIDC_JWKS_HTTP_STATUS", 302),
     );
+    await expect(authenticator.authenticateIdToken(await signedIdToken())).resolves.toMatchObject({
+      ok: true,
+    });
     expect(
       fetchOidcRemoteDocumentResponse.mock.calls.filter(
         ([input]) => new Request(input).url === jwksUri,
@@ -410,12 +388,6 @@ describe("OIDC ID Token Authenticator", () => {
         ([input]) => new Request(input).url === jwksUri,
       ),
     ).toHaveLength(3);
-    expect(fetchOidcRemoteDocumentResponse.mock.calls.map(([, init]) => init?.redirect)).toEqual([
-      "error",
-      "error",
-      "error",
-      "error",
-    ]);
   });
 
   it("publishes each coalesced Provider Configuration refresh once", async () => {
@@ -1387,6 +1359,13 @@ function providerFetch(
 }
 
 const successfulProviderFetch = providerFetch();
+
+function oidcRedirectResponse(): Response {
+  return new Response(null, {
+    headers: { location: "https://attacker.example/oidc-document" },
+    status: 302,
+  });
+}
 
 function providerConfigurationResponse(
   cacheControl: string,

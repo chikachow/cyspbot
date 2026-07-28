@@ -25,8 +25,7 @@ type TestDependencies = GitHubWebhookReceiverDependencies & TokenExchangeWorkerD
 type TestEnv = GitHubWebhookReceiverEnv & TokenExchangeEnv;
 
 const baseTestDependencies = {
-  fetch: fetchGitHubTestDouble,
-  fetchOidcRemoteDocumentResponse: fetchOidcRemoteDocumentResponseTestDouble,
+  fetch: fetchTokenExchangeExternalTestDouble,
   now: () => testNow,
   tokenPolicy: testTokenPolicyRules,
 } satisfies TestDependencies;
@@ -100,3 +99,22 @@ function fetchWorkerWithApp(
     handler(new Request(input, init) as Parameters<typeof handler>[0], env, {} as ExecutionContext),
   );
 }
+
+function fetchTokenExchangeExternalTestDouble(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  const request = new Request(input, init);
+  const hostname = new URL(request.url).hostname;
+
+  return oidcProviderHostnames.has(hostname)
+    ? fetchOidcRemoteDocumentResponseTestDouble(request)
+    : fetchGitHubTestDouble(request);
+}
+
+const oidcProviderHostnames = new Set([
+  "accounts.google.com",
+  "oidc.fly.io",
+  "token.actions.githubusercontent.com",
+  "www.googleapis.com",
+]);

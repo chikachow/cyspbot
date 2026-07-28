@@ -29,7 +29,6 @@ export interface TokenExchangeRequestRuntime {
 
 export interface TokenExchangeWorkerDependencies {
   fetch: typeof fetch;
-  fetchOidcRemoteDocumentResponse?: typeof fetch;
   now(): Date;
   tokenPolicy: TokenPolicy;
 }
@@ -44,8 +43,7 @@ export function createTokenExchangeRequestRuntimeFactory(
   dependencies: TokenExchangeWorkerDependencies,
 ): (env: TokenExchangeEnv) => TokenExchangeRequestRuntime {
   const oidcIdTokenAuthenticatorDependencies: OidcIdTokenAuthenticatorDependencies = {
-    fetch: (input, init) =>
-      (dependencies.fetchOidcRemoteDocumentResponse ?? dependencies.fetch)(input, init),
+    fetch: (input, init) => dependencies.fetch(input, init),
     now: () => dependencies.now(),
     observe: (event) => console.warn(event),
   };

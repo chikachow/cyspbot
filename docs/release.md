@@ -16,7 +16,7 @@ Run this checklist before making the repository public or tagging a release.
 - `README.md` describes the current source repository and deployment boundary.
 - `docs/service-contract.md` matches implemented behaviour.
 - `docs/implementation.md` matches the workspace packages, Worker entrypoints, bindings, and verification commands.
-- `docs/deployment.md` describes only the source repository boundary and does not publish deployment details.
+- `docs/deployment.md` describes only the source repository boundary, including the sole Node-only test fixture seam intentionally consumed by the separate deployment repository, and does not publish deployment details.
 - `CONTEXT.md` remains the glossary source of truth.
 - Deployment remains outside this codebase.
 

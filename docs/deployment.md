@@ -18,6 +18,10 @@ This source repository owns:
 - shared package modules under `packages/*` for HTTP helpers, GitHub clients, OpenID Connect ID Token verification, and provider-specific OIDC ID Token Profile handling
 - generated Env types for the bindings required by the source
 - tests and Wrangler deploy dry runs for the two Worker packages
+- the Node-only OIDC test fixture seam at
+  `test/support/token-exchange-oidc-node-fixture.ts`, which the separate deployment
+  pipeline consumes to exercise its pinned source build without duplicating discovery,
+  JWK Set, or signing fixtures
 
 The checked-in Worker configs are local-development and dry-run templates only.
 

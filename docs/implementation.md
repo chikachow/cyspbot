@@ -205,6 +205,14 @@ The small `env.generated.d.ts` files are checked in because the combined test pr
 
 The public GitHub Actions `ci` workflow runs the same classes of checks as separate reusable jobs and gates on an aggregate `ci` job.
 
+`test/support/token-exchange-oidc-node-fixture.ts` is the intentional Node-only test seam
+between this source repository and the separate deployment repository. It owns one
+process-random key pair, the deterministic OpenID Provider Configuration and JWK Set
+outbound adapter, the fixture Fly registration string, and the GitHub Actions fixture
+request builder and expected outbound URLs. Vitest configuration consumes the same seam.
+The token-exchange Workerd integration module receives the private key only through
+`OIDC_TEST_PRIVATE_KEY` and does not import the Node key-generation module.
+
 ## External References
 
 - [RFC 8693: OAuth 2.0 Token Exchange](https://www.rfc-editor.org/rfc/rfc8693)
