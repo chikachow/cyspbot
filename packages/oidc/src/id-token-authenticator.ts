@@ -709,7 +709,8 @@ async function fetchAndParseOidcRemoteDocument(
   try {
     response = await fetchImplementation(url, {
       headers: { accept: "application/json" },
-      redirect: "error",
+      // Workerd exposes redirects only in manual mode; the exact-200 check below rejects them.
+      redirect: "manual",
       signal: requestSignal,
     });
   } catch (error) {

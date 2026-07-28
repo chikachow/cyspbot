@@ -2,6 +2,7 @@ import { cloudflareTest } from "@cloudflare/vitest-pool-workers";
 import { configDefaults, defineConfig } from "vitest/config";
 
 import { githubWebhookTestSecret } from "./test/support/webhook.ts";
+import { tokenExchangeOidcNodeFixture } from "./test/support/token-exchange-oidc-node-fixture.ts";
 
 export default defineConfig({
   test: {
@@ -35,6 +36,14 @@ export default defineConfig({
       {
         plugins: [
           cloudflareTest({
+            miniflare: {
+              bindings: {
+                GITHUB_APP_PRIVATE_KEY: "unused-because-token-policy-denies",
+                FLY_OIDC_ORG_SLUGS: tokenExchangeOidcNodeFixture.flyOrganizationSlugs,
+                OIDC_TEST_PRIVATE_KEY: tokenExchangeOidcNodeFixture.privateKeyPem,
+              },
+              outboundService: tokenExchangeOidcNodeFixture.outboundService,
+            },
             remoteBindings: false,
             wrangler: {
               configPath: "./workers/cyspbot-token-exchange/wrangler.jsonc",

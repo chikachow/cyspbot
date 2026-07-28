@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 
-import { testPrivateKeyPem } from "./constants.ts";
+import { testPrivateKeyPem } from "./rsa-test-key-pair.ts";
 
 type TestEnv = GitHubWebhookReceiverEnv & TokenExchangeEnv;
 

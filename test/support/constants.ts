@@ -1,16 +1,3 @@
-import { generateKeyPairSync } from "node:crypto";
-
-const testKeyPair = generateKeyPairSync("rsa", { modulusLength: 2048 });
-
-export const testPrivateKeyPem = testKeyPair.privateKey
-  .export({ format: "pem", type: "pkcs8" })
-  .toString();
-
-export const testPublicJwk = {
-  ...testKeyPair.publicKey.export({ format: "jwk" }),
-  kid: "test-key-1",
-};
-
 export const tokenExchangeGrantType = "urn:ietf:params:oauth:grant-type:token-exchange";
 export const githubInstallationAccessTokenType =
   "urn:chikachow:github-app-installation-access-token";

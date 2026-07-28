@@ -4,7 +4,8 @@ import {
   createInstallationAccessTokenForRepositoryName,
   resolveInstallationForRepository,
 } from "../packages/github/src/app.ts";
-import { testPrivateKeyPem, testRepository } from "./support/constants.ts";
+import { testRepository } from "./support/constants.ts";
+import { testPrivateKeyPem } from "./support/rsa-test-key-pair.ts";
 
 describe("GitHub App authentication", () => {
   it("reads the app private key from Cloudflare Secrets Store when bound", async () => {

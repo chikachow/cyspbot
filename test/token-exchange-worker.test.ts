@@ -220,10 +220,9 @@ describe("cyspbot-token-exchange", () => {
     expect((await exchangeToken())?.status).toBe(200);
     expect(
       sharedFetch.mock.calls.filter(
-        ([input, init]) =>
+        ([input]) =>
           new Request(input).url ===
-            "https://token.actions.githubusercontent.com/.well-known/openid-configuration" &&
-          init?.redirect === "error",
+          "https://token.actions.githubusercontent.com/.well-known/openid-configuration",
       ),
     ).toHaveLength(1);
     expect(
