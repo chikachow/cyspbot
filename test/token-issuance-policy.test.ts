@@ -15,10 +15,12 @@ import {
   claimEquals,
   claimOneOf,
   compileTokenIssuancePolicy,
-  githubRepository,
+  githubRepositoryResourceConstraint,
   oidcSubjectTokenConstraint,
   assertTokenIssuancePolicyIssuersAreRegistered,
   tokenIssuancePolicyPermits,
+  tokenIssuancePolicySupportsScope,
+  tokenIssuancePolicySupportsTarget,
   type PermitStatementDefinition,
 } from "@cyspbot/token-exchange/policy/token-issuance-policy";
 import type { VerifiedSubjectToken } from "@cyspbot/token-exchange/authentication";
@@ -35,7 +37,7 @@ const issuer = parsedIssuer;
 function validPermitStatement(): PermitStatementDefinition {
   return {
     permissions: { contents: "write" },
-    resource: githubRepository("owner", "repository"),
+    resource: githubRepositoryResourceConstraint("owner", "repository"),
     subjectToken: oidcSubjectTokenConstraint(
       issuer,
       claimEquals("repository", "owner/source"),
@@ -50,7 +52,7 @@ describe("Token Issuance Policy authoring factories", () => {
     const equals = claimEquals("trusted", true);
     const oneOf = claimOneOf("event_name", ["push", "workflow_dispatch"]);
     const subjectToken = oidcSubjectTokenConstraint(issuer, equals, oneOf);
-    const resource = githubRepository("Owner.Name", "Repository_Name");
+    const resource = githubRepositoryResourceConstraint("Owner.Name", "Repository_Name");
 
     if (oneOf.kind !== "claim-one-of") {
       throw new Error("unexpected Claim predicate kind");
@@ -101,8 +103,8 @@ describe("Token Issuance Policy authoring factories", () => {
         claimEquals("claim", "first"),
         claimOneOf("claim", ["second"]),
       ),
-    () => githubRepository(".", "repository"),
-    () => githubRepository("owner", ".."),
+    () => githubRepositoryResourceConstraint(".", "repository"),
+    () => githubRepositoryResourceConstraint("owner", ".."),
   ])("rejects malformed factory input", (construct) => {
     expect(construct).toThrow(TypeError);
   });
@@ -383,7 +385,7 @@ describe("Token Issuance Policy compilation", () => {
 
   it("rejects inherited definition fields", () => {
     const statement = Object.assign(Object.create({ permissions: { contents: "write" } }), {
-      resource: githubRepository("owner", "repository"),
+      resource: githubRepositoryResourceConstraint("owner", "repository"),
       subjectToken: oidcSubjectTokenConstraint(issuer),
     });
 
@@ -465,7 +467,7 @@ function statementFor(
 ): PermitStatementDefinition {
   return {
     permissions,
-    resource: githubRepository("owner", "repository"),
+    resource: githubRepositoryResourceConstraint("owner", "repository"),
     subjectToken: oidcSubjectTokenConstraint(issuer),
     ...overrides,
   };
@@ -501,6 +503,12 @@ describe("Token Issuance Policy evaluation", () => {
         matchingSubjectToken,
         requestFor({ contents: "read" }),
       ),
+    ).toThrow("invalid Token Issuance Policy");
+    expect(() =>
+      tokenIssuancePolicySupportsTarget({} as never, requestFor({ contents: "read" })),
+    ).toThrow("invalid Token Issuance Policy");
+    expect(() =>
+      tokenIssuancePolicySupportsScope({} as never, requestFor({ contents: "read" })),
     ).toThrow("invalid Token Issuance Policy");
     expect(() => assertTokenIssuancePolicyIssuersAreRegistered({} as never, [])).toThrow(
       "invalid Token Issuance Policy",
@@ -661,7 +669,7 @@ describe("Token Issuance Policy evaluation", () => {
       ),
       statementFor(
         { pull_requests: "write" },
-        { resource: githubRepository("owner", "other-repository") },
+        { resource: githubRepositoryResourceConstraint("owner", "other-repository") },
       ),
     ]);
 
@@ -672,6 +680,43 @@ describe("Token Issuance Policy evaluation", () => {
         requestFor({ actions: "read", contents: "read", pull_requests: "read" }),
       ),
     ).toBe(false);
+  });
+
+  it("classifies target support without treating it as authorization", () => {
+    const otherIssuer = parseOidcIssuerIdentifier("https://other-issuer.example");
+
+    if (otherIssuer === null) {
+      throw new Error("invalid other test issuer");
+    }
+
+    const policy = compileTokenIssuancePolicy([
+      statementFor(
+        { contents: "write" },
+        { subjectToken: oidcSubjectTokenConstraint(otherIssuer) },
+      ),
+      statementFor(
+        { actions: "read" },
+        {
+          subjectToken: oidcSubjectTokenConstraint(issuer, claimEquals("branch", "other")),
+        },
+      ),
+    ]);
+    const supportedTarget = requestFor({ actions: "read", contents: "read" });
+
+    expect(tokenIssuancePolicySupportsTarget(policy, supportedTarget)).toBe(true);
+    expect(tokenIssuancePolicySupportsScope(policy, supportedTarget)).toBe(true);
+    expect(tokenIssuancePolicyPermits(policy, matchingSubjectToken, supportedTarget)).toBe(false);
+    expect(
+      tokenIssuancePolicySupportsTarget(
+        policy,
+        requestFor(
+          { contents: "read" },
+          createGitHubRepositoryResource({ owner: "other", repository: "repository" }),
+        ),
+      ),
+    ).toBe(false);
+    expect(tokenIssuancePolicySupportsTarget(policy, requestFor({ actions: "write" }))).toBe(true);
+    expect(tokenIssuancePolicySupportsScope(policy, requestFor({ actions: "write" }))).toBe(false);
   });
 
   it("is neutral to statement order, duplicates, and split or merged definitions", () => {
@@ -718,7 +763,7 @@ describe("Token Issuance Policy evaluation", () => {
     ).toBe(false);
   });
 
-  it("denies with an empty policy", () => {
+  it("does not permit any request with an empty policy", () => {
     expect(
       tokenIssuancePolicyPermits(
         compileTokenIssuancePolicy([]),

@@ -14,7 +14,7 @@ import {
   fixtureSourceResource,
   fixtureTargetResource,
   mustNormalizeTokenRequest,
-} from "./support/token-policy-fixtures.ts";
+} from "./support/installation-access-token-request.ts";
 
 const malformedRuntimePermissionCases = [
   { name: "null", value: null },
@@ -37,84 +37,45 @@ const malformedRuntimePermissionCases = [
 ];
 
 describe("InstallationAccessTokenRequest normalization", () => {
-  it("defaults an omitted scope for an explicit resource", () => {
-    const tokenRequest = mustNormalizeTokenRequest({
-      resource: fixtureSourceResource,
+  it.each([
+    {
+      expectedPermissions: { contents: "write", pull_requests: "write" },
+      expectedScope: "contents:write pull_requests:write",
+      name: "omitted scope",
       scope: null,
-    });
-
-    expect(tokenRequest).toEqual({
-      permissions: {
-        contents: "write",
-        pull_requests: "write",
-      },
-      resource: {
-        href: fixtureSourceResource,
-        owner: "fixture-owner",
-        repository: "fixture-source-repository",
-      },
-      scope: "contents:write pull_requests:write",
-    });
-  });
-
-  it("normalizes reordered GitHub permission scopes", () => {
-    const tokenRequest = mustNormalizeTokenRequest({
-      resource: fixtureSourceResource,
+    },
+    {
+      expectedPermissions: { contents: "write", pull_requests: "write" },
+      expectedScope: "contents:write pull_requests:write",
+      name: "reordered permissions",
       scope: "pull_requests:write contents:write",
-    });
-
-    expect(tokenRequest).toEqual({
-      permissions: {
-        contents: "write",
-        pull_requests: "write",
-      },
-      resource: {
-        href: fixtureSourceResource,
-        owner: "fixture-owner",
-        repository: "fixture-source-repository",
-      },
-      scope: "contents:write pull_requests:write",
-    });
-  });
-
-  it("normalizes duplicate GitHub permission scopes", () => {
-    const tokenRequest = mustNormalizeTokenRequest({
-      resource: fixtureSourceResource,
+    },
+    {
+      expectedPermissions: { contents: "write", pull_requests: "write" },
+      expectedScope: "contents:write pull_requests:write",
+      name: "duplicate permissions",
       scope: "contents:write contents:write pull_requests:write",
-    });
-
-    expect(tokenRequest).toEqual({
-      permissions: {
-        contents: "write",
-        pull_requests: "write",
-      },
-      resource: {
-        href: fixtureSourceResource,
-        owner: "fixture-owner",
-        repository: "fixture-source-repository",
-      },
-      scope: "contents:write pull_requests:write",
-    });
-  });
-
-  it("normalizes read GitHub permission scopes", () => {
+    },
+    {
+      expectedPermissions: { actions: "read", contents: "read", pull_requests: "read" },
+      expectedScope: "actions:read contents:read pull_requests:read",
+      name: "read permissions",
+      scope: "pull_requests:read contents:read actions:read",
+    },
+  ] as const)("normalizes $name", ({ expectedPermissions, expectedScope, scope }) => {
     const tokenRequest = mustNormalizeTokenRequest({
       resource: fixtureSourceResource,
-      scope: "pull_requests:read contents:read actions:read",
+      scope,
     });
 
     expect(tokenRequest).toEqual({
-      permissions: {
-        actions: "read",
-        contents: "read",
-        pull_requests: "read",
-      },
+      permissions: expectedPermissions,
       resource: {
         href: fixtureSourceResource,
         owner: "fixture-owner",
         repository: "fixture-source-repository",
       },
-      scope: "actions:read contents:read pull_requests:read",
+      scope: expectedScope,
     });
   });
 

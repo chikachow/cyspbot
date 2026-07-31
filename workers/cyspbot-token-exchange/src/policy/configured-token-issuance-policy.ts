@@ -3,7 +3,7 @@ import {
   claimEquals,
   claimOneOf,
   compileTokenIssuancePolicy,
-  githubRepository,
+  githubRepositoryResourceConstraint,
   oidcSubjectTokenConstraint,
   type ClaimPredicateDefinition,
   type PermitStatementDefinition,
@@ -119,7 +119,7 @@ function githubActionsPermitStatement(options: {
 }): PermitStatementDefinition {
   return {
     permissions: options.permissions,
-    resource: githubRepository(options.resourceOwner, options.resourceRepository),
+    resource: githubRepositoryResourceConstraint(options.resourceOwner, options.resourceRepository),
     subjectToken: oidcSubjectTokenConstraint(
       githubActionsOidcProviderRegistration.issuer,
       ...githubActionsWorkflowClaimPredicates(options),

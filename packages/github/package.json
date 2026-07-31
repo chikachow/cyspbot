@@ -9,6 +9,7 @@
     "./secrets": "./src/secrets.ts"
   },
   "dependencies": {
+    "@cyspbot/http": "workspace:*",
     "jose": "6.2.4"
   }
 }

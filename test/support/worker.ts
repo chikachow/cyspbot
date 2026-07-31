@@ -12,7 +12,7 @@ import { handleTokenExchangeRequest } from "@cyspbot/token-exchange/token-exchan
 import { testNow } from "./constants.ts";
 import { fetchGitHubTestDouble } from "./github-api.ts";
 import { fetchOidcRemoteDocumentResponseTestDouble } from "./oidc.ts";
-import { testTokenPolicyRules } from "./token-policy.ts";
+import { testTokenIssuancePolicy } from "./token-issuance-policy.ts";
 import { testEnv } from "./worker-env.ts";
 
 export {
@@ -29,7 +29,7 @@ const baseTestDependencies = {
   ...defaultTokenExchangeWorkerDependencies,
   fetch: fetchTokenExchangeExternalTestDouble,
   now: () => testNow,
-  tokenPolicy: testTokenPolicyRules,
+  tokenIssuancePolicy: testTokenIssuancePolicy,
 } satisfies TestDependencies;
 
 const tokenExchangeApp = createTokenExchangeWorker(baseTestDependencies);

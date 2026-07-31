@@ -1,16 +1,16 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { VerifiedSubjectToken } from "@cyspbot/token-exchange/authentication";
 
 import { issueInstallationAccessTokenForContext } from "../workers/cyspbot-token-exchange/src/policy/installation-access-token-issuance.ts";
 import { testRepository, testInstallationId } from "./support/constants.ts";
 import { fetchGitHubTestDouble } from "./support/github-api.ts";
 import { createVerifiedSubjectToken } from "./support/oidc.ts";
-import { testTokenPolicyRules } from "./support/token-policy.ts";
+import { testTokenIssuancePolicy } from "./support/token-issuance-policy.ts";
 import { testEnv } from "./support/worker-env.ts";
 
 const application = {
   githubApp: testEnv,
-  tokenPolicy: testTokenPolicyRules,
+  tokenIssuancePolicy: testTokenIssuancePolicy,
 };
 
 const tokenRequest = {
@@ -38,56 +38,29 @@ const verifiedSubjectToken: VerifiedSubjectToken = createVerifiedSubjectToken({
 });
 const verificationEvidence = { resolvedKeyId: "test-key-1" };
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 describe("Installation Access Token Issuance", () => {
-  it("rejects Installation Access Token Requests that select extra repositories", async () => {
-    const response = await fetchGitHubTestDouble(
-      `https://api.github.com/app/installations/${testInstallationId}/access_tokens`,
-      {
-        body: JSON.stringify({
-          permissions: {
-            contents: "write",
-            pull_requests: "write",
-          },
-          repositories: ["fixture-source-repository", "fixture-extra-repository"],
-        }),
-        headers: {
-          authorization: "Bearer test-token",
-          "content-type": "application/json",
-          "x-github-stateless-s2s-token": "enabled",
-        },
-        method: "POST",
-      },
-    );
-
-    expect(response.status).toBe(500);
-  });
-
   it("does not fetch source repository metadata before minting", async () => {
     const requestedPaths: string[] = [];
 
     await expect(
-      issueInstallationAccessTokenForContext(
-        application,
-        {
-          verifiedSubjectToken,
-          verificationEvidence,
+      issueInstallationAccessToken({
+        fetch: async (input, init) => {
+          const request = new Request(input, init);
+          const url = new URL(request.url);
+
+          requestedPaths.push(url.pathname);
+
+          if (request.method === "GET" && url.pathname === `/repos/${testRepository}`) {
+            throw new Error("source repository metadata should not be fetched");
+          }
+
+          return fetchGitHubTestDouble(input, init);
         },
-        tokenRequest,
-        {
-          fetch: async (input, init) => {
-            const request = new Request(input, init);
-            const url = new URL(request.url);
-
-            requestedPaths.push(url.pathname);
-
-            if (request.method === "GET" && url.pathname === `/repos/${testRepository}`) {
-              throw new Error("source repository metadata should not be fetched");
-            }
-
-            return fetchGitHubTestDouble(input, init);
-          },
-        },
-      ),
+      }),
     ).resolves.toMatchObject({
       ok: true,
     });
@@ -96,28 +69,14 @@ describe("Installation Access Token Issuance", () => {
   });
 
   it("logs GitHub Actions claims and issuance context on success", async () => {
-    const originalInfo = console.info;
-    const consoleInfo = vi.fn();
-    console.info = consoleInfo;
+    const consoleInfo = vi.spyOn(console, "info").mockImplementation(() => undefined);
 
-    try {
-      await expect(
-        issueInstallationAccessTokenForContext(
-          application,
-          {
-            verifiedSubjectToken,
-            verificationEvidence,
-          },
-          tokenRequest,
-          { fetch: fetchGitHubTestDouble },
-        ),
-      ).resolves.toMatchObject({
-        ok: true,
-        token: "ghs_test_token",
-      });
-    } finally {
-      console.info = originalInfo;
-    }
+    await expect(
+      issueInstallationAccessToken({ fetch: fetchGitHubTestDouble }),
+    ).resolves.toMatchObject({
+      ok: true,
+      token: "ghs_test_token",
+    });
 
     expect(consoleInfo).toHaveBeenCalledWith({
       event: "installation_access_token_issuance_succeeded",
@@ -132,9 +91,8 @@ describe("Installation Access Token Issuance", () => {
         id: 67890,
         repository: testRepository,
       },
-      token_policy: {
-        matched: true,
-        rule_id: "test-github-same-repository",
+      token_issuance_policy: {
+        permitted: true,
       },
       installation_access_token_request: {
         permissions: {
@@ -146,69 +104,207 @@ describe("Installation Access Token Issuance", () => {
       },
     });
     expect(JSON.stringify(consoleInfo.mock.calls)).not.toContain("ghs_test_token");
-  });
-
-  it("logs an authorized request distinctly when GitHub issuance fails", async () => {
-    const originalError = console.error;
-    const consoleError = vi.fn();
-    console.error = consoleError;
-
-    try {
-      await expect(
-        issueInstallationAccessTokenForContext(
-          application,
-          { verifiedSubjectToken, verificationEvidence },
-          tokenRequest,
-          {
-            fetch: async () => new Response("upstream failure", { status: 500 }),
-          },
-        ),
-      ).resolves.toEqual({ ok: false, status: 502 });
-    } finally {
-      console.error = originalError;
-    }
-
-    expect(consoleError).toHaveBeenCalledWith(
-      expect.objectContaining({
-        event: "installation_access_token_issuance_failed",
-        subject_token: expect.objectContaining({
-          issuer: "https://token.actions.githubusercontent.com",
-          sub: "repo:fixture-owner/fixture-source-repository:ref:refs/heads/fixture-base-branch",
-        }),
-        token_policy: {
-          matched: true,
-          rule_id: "test-github-same-repository",
-        },
-      }),
+    expect(JSON.stringify(consoleInfo.mock.calls)).not.toMatch(
+      /rule_id|deny_reasons|matched|"claims"/u,
     );
   });
 
-  it("logs policy claim mismatches as condition denials", async () => {
-    const originalError = console.error;
-    const consoleError = vi.fn();
-    console.error = consoleError;
+  it.each([
+    { githubStatus: 400, issuanceReason: "internal_failure", scenario: "bad request" },
+    { githubStatus: 401, issuanceReason: "internal_failure", scenario: "bad credentials" },
+    { githubStatus: 403, issuanceReason: "upstream_failure", scenario: "forbidden" },
+    {
+      githubStatus: 403,
+      headers: { "x-ratelimit-remaining": "0" },
+      issuanceReason: "upstream_unavailable",
+      scenario: "primary rate limit",
+    },
+    {
+      githubStatus: 403,
+      responseBody: JSON.stringify({ message: "You have exceeded a secondary rate limit." }),
+      issuanceReason: "upstream_unavailable",
+      scenario: "headerless secondary rate limit",
+    },
+    {
+      githubStatus: 403,
+      responseBody: oversizedRateLimitResponseBody(),
+      issuanceReason: "upstream_failure",
+      scenario: "oversized error body",
+    },
+    {
+      githubStatus: 403,
+      responseBody: unreadableResponseBody(),
+      issuanceReason: "upstream_failure",
+      scenario: "unreadable error body",
+    },
+    {
+      githubStatus: 403,
+      headers: { "retry-after": "60" },
+      issuanceReason: "upstream_unavailable",
+      scenario: "secondary rate limit",
+    },
+    { githubStatus: 404, issuanceReason: "upstream_failure", scenario: "hidden resource" },
+    { githubStatus: 429, issuanceReason: "upstream_unavailable", scenario: "rate limit" },
+    { githubStatus: 500, issuanceReason: "upstream_failure", scenario: "server failure" },
+    { githubStatus: 503, issuanceReason: "upstream_unavailable", scenario: "unavailable" },
+  ])(
+    "maps GitHub $scenario during installation resolution to $issuanceReason",
+    async ({ githubStatus, headers, issuanceReason, responseBody }) => {
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const fetchGitHub = vi.fn(
+        async () =>
+          new Response(responseBody ?? "upstream failure", {
+            ...(headers === undefined ? {} : { headers }),
+            status: githubStatus,
+          }),
+      );
 
-    try {
-      await expect(
-        issueInstallationAccessTokenForContext(
-          application,
-          {
-            verifiedSubjectToken: {
-              ...verifiedSubjectToken,
-              claims: {
-                ...verifiedSubjectToken.claims,
-                event_name: "push",
-              },
-            },
-            verificationEvidence,
+      await expect(issueInstallationAccessToken({ fetch: fetchGitHub })).resolves.toEqual({
+        ok: false,
+        reason: issuanceReason,
+      });
+
+      expect(fetchGitHub).toHaveBeenCalledOnce();
+      expect(consoleError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: {
+            message: `GitHub API request failed: /repos/${testRepository}/installation`,
+            name: "Error",
+            status: githubStatus,
           },
-          tokenRequest,
-          { fetch: fetchGitHubTestDouble },
-        ),
-      ).resolves.toEqual({ ok: false, status: 403 });
-    } finally {
-      console.error = originalError;
-    }
+          event: "installation_access_token_issuance_failed",
+          subject_token: expect.objectContaining({
+            issuer: "https://token.actions.githubusercontent.com",
+            resolved_key_id: "test-key-1",
+            sub: "repo:fixture-owner/fixture-source-repository:ref:refs/heads/fixture-base-branch",
+            subject_token_type: "id_token",
+          }),
+          target_installation: { id: undefined },
+          token_issuance_policy: { permitted: true },
+        }),
+      );
+      expect(JSON.stringify(consoleError.mock.calls)).not.toMatch(
+        /rule_id|deny_reasons|matched|"claims"/u,
+      );
+    },
+  );
+
+  it.each([
+    { githubStatus: 404, issuanceReason: "upstream_failure" },
+    { githubStatus: 503, issuanceReason: "upstream_unavailable" },
+    {
+      githubStatus: 403,
+      issuanceReason: "upstream_unavailable",
+      responseBody: JSON.stringify({ message: "You have exceeded a secondary rate limit." }),
+    },
+  ])(
+    "logs the resolved installation when token minting fails with GitHub $githubStatus as $issuanceReason",
+    async ({ githubStatus, issuanceReason, responseBody }) => {
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+      await expect(
+        issueInstallationAccessToken({
+          fetch: async (input, init) => {
+            const request = new Request(input, init);
+
+            return request.method === "POST"
+              ? new Response(responseBody ?? "upstream failure", { status: githubStatus })
+              : fetchGitHubTestDouble(input, init);
+          },
+        }),
+      ).resolves.toEqual({ ok: false, reason: issuanceReason });
+
+      expect(consoleError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: {
+            message: `GitHub API request failed: /app/installations/${testInstallationId}/access_tokens`,
+            name: "Error",
+            status: githubStatus,
+          },
+          target_installation: { id: testInstallationId },
+          token_issuance_policy: { permitted: true },
+        }),
+      );
+    },
+  );
+
+  it("maps a network error to upstream unavailability without leaking its message", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    await expect(
+      issueInstallationAccessToken({
+        fetch: async () => {
+          throw new Error("private network failure details");
+        },
+      }),
+    ).resolves.toEqual({ ok: false, reason: "upstream_unavailable" });
+
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        error: {
+          message:
+            "GitHub API request failed: /repos/fixture-owner/fixture-source-repository/installation",
+          name: "GitHubApiTransportError",
+          status: undefined,
+        },
+        target_installation: { id: undefined },
+        token_issuance_policy: { permitted: true },
+      }),
+    );
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(
+      "private network failure details",
+    );
+  });
+
+  it("maps a token-minting network error to upstream unavailability", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    await expect(
+      issueInstallationAccessToken({
+        fetch: async (input, init) => {
+          const request = new Request(input, init);
+
+          if (request.method === "POST") {
+            throw new Error("private token-minting network failure details");
+          }
+
+          return fetchGitHubTestDouble(input, init);
+        },
+      }),
+    ).resolves.toEqual({ ok: false, reason: "upstream_unavailable" });
+
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target_installation: { id: testInstallationId },
+        token_issuance_policy: { permitted: true },
+      }),
+    );
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(
+      "private token-minting network failure details",
+    );
+  });
+
+  it("logs when policy does not permit issuance without requesting GitHub", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const fetchGitHub = vi.fn(fetchGitHubTestDouble);
+
+    await expect(
+      issueInstallationAccessTokenForContext(
+        application,
+        {
+          verifiedSubjectToken: {
+            ...verifiedSubjectToken,
+            claims: {
+              ...verifiedSubjectToken.claims,
+              event_name: "push",
+            },
+          },
+          verificationEvidence,
+        },
+        tokenRequest,
+        { fetch: fetchGitHub },
+      ),
+    ).resolves.toEqual({ ok: false, reason: "subject_token_unacceptable" });
 
     expect(consoleError).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -217,11 +313,49 @@ describe("Installation Access Token Issuance", () => {
           issuer: "https://token.actions.githubusercontent.com",
           sub: "repo:fixture-owner/fixture-source-repository:ref:refs/heads/fixture-base-branch",
         }),
-        token_policy: {
-          deny_reasons: ["condition"],
-          matched: false,
+        token_issuance_policy: {
+          permitted: false,
         },
       }),
+    );
+    expect(fetchGitHub).not.toHaveBeenCalled();
+    expect(JSON.stringify(consoleError.mock.calls)).not.toMatch(
+      /rule_id|deny_reasons|matched|"claims"/u,
     );
   });
 });
+
+function oversizedRateLimitResponseBody(): ReadableStream<Uint8Array> {
+  const body = new TextEncoder().encode(
+    JSON.stringify({ message: `rate limit ${"x".repeat(16 * 1024)}` }),
+  );
+
+  return new ReadableStream<Uint8Array>(
+    {
+      cancel: () => new Promise<void>(() => undefined),
+      pull(controller) {
+        controller.enqueue(body);
+      },
+    },
+    { highWaterMark: 0 },
+  );
+}
+
+function unreadableResponseBody(): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({
+    pull() {
+      throw new Error("response body read failed");
+    },
+  });
+}
+
+function issueInstallationAccessToken(
+  dependencies: Parameters<typeof issueInstallationAccessTokenForContext>[3],
+) {
+  return issueInstallationAccessTokenForContext(
+    application,
+    { verifiedSubjectToken, verificationEvidence },
+    tokenRequest,
+    dependencies,
+  );
+}
