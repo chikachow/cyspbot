@@ -27,7 +27,7 @@ export interface OidcIdTokenProfile {
 
 export interface OidcProviderRegistration {
   readonly acceptedIdTokenSigningAlgorithms: readonly OidcIdTokenSigningAlgorithm[];
-  readonly idTokenProfile: OidcIdTokenProfile;
+  readonly idTokenProfile: OidcIdTokenProfile | null;
   readonly issuer: OidcIssuerIdentifier;
 }
 
@@ -35,12 +35,20 @@ const supportedIdTokenSigningAlgorithmSet = new Set<string>(supportedIdTokenSign
 
 export function createOidcProviderRegistration(input: {
   acceptedIdTokenSigningAlgorithms: readonly OidcIdTokenSigningAlgorithm[];
-  idTokenProfile: OidcIdTokenProfile;
+  idTokenProfile: OidcIdTokenProfile | null;
   issuer: string;
 }): OidcProviderRegistration {
   if (typeof input !== "object" || input === null) {
     throw new TypeError("invalid OIDC Provider Registration");
   }
+
+  const idTokenProfileDescriptor = Object.getOwnPropertyDescriptor(input, "idTokenProfile");
+
+  if (idTokenProfileDescriptor === undefined || !("value" in idTokenProfileDescriptor)) {
+    throw new TypeError("invalid OIDC ID Token Profile");
+  }
+
+  const idTokenProfileValue: unknown = idTokenProfileDescriptor.value;
 
   const issuer = typeof input.issuer === "string" ? parseOidcIssuerIdentifier(input.issuer) : null;
 
@@ -61,14 +69,15 @@ export function createOidcProviderRegistration(input: {
   }
 
   if (
-    typeof input.idTokenProfile !== "object" ||
-    input.idTokenProfile === null ||
-    typeof input.idTokenProfile.validate !== "function"
+    idTokenProfileValue !== null &&
+    (typeof idTokenProfileValue !== "object" ||
+      typeof (idTokenProfileValue as { validate?: unknown }).validate !== "function")
   ) {
     throw new TypeError("invalid OIDC ID Token Profile");
   }
 
-  const idTokenProfile = Object.freeze(input.idTokenProfile);
+  const idTokenProfile =
+    idTokenProfileValue === null ? null : Object.freeze(idTokenProfileValue as OidcIdTokenProfile);
 
   return Object.freeze({
     acceptedIdTokenSigningAlgorithms: Object.freeze([...input.acceptedIdTokenSigningAlgorithms]),

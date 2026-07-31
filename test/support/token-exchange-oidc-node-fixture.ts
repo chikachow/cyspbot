@@ -20,9 +20,6 @@ const testGithubActionsJwksUrl = `${testGithubActionsIssuer}/.well-known/jwks`;
  * no Node crypto modules.
  */
 export const tokenExchangeOidcNodeFixture = Object.freeze({
-  flyOrganizationSlugs: tokenExchangeOidcIntegrationCases
-    .map(({ organizationSlug }) => organizationSlug)
-    .join(","),
   githubActions: Object.freeze({
     expectedOutboundUrls: Object.freeze([
       testGithubActionsProviderConfigurationUrl,

@@ -1,7 +1,6 @@
 import {
   createOidcProviderRegistration,
   parseOidcIssuerIdentifier,
-  type OidcIdTokenProfile,
   type OidcIssuerIdentifier,
   type OidcProviderRegistration,
 } from "@cyspbot/oidc/provider-registration";
@@ -26,28 +25,9 @@ export function createFlyOidcProviderRegistration(
     throw new TypeError("unsupported Fly organization slug");
   }
 
-  const idTokenProfile: OidcIdTokenProfile = {
-    validate: (claims) => {
-      const appName = claims["app_name"];
-      const machineName = claims["machine_name"];
-      const orgName = claims["org_name"];
-
-      return (
-        isNonEmptyString(appName) &&
-        isNonEmptyString(machineName) &&
-        orgName === organizationSlug &&
-        claims.sub === `${orgName}:${appName}:${machineName}`
-      );
-    },
-  };
-
   return createOidcProviderRegistration({
     acceptedIdTokenSigningAlgorithms: ["RS256"],
-    idTokenProfile,
+    idTokenProfile: null,
     issuer,
   });
-}
-
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === "string" && value.length > 0;
 }

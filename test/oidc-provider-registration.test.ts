@@ -58,7 +58,7 @@ describe("OIDC Provider Registration", () => {
     ).toThrow();
   });
 
-  it.each([null, undefined, "profile", 1, {}, { validate: null }])(
+  it.each([undefined, "profile", 1, {}, { validate: null }])(
     "rejects a malformed OIDC ID Token Profile at construction: %j",
     (idTokenProfile) => {
       expect(() =>
@@ -70,6 +70,55 @@ describe("OIDC Provider Registration", () => {
       ).toThrow("invalid OIDC ID Token Profile");
     },
   );
+
+  it("accepts an explicitly null OIDC ID Token Profile", () => {
+    const registration = createOidcProviderRegistration({
+      acceptedIdTokenSigningAlgorithms: ["RS256"],
+      idTokenProfile: null,
+      issuer: "https://issuer.example",
+    });
+
+    expect(registration.idTokenProfile).toBeNull();
+    expect(Object.isFrozen(registration)).toBe(true);
+  });
+
+  it("rejects an omitted OIDC ID Token Profile", () => {
+    expect(() =>
+      createOidcProviderRegistration({
+        acceptedIdTokenSigningAlgorithms: ["RS256"],
+        issuer: "https://issuer.example",
+      } as never),
+    ).toThrow("invalid OIDC ID Token Profile");
+  });
+
+  it("rejects inherited and accessor-backed OIDC ID Token Profiles without invoking accessors", () => {
+    const inherited = Object.assign(Object.create({ idTokenProfile: null }), {
+      acceptedIdTokenSigningAlgorithms: ["RS256"],
+      issuer: "https://issuer.example",
+    });
+    let accessorInvoked = false;
+    const accessorBacked = Object.defineProperty(
+      {
+        acceptedIdTokenSigningAlgorithms: ["RS256"],
+        issuer: "https://issuer.example",
+      },
+      "idTokenProfile",
+      {
+        get() {
+          accessorInvoked = true;
+          return null;
+        },
+      },
+    );
+
+    expect(() => createOidcProviderRegistration(inherited)).toThrow(
+      "invalid OIDC ID Token Profile",
+    );
+    expect(() => createOidcProviderRegistration(accessorBacked as never)).toThrow(
+      "invalid OIDC ID Token Profile",
+    );
+    expect(accessorInvoked).toBe(false);
+  });
 
   it("returns an immutable registration with an immutable validated profile", () => {
     const registration = createOidcProviderRegistration({

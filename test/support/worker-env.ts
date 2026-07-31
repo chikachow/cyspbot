@@ -12,7 +12,6 @@ const testTokenExchangeRateLimit = {
 
 export const testEnv: TestEnv = {
   ...workerEnv,
-  FLY_OIDC_ORG_SLUGS: "example-org" as TokenExchangeEnv["FLY_OIDC_ORG_SLUGS"],
   GITHUB_APP_PRIVATE_KEY: testPrivateKeyPem,
   GITHUB_WEBHOOK_SECRET: "test-webhook-secret",
   TOKEN_EXCHANGE_RATE_LIMIT: testTokenExchangeRateLimit,

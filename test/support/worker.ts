@@ -3,6 +3,7 @@ import { createTokenExchangeWorker } from "@cyspbot/token-exchange/worker";
 import type { GitHubWebhookReceiverDependencies } from "@cyspbot/github-webhook-receiver/github-webhooks/acceptance";
 import {
   createTokenExchangeRequestRuntimeFactory,
+  defaultTokenExchangeWorkerDependencies,
   type TokenExchangeRequestRuntime,
   type TokenExchangeWorkerDependencies,
 } from "@cyspbot/token-exchange/dependencies";
@@ -25,6 +26,7 @@ type TestDependencies = GitHubWebhookReceiverDependencies & TokenExchangeWorkerD
 type TestEnv = GitHubWebhookReceiverEnv & TokenExchangeEnv;
 
 const baseTestDependencies = {
+  ...defaultTokenExchangeWorkerDependencies,
   fetch: fetchTokenExchangeExternalTestDouble,
   now: () => testNow,
   tokenPolicy: testTokenPolicyRules,

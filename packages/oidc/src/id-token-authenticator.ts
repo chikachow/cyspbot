@@ -298,7 +298,10 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
         });
       }
 
-      if (!providerRegistration.idTokenProfile.validate(verifiedIdToken.claims)) {
+      if (
+        providerRegistration.idTokenProfile !== null &&
+        !providerRegistration.idTokenProfile.validate(verifiedIdToken.claims)
+      ) {
         return subjectTokenRejected("ERR_OIDC_ID_TOKEN_PROFILE_REJECTED");
       }
 

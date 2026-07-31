@@ -1,10 +1,6 @@
 import { env, exports } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 
-import {
-  flyOidcIntegrationIssuer,
-  tokenExchangeOidcIntegrationCases,
-} from "../support/oidc-integration-cases.ts";
 import { createTokenExchangeRequestBody } from "../support/oidc-token.ts";
 
 declare global {
@@ -15,23 +11,18 @@ declare global {
   }
 }
 
-describe("token exchange Worker OIDC discovery", () => {
-  it.each(tokenExchangeOidcIntegrationCases)("$scenario", async (testCase) => {
-    const { error, organizationSlug, status } = testCase;
+describe("token exchange Worker OIDC registration", () => {
+  it("does not trust an unregistered Fly issuer", async () => {
     const response = await exports.default.fetch("https://example.test/token", {
       body: await createTokenExchangeRequestBody(env.OIDC_TEST_PRIVATE_KEY, {
         claims: {
           app_name: "fixture-app",
           machine_name: "fixture-machine",
-          org_name: organizationSlug,
-          sub: `${organizationSlug}:fixture-app:fixture-machine`,
-        },
-        form: {
-          resource: "https://api.github.com/repos/fixture-owner/unconfigured-target",
-          scope: "contents:read",
+          org_name: "integration-direct",
+          sub: "integration-direct:fixture-app:fixture-machine",
         },
         tokenOptions: {
-          issuer: flyOidcIntegrationIssuer(testCase),
+          issuer: "https://oidc.fly.io/integration-direct",
         },
       }),
       headers: {
@@ -40,7 +31,7 @@ describe("token exchange Worker OIDC discovery", () => {
       method: "POST",
     });
 
-    expect(response.status).toBe(status);
-    await expect(response.json()).resolves.toEqual({ error });
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "invalid_request" });
   });
 });
