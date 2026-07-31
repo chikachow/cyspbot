@@ -1,6 +1,6 @@
 export const tokenExchangeOidcIntegrationCases = [
   {
-    error: "invalid_target",
+    error: "invalid_request",
     organizationSlug: "integration-direct",
     scenario: "direct",
     status: 400,

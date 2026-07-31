@@ -53,7 +53,7 @@ describe("configured Token Issuance Policy", () => {
     expect(scenarios).toBe(9 * 26);
   });
 
-  it("denies every issuer, selected-Claim, Claim-type, and Repository Resource mutation", () => {
+  it("does not permit issuer, selected-Claim, Claim-type, or Repository Resource mutations", () => {
     let scenarios = 0;
     const nonMatchingClaimValues: readonly unknown[] = ["unconfigured", null, false, 123, [], {}];
 

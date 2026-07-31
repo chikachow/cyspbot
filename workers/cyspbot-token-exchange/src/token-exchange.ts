@@ -2,6 +2,7 @@ import { jsonResponse } from "@cyspbot/http/problem-details";
 import { readRequestBodyUpTo } from "@cyspbot/http/request-body";
 import { normalizeInstallationAccessTokenRequest } from "./installation-access-token-request.ts";
 import type { TokenExchangeRequestRuntime } from "./dependencies.ts";
+import type { InstallationAccessTokenIssuanceFailureReason } from "./policy/installation-access-token-issuance.ts";
 
 const maxTokenExchangeBodyBytes = 64 * 1024;
 const tokenExchangeGrantType = "urn:ietf:params:oauth:grant-type:token-exchange";
@@ -92,11 +93,9 @@ export async function handleTokenExchangeRequest(
   });
 
   if (!authentication.ok) {
-    return oauthErrorResponse(
-      oauthStatusForAuthenticationFailure(authentication.reason),
-      oauthErrorCodeForAuthenticationFailure(authentication.reason),
-      authentication.responseHeaders,
-    );
+    const failure = oauthErrorForAuthenticationFailure(authentication.reason);
+
+    return oauthErrorResponse(failure.status, failure.error, authentication.responseHeaders);
   }
 
   const result = await runtime.issueInstallationAccessToken(
@@ -105,10 +104,9 @@ export async function handleTokenExchangeRequest(
   );
 
   if (!result.ok) {
-    return oauthErrorResponse(
-      oauthStatusForIssuanceFailure(result.status),
-      oauthErrorCodeForIssuanceFailure(result.status),
-    );
+    const failure = oauthErrorForIssuanceFailure(result.reason);
+
+    return oauthErrorResponse(failure.status, failure.error);
   }
 
   return oauthTokenResponse({
@@ -272,52 +270,37 @@ function oauthErrorResponse(status: number, error: string, headers?: HeadersInit
   );
 }
 
-function oauthErrorCodeForAuthenticationFailure(
+function oauthErrorForAuthenticationFailure(
   reason: "invalid_token" | "oidc_internal_failure" | "oidc_provider_failure",
-): string {
-  if (reason === "oidc_provider_failure") {
-    return "temporarily_unavailable";
+): { error: string; status: number } {
+  switch (reason) {
+    case "invalid_token":
+      return { error: "invalid_request", status: 400 };
+    case "oidc_internal_failure":
+      return { error: "server_error", status: 500 };
+    case "oidc_provider_failure":
+      return { error: "temporarily_unavailable", status: 503 };
   }
-
-  if (reason === "oidc_internal_failure") {
-    return "server_error";
-  }
-
-  return "invalid_request";
 }
 
-function oauthStatusForAuthenticationFailure(
-  reason: "invalid_token" | "oidc_internal_failure" | "oidc_provider_failure",
-): number {
-  if (reason === "oidc_provider_failure") {
-    return 503;
+function oauthErrorForIssuanceFailure(reason: InstallationAccessTokenIssuanceFailureReason): {
+  error: string;
+  status: number;
+} {
+  switch (reason) {
+    case "internal_failure":
+      return { error: "server_error", status: 500 };
+    case "scope_unsupported":
+      return { error: "invalid_scope", status: 400 };
+    case "subject_token_unacceptable":
+      return { error: "invalid_request", status: 400 };
+    case "target_unsupported":
+      return { error: "invalid_target", status: 400 };
+    case "upstream_failure":
+      return { error: "server_error", status: 502 };
+    case "upstream_unavailable":
+      return { error: "temporarily_unavailable", status: 503 };
   }
-
-  if (reason === "oidc_internal_failure") {
-    return 500;
-  }
-
-  return 400;
-}
-
-function oauthErrorCodeForIssuanceFailure(status: number): string {
-  if (status === 403) {
-    return "invalid_target";
-  }
-
-  return "server_error";
-}
-
-function oauthStatusForIssuanceFailure(status: number): number {
-  if (status === 403) {
-    return 400;
-  }
-
-  if (status === 502) {
-    return 502;
-  }
-
-  return 500;
 }
 
 function expiresInSeconds(expiresAt: string, now: Date): number {

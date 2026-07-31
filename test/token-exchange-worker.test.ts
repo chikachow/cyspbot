@@ -13,12 +13,12 @@ import {
 import { fetchGitHubTestDouble } from "./support/github-api.ts";
 import { fetchOidcRemoteDocumentResponseTestDouble } from "./support/oidc.ts";
 import { testNow } from "./support/constants.ts";
-import { testTokenPolicyRules } from "./support/token-policy.ts";
-import { verifiedSubjectToken } from "./support/token-policy-fixtures.ts";
-import { githubActionsInstallationAccessTokenRule } from "../workers/cyspbot-token-exchange/src/policy/github-actions-token-policy-rule.ts";
-import { validateTokenPolicyRules } from "@cyspbot/token-exchange/policy/token-policy";
+import {
+  testSubjectConstraintMatchingVerifiedSubjectToken,
+  testTokenIssuancePolicy,
+} from "./support/token-issuance-policy.ts";
 import { createTokenExchangeWorker } from "@cyspbot/token-exchange/worker";
-import { configuredOidcProviderRegistrations } from "@cyspbot/token-exchange/configured-oidc-provider-registrations";
+import { defaultTokenExchangeWorkerDependencies } from "@cyspbot/token-exchange/dependencies";
 
 describe("cyspbot-token-exchange", () => {
   it("short-circuits through the request runtime when rate limited", async () => {
@@ -47,7 +47,7 @@ describe("cyspbot-token-exchange", () => {
   it("delegates authenticated context and normalized token request through the runtime", async () => {
     const context = {
       verificationEvidence: { resolvedKeyId: "test-key-1" },
-      verifiedSubjectToken,
+      verifiedSubjectToken: testSubjectConstraintMatchingVerifiedSubjectToken,
     };
     const authenticateIdToken = vi.fn(async () => ({ context, ok: true }) as const);
     const issueInstallationAccessToken = vi.fn(async () => ({
@@ -91,6 +91,57 @@ describe("cyspbot-token-exchange", () => {
       expires_in: 60,
     });
   });
+
+  it.each([
+    {
+      error: "invalid_request",
+      issuanceReason: "subject_token_unacceptable",
+      responseStatus: 400,
+    },
+    {
+      error: "invalid_target",
+      issuanceReason: "target_unsupported",
+      responseStatus: 400,
+    },
+    { error: "invalid_scope", issuanceReason: "scope_unsupported", responseStatus: 400 },
+    { error: "server_error", issuanceReason: "internal_failure", responseStatus: 500 },
+    { error: "server_error", issuanceReason: "upstream_failure", responseStatus: 502 },
+    {
+      error: "temporarily_unavailable",
+      issuanceReason: "upstream_unavailable",
+      responseStatus: 503,
+    },
+  ] as const)(
+    "maps $issuanceReason to OAuth $responseStatus $error",
+    async ({ error, issuanceReason, responseStatus }) => {
+      const response = await fetchTokenExchangeWithRuntime(
+        "https://example.test/token",
+        {
+          body: await tokenExchangeRequestBody(),
+          headers: { "content-type": "application/x-www-form-urlencoded" },
+          method: "POST",
+        },
+        {
+          authenticateIdToken: async () => ({
+            context: {
+              verificationEvidence: { resolvedKeyId: "test-key-1" },
+              verifiedSubjectToken: testSubjectConstraintMatchingVerifiedSubjectToken,
+            },
+            ok: true,
+          }),
+          issueInstallationAccessToken: async () => ({
+            ok: false,
+            reason: issuanceReason,
+          }),
+        },
+      );
+
+      expect(response.status).toBe(responseStatus);
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      expect(response.headers.get("pragma")).toBe("no-cache");
+      await expect(response.json()).resolves.toEqual({ error });
+    },
+  );
 
   it("does not expose the removed claims endpoint", async () => {
     const response = await fetchTokenExchange("https://example.test/github/claims", {
@@ -147,7 +198,7 @@ describe("cyspbot-token-exchange", () => {
     expect(body.expires_in).toBeGreaterThan(0);
   });
 
-  it("exchanges an actions-write grant request for a token scoped to the target repository", async () => {
+  it("exchanges an actions-write permission request for a token scoped to the target repository", async () => {
     const response = await fetchTokenExchange("https://example.test/token", {
       body: await tokenExchangeRequestBody({
         form: {
@@ -200,10 +251,10 @@ describe("cyspbot-token-exchange", () => {
         : fetchGitHubTestDouble(input, init);
     });
     const app = createTokenExchangeWorker({
+      ...defaultTokenExchangeWorkerDependencies,
       fetch: sharedFetch,
       now: () => testNow,
-      oidcProviderRegistrations: configuredOidcProviderRegistrations,
-      tokenPolicy: testTokenPolicyRules,
+      tokenIssuancePolicy: testTokenIssuancePolicy,
     });
     const exchangeToken = async () =>
       app.fetch?.(
@@ -235,7 +286,7 @@ describe("cyspbot-token-exchange", () => {
     ).toHaveLength(1);
   });
 
-  it("exchanges a read permission request when token policy allows it", async () => {
+  it("exchanges a read permission request when Token Issuance Policy permits it", async () => {
     const response = await fetchTokenExchangeWithDependencies(
       "https://example.test/token",
       {
@@ -250,23 +301,7 @@ describe("cyspbot-token-exchange", () => {
         },
         method: "POST",
       },
-      {
-        tokenPolicy: validateTokenPolicyRules([
-          githubActionsInstallationAccessTokenRule({
-            eventNames: ["workflow_dispatch"],
-            id: "test-github-read-permissions",
-            permissions: {
-              contents: "read",
-              pull_requests: "read",
-            },
-            ref: "refs/heads/fixture-base-branch",
-            repository: "fixture-owner/fixture-source-repository",
-            workflowRef:
-              "fixture-owner/fixture-source-repository/.github/workflows/fixture-token-request.yml@refs/heads/fixture-base-branch",
-            resource: "https://api.github.com/repos/fixture-owner/fixture-source-repository",
-          }),
-        ]),
-      },
+      {},
     );
 
     expect(response.status).toBe(200);
@@ -278,7 +313,7 @@ describe("cyspbot-token-exchange", () => {
     });
   });
 
-  it("rejects actions-write grant requests for unconfigured target repositories", async () => {
+  it("rejects actions-write permission requests for unconfigured target repositories", async () => {
     const response = await fetchTokenExchange("https://example.test/token", {
       body: await tokenExchangeRequestBody({
         form: {
@@ -295,6 +330,26 @@ describe("cyspbot-token-exchange", () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
       error: "invalid_target",
+    });
+  });
+
+  it("rejects unsupported policy scopes with invalid_scope", async () => {
+    const response = await fetchTokenExchange("https://example.test/token", {
+      body: await tokenExchangeRequestBody({
+        form: {
+          resource: "https://api.github.com/repos/fixture-owner/fixture-source-repository",
+          scope: "actions:write",
+        },
+      }),
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_scope",
     });
   });
 
@@ -913,7 +968,7 @@ describe("cyspbot-token-exchange", () => {
       { resource: " https://api.github.com/repos/fixture-target-owner/fixture-target-repository " },
       "invalid_target",
     ],
-  ])("rejects invalid token policy hints: %s", async (_caseName, options, error) => {
+  ])("rejects invalid token request hints: %s", async (_caseName, options, error) => {
     const response = await fetchTokenExchange("https://example.test/token", {
       body: await tokenExchangeRequestBody({ form: options }),
       headers: {
@@ -987,7 +1042,7 @@ describe("cyspbot-token-exchange", () => {
     });
   });
 
-  it("maps disallowed token exchange contexts to oauth token errors", async () => {
+  it("maps a policy-unacceptable subject token to invalid_request", async () => {
     const response = await fetchTokenExchange("https://example.test/token", {
       body: await tokenExchangeRequestBody({
         claims: {
@@ -1005,7 +1060,7 @@ describe("cyspbot-token-exchange", () => {
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
-      error: "invalid_target",
+      error: "invalid_request",
     });
   });
 
@@ -1027,7 +1082,7 @@ describe("cyspbot-token-exchange", () => {
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
-      error: "invalid_target",
+      error: "invalid_request",
     });
   });
 
@@ -1047,7 +1102,7 @@ describe("cyspbot-token-exchange", () => {
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
-      error: "invalid_target",
+      error: "invalid_request",
     });
   });
 
@@ -1056,7 +1111,7 @@ describe("cyspbot-token-exchange", () => {
     ["non-string ref type", { ref_type: 123 }],
     ["missing repository", { repository: undefined }],
     ["null workflow ref", { workflow_ref: null }],
-  ])("maps a policy claim with %s to invalid_target", async (_name, claims) => {
+  ])("maps a policy claim with %s to invalid_request", async (_name, claims) => {
     const response = await fetchTokenExchange("https://example.test/token", {
       body: await tokenExchangeRequestBody({ claims }),
       headers: {
@@ -1067,7 +1122,7 @@ describe("cyspbot-token-exchange", () => {
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
-      error: "invalid_target",
+      error: "invalid_request",
     });
   });
 
@@ -1108,7 +1163,7 @@ describe("cyspbot-token-exchange", () => {
       "repo:fixture-owner%2Ffixture-source-repository:ref:refs/heads/fixture-base-branch",
     ],
     ["ref", "repo:fixture-owner/fixture-source-repository:ref:refs%2Fheads%2Ffixture-base-branch"],
-  ])("rejects a percent-encoded legacy subject %s", async (_component, sub) => {
+  ])("does not select the percent-encoded subject %s for policy", async (_component, sub) => {
     const response = await fetchTokenExchange("https://example.test/token", {
       body: await tokenExchangeRequestBody({
         claims: { sub },
@@ -1119,9 +1174,10 @@ describe("cyspbot-token-exchange", () => {
       method: "POST",
     });
 
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_target",
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      access_token: "ghs_test_token",
+      issued_token_type: githubInstallationAccessTokenType,
     });
   });
 
@@ -1221,7 +1277,7 @@ describe("cyspbot-token-exchange", () => {
     ["missing repository id", { repository_id: undefined }],
     ["non-string repository id", { repository_id: 123 }],
     ["non-string repository owner id", { repository_owner_id: 123 }],
-  ])("rejects an immutable GitHub subject with a %s", async (_name, claims) => {
+  ])("does not select a %s from an immutable GitHub subject", async (_name, claims) => {
     const response = await fetchTokenExchange("https://example.test/token", {
       body: await tokenExchangeRequestBody({
         claims: {
@@ -1235,9 +1291,10 @@ describe("cyspbot-token-exchange", () => {
       method: "POST",
     });
 
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_target",
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      access_token: "ghs_test_token",
+      issued_token_type: githubInstallationAccessTokenType,
     });
   });
 
@@ -1256,7 +1313,7 @@ describe("cyspbot-token-exchange", () => {
         sub: "repo:fixture-owner@555555/fixture-source-repository@123456789:ref:refs/heads/fixture-base-branch",
       },
     ],
-  ])("rejects immutable GitHub subjects with a mismatched signed %s", async (_name, claims) => {
+  ])("does not cross-check an immutable GitHub subject against %s", async (_name, claims) => {
     const response = await fetchTokenExchange("https://example.test/token", {
       body: await tokenExchangeRequestBody({ claims }),
       headers: {
@@ -1265,9 +1322,10 @@ describe("cyspbot-token-exchange", () => {
       method: "POST",
     });
 
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_target",
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      access_token: "ghs_test_token",
+      issued_token_type: githubInstallationAccessTokenType,
     });
   });
 
@@ -1287,7 +1345,7 @@ describe("cyspbot-token-exchange", () => {
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
-      error: "invalid_target",
+      error: "invalid_request",
     });
   });
 });

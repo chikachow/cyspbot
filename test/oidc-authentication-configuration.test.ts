@@ -9,7 +9,7 @@ import { createTokenExchangeOidcIdTokenAuthenticator } from "@cyspbot/token-exch
 import {
   claimEquals,
   compileTokenIssuancePolicy,
-  githubRepository,
+  githubRepositoryResourceConstraint,
   oidcSubjectTokenConstraint,
   tokenIssuancePolicyPermits,
 } from "@cyspbot/token-exchange/policy/token-issuance-policy";
@@ -56,7 +56,7 @@ describe("OIDC ID Token authentication configuration", () => {
     const policy = compileTokenIssuancePolicy([
       {
         permissions: { contents: "read" },
-        resource: githubRepository("owner", "repository"),
+        resource: githubRepositoryResourceConstraint("owner", "repository"),
         subjectToken: oidcSubjectTokenConstraint(
           registration.issuer,
           claimEquals("app_name", "selected-app"),

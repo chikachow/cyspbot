@@ -8,12 +8,12 @@ import {
   type AuthenticatedContext,
 } from "./authentication.ts";
 import type { InstallationAccessTokenRequest } from "./installation-access-token-request.ts";
+import { createTokenExchangeOidcIdTokenAuthenticator } from "./oidc-authentication.ts";
 import {
-  createTokenExchangeOidcIdTokenAuthenticator,
-  validateTokenPolicyIssuerIdentifiersHaveProviderRegistrations,
-} from "./oidc-authentication.ts";
-import type { TokenPolicy } from "./policy/token-policy.ts";
-import { tokenPolicyRules } from "./policy/token-policy-rules.ts";
+  assertTokenIssuancePolicyIssuersAreRegistered,
+  type TokenIssuancePolicy,
+} from "./policy/token-issuance-policy.ts";
+import { configuredTokenIssuancePolicy } from "./policy/configured-token-issuance-policy.ts";
 import { configuredOidcProviderRegistrations } from "./configured-oidc-provider-registrations.ts";
 import type { TokenExchangeApplication } from "./token-exchange-application.ts";
 import type { OidcIdTokenAuthenticatorDependencies } from "@cyspbot/oidc/id-token-authenticator";
@@ -36,21 +36,21 @@ export interface TokenExchangeWorkerDependencies {
   fetch: typeof fetch;
   now(): Date;
   oidcProviderRegistrations: readonly OidcProviderRegistration[];
-  tokenPolicy: TokenPolicy;
+  tokenIssuancePolicy: TokenIssuancePolicy;
 }
 
 export const defaultTokenExchangeWorkerDependencies: TokenExchangeWorkerDependencies = {
   fetch: (input, init) => fetch(input, init),
   now: () => new Date(),
   oidcProviderRegistrations: configuredOidcProviderRegistrations,
-  tokenPolicy: tokenPolicyRules,
+  tokenIssuancePolicy: configuredTokenIssuancePolicy,
 };
 
 export function createTokenExchangeRequestRuntimeFactory(
   dependencies: TokenExchangeWorkerDependencies,
 ): (env: TokenExchangeEnv) => TokenExchangeRequestRuntime {
-  validateTokenPolicyIssuerIdentifiersHaveProviderRegistrations(
-    dependencies.tokenPolicy,
+  assertTokenIssuancePolicyIssuersAreRegistered(
+    dependencies.tokenIssuancePolicy,
     dependencies.oidcProviderRegistrations,
   );
 
@@ -65,7 +65,7 @@ export function createTokenExchangeRequestRuntimeFactory(
   );
 
   return (env) => {
-    const application = tokenExchangeApplication(env, dependencies.tokenPolicy);
+    const application = tokenExchangeApplication(env, dependencies.tokenIssuancePolicy);
 
     return {
       authenticateIdToken: ({ request, subjectToken }) =>
@@ -84,7 +84,7 @@ export function createTokenExchangeRequestRuntimeFactory(
 
 function tokenExchangeApplication(
   env: TokenExchangeEnv,
-  tokenPolicy: TokenPolicy,
+  tokenIssuancePolicy: TokenIssuancePolicy,
 ): TokenExchangeApplication {
   return {
     githubApp: {
@@ -94,6 +94,6 @@ function tokenExchangeApplication(
       GITHUB_APP_ID: env.GITHUB_APP_ID,
       GITHUB_APP_PRIVATE_KEY: env.GITHUB_APP_PRIVATE_KEY,
     },
-    tokenPolicy,
+    tokenIssuancePolicy,
   };
 }

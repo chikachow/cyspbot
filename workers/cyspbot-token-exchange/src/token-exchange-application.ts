@@ -1,7 +1,7 @@
 import type { GitHubAppEnv } from "@cyspbot/github/app";
-import type { TokenPolicy } from "./policy/token-policy.ts";
+import type { TokenIssuancePolicy } from "./policy/token-issuance-policy.ts";
 
 export interface TokenExchangeApplication {
   readonly githubApp: GitHubAppEnv;
-  readonly tokenPolicy: TokenPolicy;
+  readonly tokenIssuancePolicy: TokenIssuancePolicy;
 }

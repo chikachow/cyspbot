@@ -31,14 +31,14 @@ export interface OidcSubjectTokenConstraintDefinition {
   readonly issuer: OidcIssuerIdentifier;
 }
 
-export interface GitHubRepositoryConstraintDefinition {
+export interface GitHubRepositoryResourceConstraintDefinition {
   readonly owner: string;
   readonly repository: string;
 }
 
 export interface PermitStatementDefinition {
   readonly permissions: GitHubInstallationPermissions;
-  readonly resource: GitHubRepositoryConstraintDefinition;
+  readonly resource: GitHubRepositoryResourceConstraintDefinition;
   readonly subjectToken: OidcSubjectTokenConstraintDefinition;
 }
 
@@ -139,10 +139,10 @@ export function oidcSubjectTokenConstraint(
   });
 }
 
-export function githubRepository(
+export function githubRepositoryResourceConstraint(
   owner: string,
   repository: string,
-): GitHubRepositoryConstraintDefinition {
+): GitHubRepositoryResourceConstraintDefinition {
   const resource = createGitHubRepositoryResource({ owner, repository });
 
   return Object.freeze({ owner: resource.owner, repository: resource.repository });
@@ -169,22 +169,50 @@ export function tokenIssuancePolicyPermits(
   verifiedSubjectToken: VerifiedSubjectToken,
   request: InstallationAccessTokenRequest,
 ): boolean {
-  const statements = compiledPolicyStatements.get(policy);
+  const statements = compiledStatementsFor(policy);
 
-  if (statements === undefined) {
-    throw new TypeError("invalid Token Issuance Policy");
-  }
+  return policyStatementsCoverRequest(statements, request, (statement) => {
+    return (
+      statement.resource.href === request.resource.href &&
+      statement.issuer === verifiedSubjectToken.issuer &&
+      claimPredicatesMatch(statement.claimPredicates, verifiedSubjectToken.claims)
+    );
+  });
+}
 
+export function tokenIssuancePolicySupportsTarget(
+  policy: TokenIssuancePolicy,
+  request: InstallationAccessTokenRequest,
+): boolean {
+  return compiledStatementsFor(policy).some(
+    (statement) => statement.resource.href === request.resource.href,
+  );
+}
+
+export function tokenIssuancePolicySupportsScope(
+  policy: TokenIssuancePolicy,
+  request: InstallationAccessTokenRequest,
+): boolean {
+  const statements = compiledStatementsFor(policy);
+
+  return policyStatementsCoverRequest(
+    statements,
+    request,
+    (statement) => statement.resource.href === request.resource.href,
+  );
+}
+
+function policyStatementsCoverRequest(
+  statements: readonly CompiledPermitStatement[],
+  request: InstallationAccessTokenRequest,
+  statementContributes: (statement: CompiledPermitStatement) => boolean,
+): boolean {
   const uncoveredPermissions = new Set(
     Object.keys(request.permissions) as (keyof GitHubInstallationPermissions)[],
   );
 
   for (const statement of statements) {
-    if (
-      statement.resource.href !== request.resource.href ||
-      statement.issuer !== verifiedSubjectToken.issuer ||
-      !claimPredicatesMatch(statement.claimPredicates, verifiedSubjectToken.claims)
-    ) {
+    if (!statementContributes(statement)) {
       continue;
     }
 
@@ -210,15 +238,21 @@ export function tokenIssuancePolicyPermits(
   return false;
 }
 
-export function assertTokenIssuancePolicyIssuersAreRegistered(
-  policy: TokenIssuancePolicy,
-  providerRegistrations: readonly OidcProviderRegistration[],
-): void {
+function compiledStatementsFor(policy: TokenIssuancePolicy): readonly CompiledPermitStatement[] {
   const statements = compiledPolicyStatements.get(policy);
 
   if (statements === undefined) {
     throw new TypeError("invalid Token Issuance Policy");
   }
+
+  return statements;
+}
+
+export function assertTokenIssuancePolicyIssuersAreRegistered(
+  policy: TokenIssuancePolicy,
+  providerRegistrations: readonly OidcProviderRegistration[],
+): void {
+  const statements = compiledStatementsFor(policy);
 
   const registeredIssuers = new Set(
     providerRegistrations.map((providerRegistration) => providerRegistration.issuer),

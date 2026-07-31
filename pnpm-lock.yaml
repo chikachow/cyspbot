@@ -72,6 +72,9 @@ importers:
 
   packages/github:
     dependencies:
+      '@cyspbot/http':
+        specifier: workspace:*
+        version: link:../http
       jose:
         specifier: 6.2.4
         version: 6.2.4
