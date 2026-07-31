@@ -55,7 +55,7 @@ export async function issueInstallationAccessTokenForContext(
       application.githubApp,
       targetInstallation.id,
       installationAccessTokenRequest.resource.repository,
-      installationAccessTokenRequest.permissions,
+      { ...installationAccessTokenRequest.permissions },
       dependencies,
     );
 
