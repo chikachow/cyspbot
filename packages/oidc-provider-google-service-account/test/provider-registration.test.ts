@@ -15,21 +15,27 @@ describe("Google service-account OIDC Provider Registration", () => {
   it.each(["107517467455664443765", "opaque-service-account-id"])(
     "accepts matching sub and azp values: %s",
     (subject) => {
-      expect(
-        googleServiceAccountOidcProviderRegistration.idTokenProfile.validate(
-          createClaims({ azp: subject, sub: subject }),
-        ),
-      ).toBe(true);
+      const { idTokenProfile } = googleServiceAccountOidcProviderRegistration;
+
+      if (idTokenProfile === null) {
+        throw new Error("Google service-account registration requires an ID Token Profile");
+      }
+
+      expect(idTokenProfile.validate(createClaims({ azp: subject, sub: subject }))).toBe(true);
     },
   );
 
   it("rejects a missing, incorrectly typed, or mismatched azp", () => {
+    const { idTokenProfile } = googleServiceAccountOidcProviderRegistration;
+
+    if (idTokenProfile === null) {
+      throw new Error("Google service-account registration requires an ID Token Profile");
+    }
+
     for (const azp of ["different", "", 1, undefined]) {
-      expect(
-        googleServiceAccountOidcProviderRegistration.idTokenProfile.validate(
-          createClaims({ azp, sub: "107517467455664443765" }),
-        ),
-      ).toBe(false);
+      expect(idTokenProfile.validate(createClaims({ azp, sub: "107517467455664443765" }))).toBe(
+        false,
+      );
     }
   });
 });

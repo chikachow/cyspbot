@@ -18,6 +18,7 @@ import { verifiedSubjectToken } from "./support/token-policy-fixtures.ts";
 import { githubActionsInstallationAccessTokenRule } from "../workers/cyspbot-token-exchange/src/policy/github-actions-token-policy-rule.ts";
 import { validateTokenPolicyRules } from "@cyspbot/token-exchange/policy/token-policy";
 import { createTokenExchangeWorker } from "@cyspbot/token-exchange/worker";
+import { configuredOidcProviderRegistrations } from "@cyspbot/token-exchange/configured-oidc-provider-registrations";
 
 describe("cyspbot-token-exchange", () => {
   it("short-circuits through the request runtime when rate limited", async () => {
@@ -201,6 +202,7 @@ describe("cyspbot-token-exchange", () => {
     const app = createTokenExchangeWorker({
       fetch: sharedFetch,
       now: () => testNow,
+      oidcProviderRegistrations: configuredOidcProviderRegistrations,
       tokenPolicy: testTokenPolicyRules,
     });
     const exchangeToken = async () =>

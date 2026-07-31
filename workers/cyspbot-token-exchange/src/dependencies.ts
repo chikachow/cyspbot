@@ -8,11 +8,16 @@ import {
   type AuthenticatedContext,
 } from "./authentication.ts";
 import type { InstallationAccessTokenRequest } from "./installation-access-token-request.ts";
-import { createOidcIdTokenAuthenticatorResolver } from "./oidc-authentication.ts";
+import {
+  createTokenExchangeOidcIdTokenAuthenticator,
+  validateTokenPolicyIssuerIdentifiersHaveProviderRegistrations,
+} from "./oidc-authentication.ts";
 import type { TokenPolicy } from "./policy/token-policy.ts";
 import { tokenPolicyRules } from "./policy/token-policy-rules.ts";
+import { configuredOidcProviderRegistrations } from "./configured-oidc-provider-registrations.ts";
 import type { TokenExchangeApplication } from "./token-exchange-application.ts";
 import type { OidcIdTokenAuthenticatorDependencies } from "@cyspbot/oidc/id-token-authenticator";
+import type { OidcProviderRegistration } from "@cyspbot/oidc/provider-registration";
 
 export interface TokenExchangeRequestRuntime {
   authenticateIdToken(input: {
@@ -30,31 +35,37 @@ export interface TokenExchangeRequestRuntime {
 export interface TokenExchangeWorkerDependencies {
   fetch: typeof fetch;
   now(): Date;
+  oidcProviderRegistrations: readonly OidcProviderRegistration[];
   tokenPolicy: TokenPolicy;
 }
 
 export const defaultTokenExchangeWorkerDependencies: TokenExchangeWorkerDependencies = {
   fetch: (input, init) => fetch(input, init),
   now: () => new Date(),
+  oidcProviderRegistrations: configuredOidcProviderRegistrations,
   tokenPolicy: tokenPolicyRules,
 };
 
 export function createTokenExchangeRequestRuntimeFactory(
   dependencies: TokenExchangeWorkerDependencies,
 ): (env: TokenExchangeEnv) => TokenExchangeRequestRuntime {
+  validateTokenPolicyIssuerIdentifiersHaveProviderRegistrations(
+    dependencies.tokenPolicy,
+    dependencies.oidcProviderRegistrations,
+  );
+
   const oidcIdTokenAuthenticatorDependencies: OidcIdTokenAuthenticatorDependencies = {
     fetch: (input, init) => dependencies.fetch(input, init),
     now: () => dependencies.now(),
     observe: (event) => console.warn(event),
   };
-  const resolveOidcIdTokenAuthenticator = createOidcIdTokenAuthenticatorResolver(
+  const oidcIdTokenAuthenticator = createTokenExchangeOidcIdTokenAuthenticator(
+    dependencies.oidcProviderRegistrations,
     oidcIdTokenAuthenticatorDependencies,
-    dependencies.tokenPolicy,
   );
 
   return (env) => {
     const application = tokenExchangeApplication(env, dependencies.tokenPolicy);
-    const oidcIdTokenAuthenticator = resolveOidcIdTokenAuthenticator(env);
 
     return {
       authenticateIdToken: ({ request, subjectToken }) =>

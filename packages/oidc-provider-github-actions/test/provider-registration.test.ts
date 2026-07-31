@@ -19,9 +19,15 @@ describe("GitHub Actions OIDC Provider Registration", () => {
   });
 
   it("accepts an absent azp or an azp equal to the already-verified audience", () => {
-    expect(githubActionsOidcProviderRegistration.idTokenProfile.validate(claims)).toBe(true);
+    const { idTokenProfile } = githubActionsOidcProviderRegistration;
+
+    if (idTokenProfile === null) {
+      throw new Error("GitHub Actions registration requires an ID Token Profile");
+    }
+
+    expect(idTokenProfile.validate(claims)).toBe(true);
     expect(
-      githubActionsOidcProviderRegistration.idTokenProfile.validate({
+      idTokenProfile.validate({
         ...claims,
         azp: "cyspbot",
       }),
@@ -29,8 +35,14 @@ describe("GitHub Actions OIDC Provider Registration", () => {
   });
 
   it("rejects a mismatched authorized party", () => {
+    const { idTokenProfile } = githubActionsOidcProviderRegistration;
+
+    if (idTokenProfile === null) {
+      throw new Error("GitHub Actions registration requires an ID Token Profile");
+    }
+
     expect(
-      githubActionsOidcProviderRegistration.idTokenProfile.validate({
+      idTokenProfile.validate({
         ...claims,
         azp: "other-service",
       }),

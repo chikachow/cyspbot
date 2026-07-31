@@ -38,8 +38,7 @@ export default defineConfig({
           cloudflareTest({
             miniflare: {
               bindings: {
-                GITHUB_APP_PRIVATE_KEY: "unused-because-token-policy-denies",
-                FLY_OIDC_ORG_SLUGS: tokenExchangeOidcNodeFixture.flyOrganizationSlugs,
+                GITHUB_APP_PRIVATE_KEY: "unused-because-token-issuance-policy-denies",
                 OIDC_TEST_PRIVATE_KEY: tokenExchangeOidcNodeFixture.privateKeyPem,
               },
               outboundService: tokenExchangeOidcNodeFixture.outboundService,
