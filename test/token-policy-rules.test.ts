@@ -212,7 +212,7 @@ describe("Production Token Policy rules", () => {
     expectExpectedRuleDenied(expected, {
       tokenRequest: {
         ...tokenRequestForExpectedRule(expected),
-        permissions: { metadata: "read" },
+        permissions: { metadata: "read" } as never,
       },
     });
   });

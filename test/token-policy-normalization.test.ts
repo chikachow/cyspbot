@@ -1,11 +1,40 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeInstallationAccessTokenRequest } from "@cyspbot/token-exchange/installation-access-token-request";
+import {
+  canonicalizeInstallationAccessTokenPermissions,
+  createGitHubRepositoryResource,
+  installationAccessTokenPermissionLevelCovers,
+  installationAccessTokenPermissionsAreSupported,
+  normalizeInstallationAccessTokenRequest,
+  parseGitHubRepositoryResource,
+  unionGitHubInstallationPermissions,
+  type GitHubInstallationPermissionLevel,
+} from "@cyspbot/token-exchange/installation-access-token-request";
 import {
   fixtureSourceResource,
   fixtureTargetResource,
   mustNormalizeTokenRequest,
 } from "./support/token-policy-fixtures.ts";
+
+const malformedRuntimePermissionCases = [
+  { name: "null", value: null },
+  { name: "undefined", value: undefined },
+  { name: "string", value: "contents:read" },
+  { name: "array", value: [] },
+  { name: "unknown permission", value: { metadata: "read" } },
+  { name: "undefined level", value: { contents: undefined } },
+  { name: "unknown level", value: { contents: "admin" } },
+  { name: "non-string level", value: { contents: 1 } },
+  {
+    name: "inherited permission",
+    value: Object.assign(Object.create({ contents: "read" }), { actions: "read" }),
+  },
+  {
+    name: "accessor permission",
+    value: Object.defineProperty({}, "contents", { enumerable: true, get: () => "read" }),
+  },
+  { name: "symbol permission", value: { contents: "read", [Symbol("unknown")]: "write" } },
+];
 
 describe("InstallationAccessTokenRequest normalization", () => {
   it("defaults an omitted scope for an explicit resource", () => {
@@ -133,6 +162,130 @@ describe("InstallationAccessTokenRequest normalization", () => {
     ).toEqual({
       error: "invalid_scope",
       ok: false,
+    });
+  });
+});
+
+describe("GitHub installation permission domain", () => {
+  it.each([
+    ["actions", "read"],
+    ["actions", "write"],
+    ["contents", "read"],
+    ["contents", "write"],
+    ["pull_requests", "read"],
+    ["pull_requests", "write"],
+  ] as const)("accepts supported permission %s:%s", (name, level) => {
+    expect(installationAccessTokenPermissionsAreSupported({ [name]: level })).toBe(true);
+  });
+
+  it.each([
+    [undefined, "read", false],
+    [undefined, "write", false],
+    ["read", "read", true],
+    ["read", "write", false],
+    ["write", "read", true],
+    ["write", "write", true],
+  ] as const)("reports whether %s covers %s", (configured, requested, expected) => {
+    expect(
+      installationAccessTokenPermissionLevelCovers(
+        configured as GitHubInstallationPermissionLevel | undefined,
+        requested,
+      ),
+    ).toBe(expected);
+  });
+
+  it("unions permissions pointwise and canonically", () => {
+    const permissions = unionGitHubInstallationPermissions(
+      { contents: "read", pull_requests: "write" },
+      { actions: "read", contents: "write" },
+    );
+
+    expect(permissions).toEqual({
+      actions: "read",
+      contents: "write",
+      pull_requests: "write",
+    });
+    expect(Object.isFrozen(permissions)).toBe(true);
+    expect(Object.keys(permissions)).toEqual(["actions", "contents", "pull_requests"]);
+  });
+
+  it.each([{ name: "empty object", value: {} }, ...malformedRuntimePermissionCases])(
+    "rejects unsupported runtime permission data: $name",
+    ({ value }) => {
+      expect(installationAccessTokenPermissionsAreSupported(value)).toBe(false);
+    },
+  );
+
+  it.each(malformedRuntimePermissionCases)(
+    "does not canonicalize malformed runtime permission data: $name",
+    ({ value }) => {
+      expect(() => canonicalizeInstallationAccessTokenPermissions(value as never)).toThrow(
+        TypeError,
+      );
+    },
+  );
+
+  it("canonicalizes an empty internal permission set", () => {
+    const permissions = canonicalizeInstallationAccessTokenPermissions({});
+
+    expect(permissions).toEqual({});
+    expect(Object.isFrozen(permissions)).toBe(true);
+  });
+
+  it("copies permission data without retaining its source object", () => {
+    const source = { pull_requests: "read", actions: "write" } as const;
+    const permissions = canonicalizeInstallationAccessTokenPermissions(source);
+
+    expect(permissions).toEqual({ actions: "write", pull_requests: "read" });
+    expect(permissions).not.toBe(source);
+    expect(Object.isFrozen(permissions)).toBe(true);
+  });
+});
+
+describe("GitHub Repository Resource domain", () => {
+  it.each([
+    ["owner", "repository"],
+    ["Owner.Name", "Repository_Name"],
+    ["owner-123", "repository.git"],
+  ])("constructs and parses canonical resource %s/%s", (owner, repository) => {
+    const resource = createGitHubRepositoryResource({ owner, repository });
+
+    expect(resource).toEqual({
+      href: `https://api.github.com/repos/${owner}/${repository}`,
+      owner,
+      repository,
+    });
+    expect(parseGitHubRepositoryResource(resource.href)).toEqual(resource);
+    expect(Object.isFrozen(resource)).toBe(true);
+  });
+
+  it.each([
+    [".", "repository"],
+    ["..", "repository"],
+    ["owner", "."],
+    ["owner", ".."],
+  ])("rejects dot segment resource %s/%s", (owner, repository) => {
+    expect(() => createGitHubRepositoryResource({ owner, repository })).toThrow(TypeError);
+  });
+
+  it.each([
+    ["", "repository"],
+    ["owner/name", "repository"],
+    ["owner", ""],
+    ["owner", "repository/name"],
+    ["owner", "repository%2Fname"],
+  ])("rejects unsupported resource syntax %s/%s", (owner, repository) => {
+    expect(() => createGitHubRepositoryResource({ owner, repository })).toThrow(TypeError);
+  });
+
+  it("requires canonical API host casing", () => {
+    expect(
+      parseGitHubRepositoryResource("https://API.GITHUB.COM/repos/Owner/Repository"),
+    ).toBeNull();
+    expect(parseGitHubRepositoryResource("https://api.github.com/repos/Owner/Repository")).toEqual({
+      href: "https://api.github.com/repos/Owner/Repository",
+      owner: "Owner",
+      repository: "Repository",
     });
   });
 });
