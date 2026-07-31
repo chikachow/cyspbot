@@ -12,10 +12,6 @@
     "./oidc-authentication": "./src/oidc-authentication.ts",
     "./policy/configured-token-issuance-policy": "./src/policy/configured-token-issuance-policy.ts",
     "./policy/token-issuance-policy": "./src/policy/token-issuance-policy.ts",
-    "./policy/fly-machine-token-policy-rule": "./src/policy/fly-machine-token-policy-rule.ts",
-    "./policy/google-service-account-token-policy-rule": "./src/policy/google-service-account-token-policy-rule.ts",
-    "./policy/token-policy": "./src/policy/token-policy.ts",
-    "./policy/token-policy-rules": "./src/policy/token-policy-rules.ts",
     "./token-exchange-application": "./src/token-exchange-application.ts",
     "./token-exchange": "./src/token-exchange.ts",
     "./worker": "./src/worker.ts"
@@ -30,12 +26,9 @@
     "typecheck": "node --run runtime-types:generate && tsc --project tsconfig.json"
   },
   "dependencies": {
-    "@bufbuild/cel": "0.6.0",
-    "@bufbuild/protobuf": "2.13.0",
     "@cyspbot/github": "workspace:*",
     "@cyspbot/http": "workspace:*",
     "@cyspbot/oidc": "workspace:*",
-    "@cyspbot/oidc-provider-fly": "workspace:*",
     "@cyspbot/oidc-provider-github-actions": "workspace:*",
     "@cyspbot/oidc-provider-google-service-account": "workspace:*"
   }
