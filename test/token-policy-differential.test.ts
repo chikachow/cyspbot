@@ -9,6 +9,7 @@ import {
   type TokenPolicyDecision,
 } from "@cyspbot/token-exchange/policy/token-policy";
 import { tokenPolicyRules as celTokenPolicyRules } from "@cyspbot/token-exchange/policy/token-policy-rules";
+import { configuredTokenIssuancePolicy as booleanTokenIssuancePolicy } from "@cyspbot/token-exchange/policy/configured-token-issuance-policy";
 import {
   claimEquals,
   claimOneOf,
@@ -26,10 +27,6 @@ import {
   configuredTokenIssuancePolicyScenarios,
   type ConfiguredTokenIssuancePolicyScenario,
 } from "./support/configured-token-issuance-policy.ts";
-
-const booleanTokenIssuancePolicy = compileTokenIssuancePolicy(
-  configuredTokenIssuancePolicyScenarios.map(booleanPermitStatement),
-);
 
 const individualBooleanPolicies = configuredTokenIssuancePolicyScenarios.map((scenario) =>
   compileTokenIssuancePolicy([
