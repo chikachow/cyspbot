@@ -33,7 +33,6 @@
     "@cyspbot/http": "workspace:*",
     "@cyspbot/oidc": "workspace:*",
     "@cyspbot/oidc-provider-github-actions": "workspace:*",
-    "@cyspbot/oidc-provider-google-service-account": "workspace:*",
     "@cyspbot/token-exchange": "workspace:*",
     "@tsconfig/strictest": "2.0.8",
     "@types/node": "24.13.3",

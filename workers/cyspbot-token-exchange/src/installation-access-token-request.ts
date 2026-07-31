@@ -183,27 +183,6 @@ export function unionGitHubInstallationPermissions(
   return canonicalizeInstallationAccessTokenPermissions(permissions);
 }
 
-export function installationAccessTokenPermissionsEqual(
-  left: GitHubInstallationPermissions,
-  right: GitHubInstallationPermissions,
-): boolean {
-  const leftEntries = validatedPermissionEntries(left, true)?.sort(comparePermissionEntry);
-  const rightEntries = validatedPermissionEntries(right, true)?.sort(comparePermissionEntry);
-
-  if (leftEntries === undefined || rightEntries === undefined) {
-    return false;
-  }
-
-  return (
-    leftEntries.length === rightEntries.length &&
-    leftEntries.every(([leftName, leftLevel], index) => {
-      const [rightName, rightLevel] = rightEntries[index] ?? [];
-
-      return leftName === rightName && leftLevel === rightLevel;
-    })
-  );
-}
-
 function parseGitHubInstallationScope(
   value: string,
 ): { permissions: GitHubInstallationPermissions; scope: string } | null {
