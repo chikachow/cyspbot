@@ -2,11 +2,29 @@
 
 ## Status
 
-Decision status: Accepted.
+Decision status: Accepted and amended below.
 
-Implementation status: Complete. The shared authenticator, OIDC Provider
-Registrations, token-exchange Worker composition, and Token Policy boundaries
-described below are active.
+Implementation status: Complete. The authentication architecture remains
+active; the original Token Policy boundary is retained as historical text and
+superseded by the amendment below.
+
+## Amendment: CEL-free Token Issuance Policy
+
+The authentication and authorization separation remains accepted, but the
+authorization-specific portions of the original decision below are superseded
+by the [CEL-free Token Issuance Policy](cel-free-token-issuance-policy.md)
+decision. Token Policy is now Token Issuance Policy: closed Permit Statements
+over verified Claims, an exact Repository Resource, and permissions replace CEL
+conditions and exact whole-request rule matching.
+
+OIDC Provider Registrations now require an explicitly present OIDC ID Token
+Profile field whose value may be `null`. A non-null profile still distinguishes
+the accepted provider-specific token kind after central verification; `null`
+means central OIDC validation is sufficient. Registration still authenticates
+an issuer without authorizing token issuance.
+
+The original decision text is retained below so the record continues to show
+the architecture and policy boundary that was accepted before this amendment.
 
 ## Context
 
