@@ -19,6 +19,11 @@ import {
 } from "./support/token-issuance-policy.ts";
 import { createTokenExchangeWorker } from "@cyspbot/token-exchange/worker";
 import { defaultTokenExchangeWorkerDependencies } from "@cyspbot/token-exchange/dependencies";
+import {
+  compileTokenIssuancePolicy,
+  githubRepositoryResourceConstraint,
+  oidcSubjectTokenConstraint,
+} from "@cyspbot/token-exchange/policy/token-issuance-policy";
 
 describe("cyspbot-token-exchange", () => {
   it("short-circuits through the request runtime when rate limited", async () => {
@@ -103,7 +108,11 @@ describe("cyspbot-token-exchange", () => {
       issuanceReason: "target_unsupported",
       responseStatus: 400,
     },
-    { error: "invalid_scope", issuanceReason: "scope_unsupported", responseStatus: 400 },
+    {
+      error: "invalid_scope",
+      issuanceReason: "requested_permissions_unsupported",
+      responseStatus: 400,
+    },
     { error: "server_error", issuanceReason: "internal_failure", responseStatus: 500 },
     { error: "server_error", issuanceReason: "upstream_failure", responseStatus: 502 },
     {
@@ -112,7 +121,7 @@ describe("cyspbot-token-exchange", () => {
       responseStatus: 503,
     },
   ] as const)(
-    "maps $issuanceReason to OAuth $responseStatus $error",
+    "maps $issuanceReason to cyspbot Token Endpoint $responseStatus $error",
     async ({ error, issuanceReason, responseStatus }) => {
       const response = await fetchTokenExchangeWithRuntime(
         "https://example.test/token",
@@ -142,6 +151,33 @@ describe("cyspbot-token-exchange", () => {
       await expect(response.json()).resolves.toEqual({ error });
     },
   );
+
+  it("maps GitHub permission validation after policy approval to 500 server_error", async () => {
+    const response = await fetchTokenExchangeWithDependencies(
+      "https://example.test/token",
+      {
+        body: await tokenExchangeRequestBody(),
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        method: "POST",
+      },
+      {
+        fetch: async (input, init) => {
+          const request = new Request(input, init);
+
+          if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
+            return fetchOidcRemoteDocumentResponseTestDouble(request);
+          }
+
+          return request.method === "POST"
+            ? new Response("GitHub validation detail", { status: 422 })
+            : fetchGitHubTestDouble(input, init);
+        },
+      },
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: "server_error" });
+  });
 
   it("does not expose the removed claims endpoint", async () => {
     const response = await fetchTokenExchange("https://example.test/github/claims", {
@@ -333,12 +369,12 @@ describe("cyspbot-token-exchange", () => {
     });
   });
 
-  it("rejects unsupported policy scopes with invalid_scope", async () => {
+  it("rejects arbitrary permissions not covered by policy with invalid_scope", async () => {
     const response = await fetchTokenExchange("https://example.test/token", {
       body: await tokenExchangeRequestBody({
         form: {
           resource: "https://api.github.com/repos/fixture-owner/fixture-source-repository",
-          scope: "actions:write",
+          scope: "future_permission:admin",
         },
       }),
       headers: {
@@ -352,6 +388,88 @@ describe("cyspbot-token-exchange", () => {
       error: "invalid_scope",
     });
   });
+
+  it("issues a token with arbitrary Requested Permissions when policy covers them", async () => {
+    const requestedPermissions = { future_permission: "admin" } as const;
+    const tokenIssuancePolicy = compileTokenIssuancePolicy([
+      {
+        permissions: requestedPermissions,
+        resource: githubRepositoryResourceConstraint("fixture-owner", "fixture-source-repository"),
+        subjectToken: oidcSubjectTokenConstraint(
+          testSubjectConstraintMatchingVerifiedSubjectToken.issuer,
+        ),
+      },
+    ]);
+    let forwardedBody: unknown;
+    const response = await fetchTokenExchangeWithDependencies(
+      "https://example.test/token",
+      {
+        body: await tokenExchangeRequestBody({ form: { scope: "future_permission:admin" } }),
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        method: "POST",
+      },
+      {
+        fetch: async (input, init) => {
+          const request = new Request(input, init);
+
+          if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
+            return fetchOidcRemoteDocumentResponseTestDouble(request);
+          }
+
+          if (request.method === "POST") {
+            forwardedBody = await request.json();
+
+            return Response.json(
+              {
+                expires_at: "2030-01-01T00:00:00Z",
+                permissions: requestedPermissions,
+                token: "ghs_future_permission",
+              },
+              { status: 201 },
+            );
+          }
+
+          return fetchGitHubTestDouble(input, init);
+        },
+        tokenIssuancePolicy,
+      },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      access_token: "ghs_future_permission",
+      scope: "future_permission:admin",
+    });
+    expect(forwardedBody).toEqual({
+      permissions: requestedPermissions,
+      repositories: ["fixture-source-repository"],
+    });
+  });
+
+  it.each([
+    { privateKey: "", scenario: "missing" },
+    { privateKey: "not a private key", scenario: "invalid" },
+  ])(
+    "maps a $scenario GitHub App private key to a sanitized 500 server_error",
+    async ({ privateKey }) => {
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const response = await fetchTokenExchangeWithEnv(
+        "https://example.test/token",
+        {
+          body: await tokenExchangeRequestBody(),
+          headers: { "content-type": "application/x-www-form-urlencoded" },
+          method: "POST",
+        },
+        { ...testEnv, GITHUB_APP_PRIVATE_KEY: privateKey },
+      );
+
+      expect(response.status).toBe(500);
+      await expect(response.json()).resolves.toEqual({ error: "server_error" });
+      expect(JSON.stringify(consoleError.mock.calls)).not.toMatch(
+        /missing GitHub App private key|not a private key/u,
+      );
+    },
+  );
 
   it("rejects the generic oauth access token type as a requested token hint", async () => {
     const response = await fetchTokenExchange("https://example.test/token", {

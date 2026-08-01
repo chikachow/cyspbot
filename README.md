@@ -1,6 +1,6 @@
 # cyspbot
 
-cyspbot is a hosted Security Token Service for trusted automation workloads. Its production token-exchange application authenticates GitHub Actions workflow-job and Google service account identities using OpenID Connect ID Tokens from configured issuers, then exchanges authorized identities for short-lived, repository-scoped GitHub App installation access tokens without exposing the GitHub App private key outside Cloudflare.
+cyspbot is a hosted Security Token Service for trusted automation workloads. Its token-exchange application authenticates workload identities using OpenID Connect ID Tokens from configured issuers, then exchanges authorized identities for short-lived, repository-scoped GitHub App installation access tokens without exposing the GitHub App private key outside Cloudflare. The [service contract](docs/service-contract.md) is authoritative for the current provider and policy inventory.
 
 Implemented public endpoints:
 
@@ -35,7 +35,9 @@ subject_token_type=urn:ietf:params:oauth:token-type:id_token
 `subject_token_type` must be `urn:ietf:params:oauth:token-type:id_token`; cyspbot does not accept the generic JWT token-type identifier. `requested_token_type` is required and must be the cyspbot GitHub App installation access token URN.
 Every OpenID Connect ID Token supplied as the RFC 8693 subject token must have non-empty Issuer Identifier (`iss`), Audience (`aud`), and Subject (`sub`) claims plus numeric Expiration Time (`exp`) and Issued At (`iat`) claims. It must be accepted through an exact OIDC Provider Registration, be unexpired, and have the single audience value `cyspbot`. When the registration specifies an OIDC ID Token Profile, that profile validates the provider-specific token kind before Token Issuance Policy evaluates the request. Non-empty RFC 8693 `audience` form parameters are rejected as unsupported target selectors.
 
-Requests must contain exactly one effective RFC 8693 `resource` value and may include one effective `scope` value to request a concrete GitHub App installation access token shape. Following OAuth token-endpoint rules, exactly empty occurrences are treated as omitted. The effective `resource` must be one canonical GitHub repository API URI in the form `https://api.github.com/repos/{owner}/{repo}` with no leading or trailing whitespace. cyspbot never infers the target Repository Resource from Subject Token Claims; no effective `resource` or more than one effective `resource` is rejected as `invalid_target`. `scope` is a single-ASCII-space-delimited list of exact GitHub App permission requests, such as `actions:read`, `actions:write`, or `contents:read pull_requests:read`; order is not significant, and repeated identical scope tokens are normalized once. Omitted or exactly empty `scope` defaults to `contents:write pull_requests:write`. Whitespace-only or padded values and multiple effective `scope` values are rejected.
+Requests must contain exactly one effective RFC 8693 `resource` value and may include one effective `scope` value to request a concrete GitHub App installation access token shape. Following OAuth token-endpoint rules, exactly empty occurrences are treated as omitted. The effective `resource` must be one canonical GitHub repository API URI in the form `https://api.github.com/repos/{owner}/{repo}` with no leading or trailing whitespace. cyspbot never infers the target Repository Resource from Subject Token Claims; no effective `resource` or more than one effective `resource` is rejected as `invalid_target`.
+
+Each `scope` token has the form `<permission-name>:<level>`, where the level is `read`, `write`, or `admin`. cyspbot does not maintain a closed GitHub permission-name list: it normalizes structurally valid names into Requested Permissions, requires Permit Statements to cover every entry, and lets GitHub validate name and level compatibility. Order is not significant, repeated identical tokens are normalized once, and conflicting levels for one name are rejected. Omitted or exactly empty `scope` defaults to `contents:write pull_requests:write`; whitespace-only or padded values and multiple effective `scope` values are rejected.
 
 Empty `scope` is not a no-permissions request. Following OAuth token endpoint parameter handling for this optional field, `scope=` is treated as omitted and receives the cyspbot default scope. GitHub's installation-access-token API treats an omitted `permissions` object as the app installation's default permissions, and live testing showed that a present empty `permissions: {}` object receives the same default permissions. cyspbot therefore requires a non-empty explicit scope when the Client does not want the cyspbot default.
 
@@ -53,14 +55,9 @@ Successful responses use OAuth token response shape with `Cache-Control: no-stor
 }
 ```
 
-#### Supported OIDC Provider Registrations
+#### OIDC identity usage
 
-| OpenID Provider                  | OIDC Issuer Identifier (`iss`)                | OIDC ID Token Profile                              |
-| -------------------------------- | --------------------------------------------- | -------------------------------------------------- |
-| GitHub Actions                   | `https://token.actions.githubusercontent.com` | validates that `azp` is absent or equals `cyspbot` |
-| Google service account ID Tokens | `https://accounts.google.com`                 | validates that `azp` equals `sub`                  |
-
-Every provider requires the Client to supply an explicit repository `resource`.
+Every configured provider requires the Client to supply an explicit repository `resource`. The service contract and implementation reference own the exact production OIDC Provider Registration inventory; the provider-specific guidance below describes supported source capabilities and does not itself assert production configuration.
 
 ##### GitHub Actions
 
@@ -70,7 +67,7 @@ A GitHub Actions OIDC token is an ID Token issued by `https://token.actions.gith
 
 A Google service account Client presents a service account ID Token issued by the Google Cloud IAM authorization server. Its Issuer Identifier (`iss`) is `https://accounts.google.com`, and its signature is verified with the Google JWK Set.
 
-The value supplied as an acquisition method's target audience becomes the ID Token Audience (`aud`) claim and must be `cyspbot`. This acquisition value and signed claim are distinct from the RFC 8693 `audience` parameter in the later request to cyspbot; cyspbot rejects a non-empty RFC 8693 `audience` parameter.
+The value supplied as an acquisition method's target audience becomes the ID Token Audience (`aud`) Claim and must be `cyspbot`. This acquisition value and resulting ID Token Claim are distinct from the RFC 8693 `audience` parameter in the later request to cyspbot; cyspbot rejects a non-empty RFC 8693 `audience` parameter.
 
 **Direct IAM Credentials API request.** A caller can invoke [`projects.serviceAccounts.generateIdToken`](https://cloud.google.com/iam/docs/reference/credentials/rest/v1/projects.serviceAccounts/generateIdToken) for the target service account with request field `audience` set to `cyspbot`. The caller needs `iam.serviceAccounts.getOpenIdToken` on that target service account. When only OIDC ID Tokens are required, use the least-privilege [Service Account OpenID Connect Identity Token Creator role](https://cloud.google.com/iam/docs/service-account-permissions#service_account_openid_connect_identity_token_creator_role) (`roles/iam.serviceAccountOpenIdTokenCreator`).
 
@@ -78,7 +75,7 @@ The value supplied as an acquisition method's target audience becomes the ID Tok
 
 **Attached service account and metadata server.** Code running on a supported Google Cloud resource with an attached service account can [request an ID Token for that attached service account from the resource's metadata server](https://cloud.google.com/docs/authentication/get-id-token#metadata-server), setting the metadata identity endpoint's `audience` query parameter to `cyspbot`. This path does not call `generateIdToken` as the workload, so the direct-caller `iam.serviceAccounts.getOpenIdToken` grant above is not a prerequisite for the workload's metadata-server request. At provisioning time, the identity that attaches the service account needs the permissions required to create or update that kind of resource plus `iam.serviceAccounts.actAs` on the service account; the Service Account User role (`roles/iam.serviceAccountUser`) provides `actAs`. Those provisioning permissions are separate from the workload's runtime metadata request. Prefer this path when the workload already runs as the intended service account.
 
-The Google service-account OIDC ID Token Profile accepts only ID Tokens whose Authorized Party (`azp`) exactly equals their non-empty Subject (`sub`). For this OIDC ID Token Profile, both claims contain the service account unique ID. This rule rejects Google user ID Tokens, whose Authorized Party is an OAuth client ID, while the configured Issuer Identifier rejects self-signed service account JWTs. Google Clients must explicitly supply `resource`; it is not inferred from Google claims. Authentication does not create a Permit Statement, and the production Token Issuance Policy currently contains no Google Permit Statement.
+The Google service-account OIDC ID Token Profile accepts only ID Tokens whose Authorized Party (`azp`) exactly equals their non-empty Subject (`sub`). For this OIDC ID Token Profile, both claims contain the service account unique ID. This rule rejects Google user ID Tokens, whose Authorized Party is an OAuth client ID, while the configured Issuer Identifier rejects self-signed service account JWTs. Google Clients must explicitly supply `resource`; it is not inferred from Google claims. Authentication does not create a Permit Statement.
 
 ### `POST /github/webhooks`
 
@@ -88,11 +85,10 @@ Signed `ping` deliveries return `202 {"accepted":true,"event":"ping"}`. Any othe
 
 ## Token Issuance Policy
 
-Installation Access Token Issuance is allowed only when the closed, immutable set of checked-in Permit Statements covers a normalized Installation Access Token Request. Each independently complete statement contains an exact issuer, a total predicate over verified Subject Token Claims, one exact Repository Resource Constraint, and a non-empty permission map. Applicable statements combine permissions pointwise using `omitted < read < write`; the policy permits the request only when the resulting Effective Permissions cover the Requested Permissions. Statement order has no meaning.
+Installation Access Token Issuance is allowed only when the closed, immutable set of checked-in Permit Statements covers a normalized Installation Access Token Request. Each independently complete statement contains an exact issuer, Claim Predicates over Subject Token Claims, one exact Repository Resource Constraint, and a non-empty permission map. Applicable statements combine permissions pointwise using `omitted < read < write < admin`; the policy permits the request only when the resulting Effective Permissions cover the Requested Permissions. Statement order has no meaning.
 
-The production policy authorizes only checked-in GitHub Actions contexts and
-contains no Fly or Google Permit Statement. Registering an issuer authenticates
-its tokens but never creates authorization.
+Registering an issuer authenticates its tokens but never creates authorization.
+See the service contract for the current checked-in Permit Statement inventory.
 
 ### GitHub Actions
 
@@ -111,9 +107,9 @@ cyspbot denies forked pull request contexts, unconfigured refs, unconfigured wor
 
 ### Enforcement
 
-The Client cannot select arbitrary GitHub Apps, GitHub permissions, or repository IDs. The validated `scope` and `resource` are normalized into one Installation Access Token Request, then Token Issuance Policy decides whether its Effective Permissions cover the Requested Permissions. Cross-owner requests are possible only when explicitly permitted. Unlisted identities and repositories receive no default token.
+The Client cannot select arbitrary GitHub Apps or repository IDs. It may request structurally valid GitHub permission names, but Token Issuance Policy must cover every Requested Permission; parsing a name never authorizes it. Cross-owner requests are possible only when explicitly permitted. Unlisted identities and repositories receive no default token.
 
-cyspbot denies unsupported scopes and non-canonical resource forms.
+cyspbot denies malformed `scope` values, Requested Permissions not covered by policy, and non-canonical resource forms.
 
 ## GitHub App Configuration
 
@@ -177,7 +173,7 @@ permissions:
   id-token: write
 ```
 
-That permission is necessary but not sufficient. cyspbot also requires applicable Token Issuance Policy statements for the verified repository, event, branch ref, and `workflow_ref` to cover the requested `resource` and permission scope.
+That permission is necessary but not sufficient. cyspbot also requires applicable Token Issuance Policy statements for the verified repository, event, branch ref, and `workflow_ref` to cover the requested Repository Resource and Requested Permissions.
 
 The reusable GitHub Action for this hosted service lives in the separate `cyspbot-app-token-action` repository.
 

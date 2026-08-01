@@ -14,7 +14,7 @@ GitHub API request.
 The former issuance boundary treated GitHub `401`, `403`, and `404` responses as
 an invalid OAuth target. That classification attributed a downstream response
 to the Client's `resource` even after cyspbot had already established that the
-Repository Resource and requested scope were supported. It was also unreliable:
+Repository Resource and Requested Permissions were supported. It was also unreliable:
 GitHub can use `404` for an existing private resource when authentication or
 permissions are insufficient, and uses `403` for both ordinary forbidden
 responses and rate limits.
@@ -28,10 +28,12 @@ succeed.
 The issuance boundary classifies failures by ownership and retryability rather
 than inferring OAuth target validity from a GitHub response status.
 
-| GitHub-side condition                         | Internal reason        | cyspbot Token Endpoint response           |
+| Issuance condition                            | Internal reason        | cyspbot Token Endpoint response           |
 | --------------------------------------------- | ---------------------- | ----------------------------------------- |
+| missing or invalid service-owned private key  | `internal_failure`     | `500 {"error":"server_error"}`            |
 | request rejected with `400`                   | `internal_failure`     | `500 {"error":"server_error"}`            |
 | service-owned credentials rejected with `401` | `internal_failure`     | `500 {"error":"server_error"}`            |
+| validation rejected with `422`                | `internal_failure`     | `500 {"error":"server_error"}`            |
 | non-rate-limit `403`                          | `upstream_failure`     | `502 {"error":"server_error"}`            |
 | `404`                                         | `upstream_failure`     | `502 {"error":"server_error"}`            |
 | rate-limit `403` or `429`                     | `upstream_unavailable` | `503 {"error":"temporarily_unavailable"}` |
@@ -92,6 +94,12 @@ require a separate decision.
   a later Resource Server failure.
 - A GitHub `401` concerns credentials owned by cyspbot, so it is an internal
   configuration or credential failure rather than a Client error.
+- Missing or invalid local private-key material is likewise a service-owned
+  configuration failure and is never classified as a GitHub `5xx` response.
+- GitHub `422` after policy approval validates a request that cyspbot composed;
+  it is a service/configuration failure rather than `invalid_scope`. GitHub,
+  not cyspbot, remains authoritative for permission-name and level
+  compatibility.
 - GitHub documents that a private resource can produce `404` when authentication
   is missing or insufficient. Treating `404` as `invalid_target` would be both
   misleading and a poor resource-existence signal.

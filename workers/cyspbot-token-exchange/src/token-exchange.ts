@@ -290,7 +290,7 @@ function oauthErrorForIssuanceFailure(reason: InstallationAccessTokenIssuanceFai
   switch (reason) {
     case "internal_failure":
       return { error: "server_error", status: 500 };
-    case "scope_unsupported":
+    case "requested_permissions_unsupported":
       return { error: "invalid_scope", status: 400 };
     case "subject_token_unacceptable":
       return { error: "invalid_request", status: 400 };

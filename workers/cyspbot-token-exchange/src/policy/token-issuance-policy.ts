@@ -6,7 +6,7 @@ import {
 import {
   canonicalizeInstallationAccessTokenPermissions,
   createGitHubRepositoryResource,
-  installationAccessTokenPermissionsAreSupported,
+  installationAccessTokenPermissionsAreValid,
   installationAccessTokenPermissionLevelCovers,
   type GitHubInstallationPermissions,
   type InstallationAccessTokenRequest,
@@ -189,7 +189,7 @@ export function tokenIssuancePolicySupportsTarget(
   );
 }
 
-export function tokenIssuancePolicySupportsScope(
+export function tokenIssuancePolicySupportsRequestedPermissions(
   policy: TokenIssuancePolicy,
   request: InstallationAccessTokenRequest,
 ): boolean {
@@ -423,8 +423,8 @@ function validatePermissions(
       fail(`${path}.${name}`, "must be an own data field");
     }
 
-    if (!installationAccessTokenPermissionsAreSupported({ [name]: descriptor.value })) {
-      fail(`${path}.${name}`, "has an unsupported permission name or level");
+    if (!installationAccessTokenPermissionsAreValid({ [name]: descriptor.value })) {
+      fail(`${path}.${name}`, "has an invalid permission name or level");
     }
   }
 }
