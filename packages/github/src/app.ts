@@ -31,6 +31,13 @@ export interface InstallationAccessToken {
   token: string;
 }
 
+export class GitHubAppConfigurationError extends Error {
+  public constructor() {
+    super("invalid GitHub App configuration");
+    this.name = "GitHubAppConfigurationError";
+  }
+}
+
 export type GitHubAppEnv = GitHubApiEnv & {
   GITHUB_APP_ID: string;
   GITHUB_APP_PRIVATE_KEY: SecretTextBinding;
@@ -143,7 +150,7 @@ async function importedGitHubAppPrivateKey(privateKeyPem: string): Promise<Crypt
   }
 
   const imported = importPKCS8(privateKeyPem, "RS256").catch(() => {
-    throw new GitHubApiError(500, "invalid GitHub App private key");
+    throw new GitHubAppConfigurationError();
   });
   cachedPrivateKey = { fingerprint, imported };
 
@@ -157,7 +164,7 @@ async function githubAppPrivateKeyPem(env: GitHubAppEnv): Promise<string> {
     return privateKeyPem;
   }
 
-  throw new GitHubApiError(500, "missing GitHub App private key");
+  throw new GitHubAppConfigurationError();
 }
 
 function isStringRecord(value: unknown): value is Record<string, string> {

@@ -1,5 +1,6 @@
 import {
   createInstallationAccessTokenForRepositoryName,
+  GitHubAppConfigurationError,
   resolveInstallationForRepository,
 } from "@cyspbot/github/app";
 import {
@@ -12,13 +13,13 @@ import type { InstallationAccessTokenRequest } from "../installation-access-toke
 import type { TokenExchangeApplication } from "../token-exchange-application.ts";
 import {
   tokenIssuancePolicyPermits,
-  tokenIssuancePolicySupportsScope,
+  tokenIssuancePolicySupportsRequestedPermissions,
   tokenIssuancePolicySupportsTarget,
 } from "./token-issuance-policy.ts";
 
 export type InstallationAccessTokenIssuanceFailureReason =
   | "internal_failure"
-  | "scope_unsupported"
+  | "requested_permissions_unsupported"
   | "subject_token_unacceptable"
   | "target_unsupported"
   | "upstream_failure"
@@ -46,9 +47,9 @@ export async function issueInstallationAccessTokenForContext(
       application.tokenIssuancePolicy,
       installationAccessTokenRequest,
     );
-    const scopeSupported =
+    const requestedPermissionsSupported =
       targetSupported &&
-      tokenIssuancePolicySupportsScope(
+      tokenIssuancePolicySupportsRequestedPermissions(
         application.tokenIssuancePolicy,
         installationAccessTokenRequest,
       );
@@ -76,8 +77,8 @@ export async function issueInstallationAccessTokenForContext(
       ok: false,
       reason: !targetSupported
         ? "target_unsupported"
-        : !scopeSupported
-          ? "scope_unsupported"
+        : !requestedPermissionsSupported
+          ? "requested_permissions_unsupported"
           : "subject_token_unacceptable",
     };
   }
@@ -159,11 +160,7 @@ function reasonForInstallationAccessTokenIssuanceError(
       return "upstream_unavailable";
     }
 
-    if (error.status === 400) {
-      return "internal_failure";
-    }
-
-    if (error.status === 401) {
+    if (error.status === 400 || error.status === 401 || error.status === 422) {
       return "internal_failure";
     }
 
@@ -176,7 +173,11 @@ function reasonForInstallationAccessTokenIssuanceError(
 }
 
 function logMessageForInstallationAccessTokenIssuanceError(error: unknown): string {
-  if (error instanceof GitHubApiError || error instanceof GitHubApiTransportError) {
+  if (
+    error instanceof GitHubApiError ||
+    error instanceof GitHubApiTransportError ||
+    error instanceof GitHubAppConfigurationError
+  ) {
     return error.message;
   }
 

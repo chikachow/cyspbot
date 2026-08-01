@@ -1,10 +1,8 @@
-export type GitHubInstallationPermissionLevel = "read" | "write";
+export type GitHubInstallationPermissionLevel = "admin" | "read" | "write";
 
-export interface GitHubInstallationPermissions {
-  readonly actions?: GitHubInstallationPermissionLevel;
-  readonly contents?: GitHubInstallationPermissionLevel;
-  readonly pull_requests?: GitHubInstallationPermissionLevel;
-}
+export type GitHubInstallationPermissions = Readonly<
+  Record<string, GitHubInstallationPermissionLevel>
+>;
 
 export interface InstallationAccessTokenRequest {
   readonly permissions: GitHubInstallationPermissions;
@@ -18,26 +16,16 @@ export interface GitHubRepositoryResource {
   readonly repository: string;
 }
 
-type GitHubInstallationPermissionName = keyof GitHubInstallationPermissions;
-
-const supportedPermissionNames = Object.freeze([
-  "actions",
-  "contents",
-  "pull_requests",
-] satisfies readonly GitHubInstallationPermissionName[]);
-const supportedPermissionNameSet = new Set<string>(supportedPermissionNames);
-const supportedPermissionLevels = new Set<GitHubInstallationPermissionLevel>(["read", "write"]);
-const supportedPermissionScopes = new Map<
-  string,
-  readonly [GitHubInstallationPermissionName, GitHubInstallationPermissionLevel]
->([
-  ["actions:read", ["actions", "read"]],
-  ["actions:write", ["actions", "write"]],
-  ["contents:read", ["contents", "read"]],
-  ["contents:write", ["contents", "write"]],
-  ["pull_requests:read", ["pull_requests", "read"]],
-  ["pull_requests:write", ["pull_requests", "write"]],
+const supportedPermissionLevels = new Set<GitHubInstallationPermissionLevel>([
+  "admin",
+  "read",
+  "write",
 ]);
+const permissionLevelRanks: Readonly<Record<GitHubInstallationPermissionLevel, number>> = {
+  admin: 3,
+  read: 1,
+  write: 2,
+};
 
 export function normalizeInstallationAccessTokenRequest(options: {
   resource: string;
@@ -136,7 +124,7 @@ export function createGitHubRepositoryResource(options: {
   return resource;
 }
 
-export function installationAccessTokenPermissionsAreSupported(
+export function installationAccessTokenPermissionsAreValid(
   permissions: unknown,
 ): permissions is GitHubInstallationPermissions {
   return validatedPermissionEntries(permissions, false) !== null;
@@ -158,25 +146,32 @@ export function installationAccessTokenPermissionLevelCovers(
   configured: GitHubInstallationPermissionLevel | undefined,
   requested: GitHubInstallationPermissionLevel,
 ): boolean {
-  return configured === "write" || configured === requested;
+  return (
+    configured !== undefined && permissionLevelRanks[configured] >= permissionLevelRanks[requested]
+  );
 }
 
 export function unionGitHubInstallationPermissions(
   left: GitHubInstallationPermissions,
   right: GitHubInstallationPermissions,
 ): GitHubInstallationPermissions {
-  const permissions: Partial<
-    Record<GitHubInstallationPermissionName, GitHubInstallationPermissionLevel>
-  > = {};
+  const permissions: Record<string, GitHubInstallationPermissionLevel> = Object.create(null);
 
-  for (const name of supportedPermissionNames) {
-    const leftLevel = left[name];
-    const rightLevel = right[name];
+  for (const name of new Set([...Object.keys(left), ...Object.keys(right)])) {
+    const leftLevel = Object.hasOwn(left, name) ? left[name] : undefined;
+    const rightLevel = Object.hasOwn(right, name) ? right[name] : undefined;
 
-    if (leftLevel === "write" || rightLevel === "write") {
-      permissions[name] = "write";
-    } else if (leftLevel === "read" || rightLevel === "read") {
-      permissions[name] = "read";
+    if (leftLevel === undefined) {
+      if (rightLevel !== undefined) {
+        permissions[name] = rightLevel;
+      }
+    } else if (
+      rightLevel === undefined ||
+      permissionLevelRanks[leftLevel] >= permissionLevelRanks[rightLevel]
+    ) {
+      permissions[name] = leftLevel;
+    } else {
+      permissions[name] = rightLevel;
     }
   }
 
@@ -192,13 +187,11 @@ function parseGitHubInstallationScope(
     return null;
   }
 
-  const permissions: Partial<
-    Record<GitHubInstallationPermissionName, GitHubInstallationPermissionLevel>
-  > = {};
+  const permissions: Record<string, GitHubInstallationPermissionLevel> = Object.create(null);
   const seen = new Set<string>();
 
   for (const scope of scopeTokens) {
-    const permission = supportedPermissionScopes.get(scope);
+    const permission = parseGitHubInstallationPermissionScope(scope);
 
     if (permission === undefined) {
       return null;
@@ -220,7 +213,7 @@ function parseGitHubInstallationScope(
 
   return {
     permissions: canonicalizeInstallationAccessTokenPermissions(permissions),
-    scope: [...seen].sort().join(" "),
+    scope: [...seen].sort(compareStrings).join(" "),
   };
 }
 
@@ -228,13 +221,17 @@ function comparePermissionEntry(
   [left]: readonly [string, string],
   [right]: readonly [string, string],
 ): number {
-  return left.localeCompare(right);
+  return compareStrings(left, right);
+}
+
+function compareStrings(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function validatedPermissionEntries(
   permissions: unknown,
   allowEmpty: boolean,
-): [GitHubInstallationPermissionName, GitHubInstallationPermissionLevel][] | null {
+): [string, GitHubInstallationPermissionLevel][] | null {
   if (
     typeof permissions !== "object" ||
     permissions === null ||
@@ -252,7 +249,7 @@ function validatedPermissionEntries(
     return null;
   }
 
-  const entries: [GitHubInstallationPermissionName, GitHubInstallationPermissionLevel][] = [];
+  const entries: [string, GitHubInstallationPermissionLevel][] = [];
 
   for (const name of names) {
     const descriptor = descriptors[name];
@@ -260,19 +257,58 @@ function validatedPermissionEntries(
     if (
       descriptor === undefined ||
       !("value" in descriptor) ||
-      !supportedPermissionNameSet.has(name) ||
+      !isOAuthScopePermissionName(name) ||
       !supportedPermissionLevels.has(descriptor.value as GitHubInstallationPermissionLevel)
     ) {
       return null;
     }
 
-    entries.push([
-      name as GitHubInstallationPermissionName,
-      descriptor.value as GitHubInstallationPermissionLevel,
-    ]);
+    entries.push([name, descriptor.value as GitHubInstallationPermissionLevel]);
   }
 
   return entries;
+}
+
+function parseGitHubInstallationPermissionScope(
+  scope: string,
+): readonly [string, GitHubInstallationPermissionLevel] | undefined {
+  const separator = scope.indexOf(":");
+
+  if (separator <= 0 || separator !== scope.lastIndexOf(":")) {
+    return undefined;
+  }
+
+  const name = scope.slice(0, separator);
+  const level = scope.slice(separator + 1);
+
+  return isOAuthScopePermissionName(name) &&
+    supportedPermissionLevels.has(level as GitHubInstallationPermissionLevel)
+    ? [name, level as GitHubInstallationPermissionLevel]
+    : undefined;
+}
+
+function isOAuthScopePermissionName(name: string): boolean {
+  if (name.length === 0) {
+    return false;
+  }
+
+  for (const character of name) {
+    const codePoint = character.codePointAt(0);
+
+    if (
+      codePoint === undefined ||
+      codePoint === 0x3a ||
+      !(
+        codePoint === 0x21 ||
+        (codePoint >= 0x23 && codePoint <= 0x5b) ||
+        (codePoint >= 0x5d && codePoint <= 0x7e)
+      )
+    ) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function isGitHubPathSegment(value: string | undefined): value is string {

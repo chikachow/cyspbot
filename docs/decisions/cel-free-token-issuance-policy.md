@@ -17,7 +17,7 @@ Access Token for a normalized Installation Access Token Request
 presented with a Verified Subject Token.
 
 The former CEL policy combined structural issuer, resource, and permission
-fields with CEL expressions over verified Subject Token Claims. CEL admitted
+fields with CEL expressions over Subject Token Claims. CEL admitted
 substantially more syntax, types, and operations than checked-in policy needed.
 It also required a parser, planner, binding adapter, compilation cache, runtime
 error handling, and tests for expression-language behavior outside the
@@ -30,23 +30,11 @@ explained why the complete request was not permitted.
 
 ## Decision
 
-### Ubiquitous language
+### Domain language
 
-| Concept                                                     | Term                           |
-| ----------------------------------------------------------- | ------------------------------ |
-| Complete checked-in authorization configuration             | Token Issuance Policy          |
-| One positive authorization declaration                      | Permit Statement               |
-| Authenticated RFC 8693 policy input                         | Verified Subject Token         |
-| Typed requirement over that input                           | OIDC Subject Token Constraint  |
-| Exact OIDC issuer URL                                       | OIDC Issuer Identifier         |
-| Atomic typed test of an asserted Claim                      | Claim predicate                |
-| GitHub repository named by the OAuth `resource` value       | Repository Resource            |
-| Checked-in selector for one Repository Resource             | Repository Resource Constraint |
-| Permissions declared by one Permit Statement                | permissions                    |
-| Canonical map derived from OAuth `scope` or service default | Requested Permissions          |
-| Pointwise union of applicable statements' permissions       | Effective Permissions          |
-| Subject-token and resource result for one Permit Statement  | applicable or not applicable   |
-| Complete policy result                                      | permits or does not permit     |
+The canonical terms in this decision are defined in the [cyspbot domain
+glossary](../../CONTEXT.md). This decision uses those terms rather than defining
+a second authorization vocabulary.
 
 The entry is a **Permit Statement**, not a grant or rule. OAuth defines an
 authorization grant as a protocol credential, while this entry is checked-in
@@ -66,14 +54,19 @@ made of Permit Statements. Each statement contains:
 - one exact Repository Resource Constraint; and
 - one non-empty GitHub installation permission map.
 
+Permission names are not a closed cyspbot catalogue. They are structurally
+valid OAuth scope-token components, while permission levels form the closed
+ordered set `read`, `write`, and `admin`; GitHub remains authoritative for
+which names accept which levels.
+
 OIDC Subject Token Constraints contain one exact OIDC Issuer Identifier and
-zero or more typed Claim predicates. The initial predicates are strict
+zero or more typed Claim Predicates. The initial predicates are strict
 string-or-Boolean equality and membership in a finite string set. Matching uses
 own-property lookup and performs no coercion, normalization, path traversal,
 regular-expression evaluation, or Claim-to-Claim comparison.
 
-Subject-token and Repository Resource Constraints are separate typed products. Claim
-predicates form the only discriminated AST union. Permit Statements remain
+OIDC Subject Token Constraints and Repository Resource Constraints are separate
+typed products. Claim Predicates form the only discriminated AST union. Permit Statements remain
 plain objects without identifiers, effects, action fields, generic conditions,
 or a `permit(...)` wrapper.
 
@@ -81,13 +74,13 @@ or a `permit(...)` wrapper.
 
 A Permit Statement is applicable when its complete OIDC Subject Token Constraint
 and Repository Resource Constraint match. Only an applicable statement contributes
-its `permissions`. The policy never combines issuers, Claim predicates, or
+its `permissions`. The policy never combines issuers, Claim Predicates, or
 Repository Resource Constraints across statements.
 
 Applicable permissions combine pointwise using:
 
 ```text
-omitted < read < write
+omitted < read < write < admin
 ```
 
 The result is the Effective Permissions. The policy permits issuance when the
@@ -141,18 +134,18 @@ No matched statement, stable statement identifier, contributor list,
 denial-reason collection, or third decision state is exposed.
 
 When policy does not permit issuance, the protocol boundary separately asks
-whether the policy supports the Repository Resource and requested scope. Target
-support is a Boolean query over Repository Resource Constraints. Scope support
-uses permission coverage for that Repository Resource without considering OIDC
-Subject Token Constraints. Neither is an authorization result, and neither can
-permit issuance. An unsupported Repository Resource maps to RFC 8693
-`invalid_target`; an unsupported permission scope maps to OAuth `invalid_scope`;
+whether the policy supports the Repository Resource and Requested Permissions.
+Target support is a Boolean query over Repository Resource Constraints.
+Requested Permissions support uses permission coverage for that Repository
+Resource without considering OIDC Subject Token Constraints. Neither is an
+authorization result, and neither can permit issuance. An unsupported Repository Resource maps to RFC 8693
+`invalid_target`; unsupported Requested Permissions map to OAuth `invalid_scope`;
 when both are supported, the subject token is unacceptable to policy and maps
 to `invalid_request`.
 
-### Trust verified Subject Token Claims
+### Trust Subject Token Claims
 
-Successful OIDC validation authenticates the complete signed Claim set from one
+Successful OIDC validation authenticates the complete Subject Token Claims from one
 exact configured issuer for the cyspbot audience. Policy directly selects the
 Subject Token Claims that are material to authorization; it does not reconstruct
 one signed representation from another merely to check their consistency.
@@ -210,6 +203,9 @@ mechanism, callback registry, or service-specific base implementation.
 - Policy authoring exposes only operations required by checked-in policy.
 - Weaker levels in the Requested Permissions are permitted by stronger
   configured levels.
+- Permission names remain extensible; checked-in Permit Statements must still
+  cover every Requested Permission, and GitHub validates name and level
+  compatibility after policy approval.
 - Independently authored applicable statements contribute to the same Effective
   Permissions without changing the request sent to GitHub.
 - The authorization model is deliberately closed under pointwise permission
@@ -242,7 +238,7 @@ weaken the current domain model without another consumer.
 ### Provider-specific implementations or inheritance
 
 Rejected because provider identity does not own Repository Resources or
-permissions. Typed Claim predicates express required differences without base
+permissions. Typed Claim Predicates express required differences without base
 classes, matcher registries, or provider-specific statement types.
 
 ### Registration-derived authorization
@@ -285,8 +281,8 @@ compromised issuer. It can also reject supported customized Claim formats.
   installation authority remains an independent control.
 - TypeScript types do not validate runtime values. Compilation therefore
   defensively validates and freezes every policy definition.
-- Ordered permission levels intentionally allow a configured stronger level to
-  cover a weaker request.
+- The ordered `read < write < admin` levels intentionally allow a configured
+  stronger level to cover a weaker request.
 - Permit-only composition is monotonic and cannot forbid a combined request
   when each Requested Permission is independently permitted for the same
   subject token and resource.

@@ -19,7 +19,7 @@ import {
   oidcSubjectTokenConstraint,
   assertTokenIssuancePolicyIssuersAreRegistered,
   tokenIssuancePolicyPermits,
-  tokenIssuancePolicySupportsScope,
+  tokenIssuancePolicySupportsRequestedPermissions,
   tokenIssuancePolicySupportsTarget,
   type PermitStatementDefinition,
 } from "@cyspbot/token-exchange/policy/token-issuance-policy";
@@ -261,12 +261,8 @@ describe("Token Issuance Policy compilation", () => {
     ],
     [[{ ...validPermitStatement(), permissions: {} }], "permitStatements[0].permissions"],
     [
-      [{ ...validPermitStatement(), permissions: { contents: "admin" } }],
+      [{ ...validPermitStatement(), permissions: { contents: "maintain" } }],
       "permitStatements[0].permissions.contents",
-    ],
-    [
-      [{ ...validPermitStatement(), permissions: { metadata: "read" } }],
-      "permitStatements[0].permissions.metadata",
     ],
   ] as const)("rejects malformed structure at its source path", (definitions, path) => {
     expect(() => compileTokenIssuancePolicy(definitions as never)).toThrow(path);
@@ -429,17 +425,14 @@ describe("Token Issuance Policy compilation", () => {
   });
 });
 
-const permissionNames = ["actions", "contents", "pull_requests"] as const;
-const permissionLevels = [undefined, "read", "write"] as const;
-const allPermissionMaps = permissionLevels.flatMap((actions) =>
-  permissionLevels.flatMap((contents) =>
-    permissionLevels.map((pullRequests) =>
-      Object.freeze({
-        ...(actions === undefined ? {} : { actions }),
-        ...(contents === undefined ? {} : { contents }),
-        ...(pullRequests === undefined ? {} : { pull_requests: pullRequests }),
-      }),
-    ),
+const permissionNames = ["future_permission", "issues"] as const;
+const permissionLevels = [undefined, "read", "write", "admin"] as const;
+const allPermissionMaps = permissionLevels.flatMap((futurePermission) =>
+  permissionLevels.map((issues) =>
+    Object.freeze({
+      ...(futurePermission === undefined ? {} : { future_permission: futurePermission }),
+      ...(issues === undefined ? {} : { issues }),
+    }),
   ),
 );
 const nonEmptyPermissionMaps = allPermissionMaps.filter(
@@ -508,7 +501,10 @@ describe("Token Issuance Policy evaluation", () => {
       tokenIssuancePolicySupportsTarget({} as never, requestFor({ contents: "read" })),
     ).toThrow("invalid Token Issuance Policy");
     expect(() =>
-      tokenIssuancePolicySupportsScope({} as never, requestFor({ contents: "read" })),
+      tokenIssuancePolicySupportsRequestedPermissions(
+        {} as never,
+        requestFor({ contents: "read" }),
+      ),
     ).toThrow("invalid Token Issuance Policy");
     expect(() => assertTokenIssuancePolicyIssuersAreRegistered({} as never, [])).toThrow(
       "invalid Token Issuance Policy",
@@ -652,6 +648,27 @@ describe("Token Issuance Policy evaluation", () => {
     ).toBe(true);
   });
 
+  it("permits arbitrary permission names only when statements cover their requested levels", () => {
+    const policy = compileTokenIssuancePolicy([
+      statementFor({ future_permission: "admin", issues: "write" }),
+    ]);
+
+    expect(
+      tokenIssuancePolicyPermits(
+        policy,
+        matchingSubjectToken,
+        requestFor({ future_permission: "admin", issues: "read" }),
+      ),
+    ).toBe(true);
+    expect(
+      tokenIssuancePolicyPermits(
+        policy,
+        matchingSubjectToken,
+        requestFor({ another_permission: "read" }),
+      ),
+    ).toBe(false);
+  });
+
   it("does not combine partial issuer, Claim, or resource matches", () => {
     const otherIssuer = parseOidcIssuerIdentifier("https://other-issuer.example");
 
@@ -704,7 +721,7 @@ describe("Token Issuance Policy evaluation", () => {
     const supportedTarget = requestFor({ actions: "read", contents: "read" });
 
     expect(tokenIssuancePolicySupportsTarget(policy, supportedTarget)).toBe(true);
-    expect(tokenIssuancePolicySupportsScope(policy, supportedTarget)).toBe(true);
+    expect(tokenIssuancePolicySupportsRequestedPermissions(policy, supportedTarget)).toBe(true);
     expect(tokenIssuancePolicyPermits(policy, matchingSubjectToken, supportedTarget)).toBe(false);
     expect(
       tokenIssuancePolicySupportsTarget(
@@ -716,7 +733,9 @@ describe("Token Issuance Policy evaluation", () => {
       ),
     ).toBe(false);
     expect(tokenIssuancePolicySupportsTarget(policy, requestFor({ actions: "write" }))).toBe(true);
-    expect(tokenIssuancePolicySupportsScope(policy, requestFor({ actions: "write" }))).toBe(false);
+    expect(
+      tokenIssuancePolicySupportsRequestedPermissions(policy, requestFor({ actions: "write" })),
+    ).toBe(false);
   });
 
   it("is neutral to statement order, duplicates, and split or merged definitions", () => {
@@ -773,7 +792,7 @@ describe("Token Issuance Policy evaluation", () => {
     ).toBe(false);
   });
 
-  it("is equivalent to materialized pointwise union for all 18,954 cases", () => {
+  it("is equivalent to materialized pointwise union across the complete level lattice", () => {
     let cases = 0;
 
     for (const left of allPermissionMaps) {
@@ -790,7 +809,7 @@ describe("Token Issuance Policy evaluation", () => {
       }
     }
 
-    expect(cases).toBe(18_954);
+    expect(cases).toBe(3_840);
   });
 
   it("is permission-separable for every pair of non-empty requests", () => {
@@ -817,6 +836,6 @@ describe("Token Issuance Policy evaluation", () => {
       }
     }
 
-    expect(cases).toBe(18_252);
+    expect(cases).toBe(3_600);
   });
 });

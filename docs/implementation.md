@@ -42,36 +42,38 @@ The Worker factory is `createTokenExchangeWorker` in `workers/cyspbot-token-exch
 7. Reject unsupported or ambiguous fields, including non-empty RFC 8693 `audience`, malformed or duplicate effective `scope`, actor-token fields, and multiple effective resources. Non-empty `audience` and a missing, malformed, or multiple effective `resource` map to `invalid_target`; actor-token parameters map to `invalid_request`.
 8. Normalize an `InstallationAccessTokenRequest` from the explicit `resource` and optional `scope` before subject-token authentication.
 9. Select one exact OIDC Provider Registration from the token's unverified `iss` claim. Reject an unregistered issuer before provider I/O, fetch its OpenID Provider Configuration, validate and retain the required OpenID Provider Metadata, obtain the JWK Set from the validated `jwks_uri`, centrally verify the token, require the exact scalar subject-token audience `cyspbot`, and apply the provider's OIDC ID Token Profile only when it is non-null.
-10. Retain only the verified Subject Token Claims and verified issuer as the Verified Subject Token. Keep the resolved key ID separately as verification evidence for audit logging; neither it nor the request's already-validated token type is authorization identity.
+10. Retain only the Subject Token Claims and verified issuer as the Verified Subject Token. Keep the resolved key ID separately as verification evidence for audit logging; neither it nor the request's already-validated token type is authorization identity.
 11. Evaluate the static Token Issuance Policy over `{ verifiedSubjectToken, tokenRequest }`.
 12. Resolve the target GitHub App installation from the normalized Repository Resource using cyspbot's configured GitHub App credentials.
 13. Issue a GitHub App installation access token for `repositories: [<repo>]` and the Requested Permissions.
 
-`workers/cyspbot-token-exchange/src/installation-access-token-request.ts` performs issuer-independent normalization from an explicit `resource` and optional `scope`, including canonical repository-resource parsing. It also owns the closed permission names and levels, canonical immutable Requested Permissions maps, pointwise coverage and union, and the closed Repository Resource constructor. `workers/cyspbot-token-exchange/src/policy/token-issuance-policy.ts` defensively compiles independently complete Permit Statements into an opaque immutable policy. Each statement has an exact issuer, a total predicate over verified Subject Token Claims, one exact Repository Resource Constraint, and non-empty permissions. Evaluation finds all applicable statements, computes their pointwise permission union using `omitted < read < write`, and returns one Boolean indicating whether the Effective Permissions cover the Requested Permissions. Missing or wrongly typed Claims make predicates false. Separate Boolean target- and scope-support queries classify RFC 8693 and OAuth errors after policy does not permit issuance; neither can authorize issuance. `configured-token-issuance-policy.ts` owns the nine production GitHub Actions statements. At composition time, every policy issuer must name a configured OIDC Provider Registration.
+`workers/cyspbot-token-exchange/src/installation-access-token-request.ts` performs issuer-independent normalization from an explicit `resource` and optional `scope`, including canonical repository-resource parsing. It accepts structurally valid permission names without a vendor catalogue, owns the closed `read`, `write`, and `admin` level set, and constructs canonical immutable Requested Permissions maps. It also owns pointwise coverage and union plus the closed Repository Resource constructor. `workers/cyspbot-token-exchange/src/policy/token-issuance-policy.ts` defensively compiles independently complete Permit Statements into an opaque immutable policy. Each statement has an exact issuer, Claim Predicates over Subject Token Claims, one exact Repository Resource Constraint, and non-empty permissions. Evaluation finds all applicable statements, computes their pointwise permission union using `omitted < read < write < admin`, and returns one Boolean indicating whether the Effective Permissions cover the Requested Permissions. Missing or wrongly typed Claims make predicates false. Separate Boolean target- and Requested-Permissions support queries classify RFC 8693 and OAuth errors after policy does not permit issuance; neither can authorize issuance. `configured-token-issuance-policy.ts` owns the nine production GitHub Actions statements. At composition time, every policy issuer must name a configured OIDC Provider Registration.
 
 ### Policy authoring and compilation
 
 The policy module exports plain definition types and the `claimEquals`,
 `claimOneOf`, `oidcSubjectTokenConstraint`, and
 `githubRepositoryResourceConstraint` factories. A `PermitStatementDefinition`
-combines one subject-token constraint, one repository constraint, and non-empty
+combines one OIDC Subject Token Constraint, one Repository Resource Constraint, and non-empty
 permissions. `compileTokenIssuancePolicy` is the construction seam: it rejects
 unknown or inherited definition fields, invalid runtime values, duplicate Claim
 Names within one subject-token constraint, empty or duplicate `claimOneOf`
-alternatives, noncanonical repository components, and unsupported permissions.
+alternatives, noncanonical repository components, malformed permission names,
+and levels outside `read`, `write`, and `admin`.
 It copies and recursively freezes owned values and exposes only an opaque
 `TokenIssuancePolicy`.
 
 The current evaluator scans statements in source order while tracking entries
 in the Requested Permissions that remain uncovered. Exact resource and issuer
-comparisons happen before Claim predicates, and evaluation returns early once
+comparisons happen before Claim Predicates, and evaluation returns early once
 the Requested Permissions are covered. This is equivalent to materializing
 Effective Permissions because Permit Statements can add but never revoke
 permissions.
 The opaque policy interface permits changing this algorithm without changing
-policy authoring or evaluation semantics. Tests exhaustively cover the closed
-permission domain, statement order, duplicates, split and merged definitions,
-and multi-statement composition.
+policy authoring or evaluation semantics. Tests exhaustively cover the complete
+permission-level algebra with representative arbitrary names, plus statement
+order, duplicates, split and merged definitions, and multi-statement
+composition.
 
 cyspbot does not accept a public GitHub App selector. It constrains this profile to cyspbot's configured GitHub App credentials, one signed subject-token `aud` string equal to `cyspbot`, one canonical GitHub repository API `resource`, and one Requested Permissions map. Plural subject-token audiences are rejected rather than interpreted by containment.
 
@@ -100,7 +102,7 @@ Repository identity in Token Issuance Policy is intentionally name-based. If a r
 
 ### Shared enforcement and issuance
 
-ID Token verification and any non-null OIDC ID Token Profile authenticate the signed claim set, while each Token Issuance Policy Permit Statement decides which claims matter to its authorization. Missing or incorrectly typed selected claims make statements non-applicable; when the Repository Resource and scope are otherwise supported, the subject token is unacceptable to policy and cyspbot returns `invalid_request`. For an unsupported Repository Resource, cyspbot returns `invalid_target`; for an unsupported scope on a supported resource, it returns `invalid_scope`. Policy-irrelevant metadata does not affect authorization. An invalid standard ID Token claim or failed non-null profile also causes authentication to fail as `invalid_request`.
+ID Token verification and any non-null OIDC ID Token Profile authenticate the Subject Token Claims, while each Token Issuance Policy Permit Statement decides which Claims matter to its authorization. Missing or incorrectly typed selected Claims make statements non-applicable; when the Repository Resource and Requested Permissions are otherwise supported, the Verified Subject Token is unacceptable to policy and cyspbot returns `invalid_request`. For an unsupported Repository Resource, cyspbot returns `invalid_target`; when no Permit Statement composition covers the Requested Permissions for a supported resource, it returns `invalid_scope`. Policy-irrelevant metadata does not affect authorization. An invalid standard ID Token Claim or failed non-null profile also causes authentication to fail as `invalid_request`.
 
 `issueInstallationAccessTokenForContext` in `workers/cyspbot-token-exchange/src/policy/installation-access-token-issuance.ts` does not fetch source repository metadata or reparse the resource. It uses the owner and repository retained by request normalization, resolves the target installation with `GET /repos/{owner}/{repo}/installation`, then passes `repositories: ["<repo>"]` and the Requested Permissions to GitHub's installation-access-token endpoint.
 
@@ -112,8 +114,10 @@ contributor list, or denial-reason synthesis. A downstream GitHub failure after
 authorization therefore retains `permitted: true`.
 
 The issuance boundary does not infer an invalid OAuth target from an ambiguous
-GitHub status. GitHub 401 is treated as a service-owned credential failure;
-403 and 404 are conservatively upstream failures; and transport failures,
+GitHub status. Missing or invalid local GitHub App private-key material and
+GitHub 401 are treated as service-owned failures. GitHub 422 validation after
+policy approval is also a service/configuration failure, rather than
+`invalid_scope`. GitHub 403 and 404 are conservatively upstream failures; and transport failures,
 GitHub 503 responses, and 403 or 429 rate-limit responses are upstream
 unavailability. Only policy's resource-support query produces
 `target_unsupported`. The durable rationale and complete response mapping are
@@ -130,7 +134,9 @@ GitHub HTTP client checks `x-ratelimit-remaining: 0`, the presence of
 Error-body reads are limited to `16 KiB`; an absent, oversized, unreadable,
 malformed, or differently shaped body contributes no rate-limit evidence.
 
-cyspbot treats exactly empty `scope` and `resource` form occurrences as omitted. It requires exactly one remaining resource, so empty-only resources and multiple non-empty resources receive `invalid_target`; one non-empty resource accompanied by empty occurrences remains unambiguous. It does not translate `scope=` into `permissions: {}`. GitHub documents that omitting `permissions` defaults to the app installation's granted permissions, and live testing showed that a present empty `permissions: {}` object receives the same default permission set. Minimal-permission token shapes must be expressed as explicit non-empty scopes such as `contents:read`. Scope values are parsed as OAuth scope tokens separated by a single ASCII space; order is not significant, and repeated identical tokens are normalized once. Leading whitespace, trailing whitespace, repeated spaces, tabs, and newlines are rejected. The normalized token request retains a canonical scope string, and `/token` success responses always include that issued scope so clients can observe defaults and normalized ordering.
+cyspbot treats exactly empty `scope` and `resource` form occurrences as omitted. It requires exactly one remaining resource, so empty-only resources and multiple non-empty resources receive `invalid_target`; one non-empty resource accompanied by empty occurrences remains unambiguous. It does not translate `scope=` into `permissions: {}`. GitHub documents that omitting `permissions` defaults to the app installation's granted permissions, and live testing showed that a present empty `permissions: {}` object receives the same default permission set. Minimal-permission token shapes must be expressed as explicit non-empty scopes such as `contents:read`.
+
+Scope values are parsed as OAuth scope tokens separated by a single ASCII space. Each token contains one non-empty ASCII scope-token permission name, one colon, and a `read`, `write`, or `admin` level. The parser validates representation and safety rather than consulting a GitHub permission-name catalogue; GitHub owns name and level compatibility. Order is not significant, repeated identical tokens are normalized once, and conflicting levels for one name are rejected. Leading whitespace, trailing whitespace, repeated spaces, tabs, newlines, empty names, extra colons, non-scope-token characters, and other levels are rejected. The normalized Installation Access Token Request retains a canonical scope string, and `/token` success responses always include that issued scope so Clients can observe defaults and normalized ordering.
 
 `workers/cyspbot-token-exchange/src/token-exchange-application.ts` groups one GitHub App credential set with its validated Token Issuance Policy. The request runtime constructs this explicit application configuration before issuance; issuance has no optional policy dependency or hidden fallback.
 

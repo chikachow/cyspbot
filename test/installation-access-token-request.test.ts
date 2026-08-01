@@ -4,7 +4,7 @@ import {
   canonicalizeInstallationAccessTokenPermissions,
   createGitHubRepositoryResource,
   installationAccessTokenPermissionLevelCovers,
-  installationAccessTokenPermissionsAreSupported,
+  installationAccessTokenPermissionsAreValid,
   normalizeInstallationAccessTokenRequest,
   parseGitHubRepositoryResource,
   unionGitHubInstallationPermissions,
@@ -21,9 +21,8 @@ const malformedRuntimePermissionCases = [
   { name: "undefined", value: undefined },
   { name: "string", value: "contents:read" },
   { name: "array", value: [] },
-  { name: "unknown permission", value: { metadata: "read" } },
   { name: "undefined level", value: { contents: undefined } },
-  { name: "unknown level", value: { contents: "admin" } },
+  { name: "unknown level", value: { contents: "maintain" } },
   { name: "non-string level", value: { contents: 1 } },
   {
     name: "inherited permission",
@@ -57,10 +56,10 @@ describe("InstallationAccessTokenRequest normalization", () => {
       scope: "contents:write contents:write pull_requests:write",
     },
     {
-      expectedPermissions: { actions: "read", contents: "read", pull_requests: "read" },
-      expectedScope: "actions:read contents:read pull_requests:read",
-      name: "read permissions",
-      scope: "pull_requests:read contents:read actions:read",
+      expectedPermissions: { actions: "read", issues: "admin", pull_requests: "write" },
+      expectedScope: "actions:read issues:admin pull_requests:write",
+      name: "arbitrary permission names and all explicit levels",
+      scope: "pull_requests:write issues:admin actions:read",
     },
   ] as const)("normalizes $name", ({ expectedPermissions, expectedScope, scope }) => {
     const tokenRequest = mustNormalizeTokenRequest({
@@ -111,8 +110,13 @@ describe("InstallationAccessTokenRequest normalization", () => {
     "contents:write  pull_requests:write",
     "contents:write\tpull_requests:write",
     "contents:write\npull_requests:write",
-    "metadata:read",
     "contents:read contents:write",
+    "contents:read:write",
+    ":read",
+    'bad"name:read',
+    "bad\\name:read",
+    "ümlaut:read",
+    "contents:maintain",
     "actions",
   ])("rejects unsupported scope %s", (scope) => {
     expect(
@@ -131,21 +135,25 @@ describe("GitHub installation permission domain", () => {
   it.each([
     ["actions", "read"],
     ["actions", "write"],
-    ["contents", "read"],
-    ["contents", "write"],
-    ["pull_requests", "read"],
-    ["pull_requests", "write"],
-  ] as const)("accepts supported permission %s:%s", (name, level) => {
-    expect(installationAccessTokenPermissionsAreSupported({ [name]: level })).toBe(true);
+    ["issues", "admin"],
+    ["future_permission", "read"],
+  ] as const)("accepts structurally valid permission %s:%s", (name, level) => {
+    expect(installationAccessTokenPermissionsAreValid({ [name]: level })).toBe(true);
   });
 
   it.each([
     [undefined, "read", false],
     [undefined, "write", false],
+    [undefined, "admin", false],
     ["read", "read", true],
     ["read", "write", false],
+    ["read", "admin", false],
     ["write", "read", true],
     ["write", "write", true],
+    ["write", "admin", false],
+    ["admin", "read", true],
+    ["admin", "write", true],
+    ["admin", "admin", true],
   ] as const)("reports whether %s covers %s", (configured, requested, expected) => {
     expect(
       installationAccessTokenPermissionLevelCovers(
@@ -157,23 +165,35 @@ describe("GitHub installation permission domain", () => {
 
   it("unions permissions pointwise and canonically", () => {
     const permissions = unionGitHubInstallationPermissions(
-      { contents: "read", pull_requests: "write" },
-      { actions: "read", contents: "write" },
+      { contents: "read", issues: "admin", pull_requests: "write" },
+      { actions: "read", contents: "write", issues: "read" },
     );
 
     expect(permissions).toEqual({
       actions: "read",
       contents: "write",
+      issues: "admin",
       pull_requests: "write",
     });
     expect(Object.isFrozen(permissions)).toBe(true);
-    expect(Object.keys(permissions)).toEqual(["actions", "contents", "pull_requests"]);
+    expect(Object.keys(permissions)).toEqual(["actions", "contents", "issues", "pull_requests"]);
+  });
+
+  it("unions valid permission names that collide with Object prototype properties", () => {
+    const prototypeNamedPermissions = mustNormalizeTokenRequest({
+      resource: fixtureSourceResource,
+      scope: "constructor:admin toString:read",
+    }).permissions;
+
+    expect(
+      unionGitHubInstallationPermissions(prototypeNamedPermissions, { future_permission: "write" }),
+    ).toEqual({ constructor: "admin", future_permission: "write", toString: "read" });
   });
 
   it.each([{ name: "empty object", value: {} }, ...malformedRuntimePermissionCases])(
     "rejects unsupported runtime permission data: $name",
     ({ value }) => {
-      expect(installationAccessTokenPermissionsAreSupported(value)).toBe(false);
+      expect(installationAccessTokenPermissionsAreValid(value)).toBe(false);
     },
   );
 

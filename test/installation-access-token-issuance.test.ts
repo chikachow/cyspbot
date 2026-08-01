@@ -7,6 +7,11 @@ import { fetchGitHubTestDouble } from "./support/github-api.ts";
 import { createVerifiedSubjectToken } from "./support/oidc.ts";
 import { testTokenIssuancePolicy } from "./support/token-issuance-policy.ts";
 import { testEnv } from "./support/worker-env.ts";
+import {
+  compileTokenIssuancePolicy,
+  githubRepositoryResourceConstraint,
+  oidcSubjectTokenConstraint,
+} from "@cyspbot/token-exchange/policy/token-issuance-policy";
 
 const application = {
   githubApp: testEnv,
@@ -68,6 +73,58 @@ describe("Installation Access Token Issuance", () => {
     expect(requestedPaths).not.toContain(`/repos/${testRepository}`);
   });
 
+  it("forwards arbitrary Requested Permissions and admin exactly to GitHub", async () => {
+    const requestedPermissions = { future_permission: "admin", issues: "read" } as const;
+    let forwardedBody: unknown;
+    const policy = compileTokenIssuancePolicy([
+      {
+        permissions: requestedPermissions,
+        resource: githubRepositoryResourceConstraint(
+          tokenRequest.resource.owner,
+          tokenRequest.resource.repository,
+        ),
+        subjectToken: oidcSubjectTokenConstraint(verifiedSubjectToken.issuer),
+      },
+    ]);
+
+    await expect(
+      issueInstallationAccessTokenForContext(
+        { ...application, tokenIssuancePolicy: policy },
+        { verifiedSubjectToken, verificationEvidence },
+        {
+          ...tokenRequest,
+          permissions: requestedPermissions,
+          scope: "future_permission:admin issues:read",
+        },
+        {
+          fetch: async (input, init) => {
+            const request = new Request(input, init);
+
+            if (request.method === "POST") {
+              forwardedBody = await request.json();
+
+              return Response.json(
+                {
+                  expires_at: "2030-01-01T00:00:00Z",
+                  permissions: requestedPermissions,
+                  token: "ghs_arbitrary_permissions",
+                },
+                { status: 201 },
+              );
+            }
+
+            return fetchGitHubTestDouble(input, init);
+          },
+        },
+      ),
+    ).resolves.toMatchObject({ ok: true, token: "ghs_arbitrary_permissions" });
+
+    expect(forwardedBody).toEqual({
+      permissions: requestedPermissions,
+      repositories: [tokenRequest.resource.repository],
+    });
+  });
+
   it("logs GitHub Actions claims and issuance context on success", async () => {
     const consoleInfo = vi.spyOn(console, "info").mockImplementation(() => undefined);
 
@@ -113,6 +170,12 @@ describe("Installation Access Token Issuance", () => {
   it.each([
     { githubStatus: 400, issuanceReason: "internal_failure", scenario: "bad request" },
     { githubStatus: 401, issuanceReason: "internal_failure", scenario: "bad credentials" },
+    {
+      githubStatus: 422,
+      issuanceReason: "internal_failure",
+      responseBody: "private GitHub validation detail",
+      scenario: "validation rejection",
+    },
     { githubStatus: 403, issuanceReason: "upstream_failure", scenario: "forbidden" },
     {
       githubStatus: 403,
@@ -193,6 +256,43 @@ describe("Installation Access Token Issuance", () => {
       expectLogsNotToContainGitHubAppCredentials(consoleError.mock.calls);
     },
   );
+
+  it.each([
+    { privateKey: "", scenario: "missing" },
+    { privateKey: "not a private key", scenario: "invalid" },
+  ])("maps a $scenario GitHub App private key to an internal failure", async ({ privateKey }) => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const fetchGitHub = vi.fn(fetchGitHubTestDouble);
+
+    await expect(
+      issueInstallationAccessTokenForContext(
+        {
+          ...application,
+          githubApp: { ...application.githubApp, GITHUB_APP_PRIVATE_KEY: privateKey },
+        },
+        { verifiedSubjectToken, verificationEvidence },
+        tokenRequest,
+        { fetch: fetchGitHub },
+      ),
+    ).resolves.toEqual({ ok: false, reason: "internal_failure" });
+
+    expect(fetchGitHub).not.toHaveBeenCalled();
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        error: {
+          message: "invalid GitHub App configuration",
+          name: "GitHubAppConfigurationError",
+          status: undefined,
+        },
+        target_installation: { id: undefined },
+        token_issuance_policy: { permitted: true },
+      }),
+    );
+    if (privateKey.length > 0) {
+      expect(JSON.stringify(consoleError.mock.calls)).not.toContain(privateKey);
+    }
+    expectLogsNotToContainGitHubAppCredentials(consoleError.mock.calls);
+  });
 
   it.each([
     { githubStatus: 404, issuanceReason: "upstream_failure" },

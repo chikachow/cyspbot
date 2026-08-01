@@ -13,10 +13,10 @@ cyspbot accepts Client-presented OpenID Connect ID Tokens from configured issuer
 - issuer trust is configured, not discovered from Client-presented tokens
 - the Verified Subject Token is derived only from Subject Token Claims in an ID Token accepted through an exact OIDC Provider Registration and, when non-null, its OIDC ID Token Profile
 - the ID Token audience must be the exact single string `cyspbot`; the unsupported token-exchange `audience` parameter grants nothing
-- the production application registers only GitHub Actions and Google; the Fly registration constructor uses an explicit null profile, and trusting any Fly issuer would require a reviewed checked-in application-composition change
-- Google service account identity requires a service account ID Token from the Google Cloud IAM authorization server with Issuer Identifier `https://accounts.google.com`; its Authorized Party must equal its non-empty Subject, but the production Token Issuance Policy currently contains no Google Permit Statement
+- OIDC Provider Registrations and Permit Statements are independent, checked-in trust decisions; registration authenticates tokens but never authorizes Installation Access Token Issuance
+- the exact production registration and Permit Statement inventory is maintained in the [service contract](docs/service-contract.md) and [implementation reference](docs/implementation.md)
 - Clients must supply exactly one effective canonical Repository Resource; value-less occurrences are omitted, and Subject Token Claims never select the target
-- Clients may request an exact GitHub App permission scope
+- Clients may name structurally valid GitHub permissions, but every Requested Permission must be covered by checked-in Permit Statements
 - checked-in Token Issuance Policy Permit Statements must compose Effective Permissions that cover the Requested Permissions for the Verified Subject Token and Repository Resource before a token is issued
 - the GitHub App installation independently remains the upper bound on repositories and permissions
 - the GitHub App private key remains inside the deployment secret boundary
