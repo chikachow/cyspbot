@@ -17,7 +17,7 @@ Shared packages:
 - `packages/http` owns framework-free JSON responses, problem details, and bounded byte-stream and request-body reading.
 - `packages/github` owns GitHub App JWT signing, GitHub REST calls, installation lookup, installation access token creation, and secret binding resolution.
 - `packages/oidc` owns OIDC Provider Registration validation, standards-derived OpenID Provider Configuration discovery, bounded OpenID Provider Metadata and JWK Set caches, and ID Token authentication.
-- `packages/oidc-provider-fly` owns Fly organization-specific OIDC Provider Registration and OIDC ID Token Profile construction.
+- `packages/oidc-provider-fly` owns Fly organization-specific OIDC Provider Registration construction with an explicit null OIDC ID Token Profile.
 - `packages/oidc-provider-github-actions` owns the GitHub Actions OIDC Provider Registration and OIDC ID Token Profile.
 - `packages/oidc-provider-google-service-account` owns the Google service-account OIDC Provider Registration and OIDC ID Token Profile.
 
@@ -41,13 +41,36 @@ The Worker factory is `createTokenExchangeWorker` in `workers/cyspbot-token-exch
 6. Omit exactly empty `resource` occurrences, then require exactly one effective non-empty `resource`; treat an exactly empty optional `scope` as omitted.
 7. Reject unsupported or ambiguous fields, including non-empty RFC 8693 `audience`, malformed or duplicate effective `scope`, actor-token fields, and multiple effective resources. Non-empty `audience` and a missing, malformed, or multiple effective `resource` map to `invalid_target`; actor-token parameters map to `invalid_request`.
 8. Normalize an `InstallationAccessTokenRequest` from the explicit `resource` and optional `scope` before subject-token authentication.
-9. Select one exact OIDC Provider Registration from the token's unverified `iss` claim. Reject an unregistered issuer before provider I/O, fetch its OpenID Provider Configuration, validate and retain the required OpenID Provider Metadata, obtain the JWK Set from the validated `jwks_uri`, centrally verify the token, require the exact scalar subject-token audience `cyspbot`, and apply the provider's OIDC ID Token Profile.
+9. Select one exact OIDC Provider Registration from the token's unverified `iss` claim. Reject an unregistered issuer before provider I/O, fetch its OpenID Provider Configuration, validate and retain the required OpenID Provider Metadata, obtain the JWK Set from the validated `jwks_uri`, centrally verify the token, require the exact scalar subject-token audience `cyspbot`, and apply the provider's OIDC ID Token Profile only when it is non-null.
 10. Retain only verified claims and the verified issuer as the Verified Subject Token. Keep the resolved key ID separately as verification evidence for audit logging; neither it nor the request's already-validated token type is authorization identity.
-11. Evaluate static Token Policy over `{ verifiedSubjectToken, tokenRequest }`.
+11. Evaluate the static Token Issuance Policy over `{ verifiedSubjectToken, tokenRequest }`.
 12. Resolve the target GitHub App installation from the normalized repository resource using cyspbot's configured GitHub App credentials.
 13. Issue a GitHub App installation access token for `repositories: [<repo>]` and the normalized permissions.
 
-`workers/cyspbot-token-exchange/src/installation-access-token-request.ts` performs issuer-independent normalization from an explicit `resource` and optional `scope`, including canonical repository-resource parsing. The normalized resource retains its canonical URI, owner, and repository so downstream issuance cannot reinterpret it. It does not inspect subject-token identity and can therefore run before authentication. The token policy in `workers/cyspbot-token-exchange/src/policy/token-policy.ts` structurally authorizes the verified issuer, repository resource, and permission set. `workers/cyspbot-token-exchange/src/policy/token-policy-condition.ts` uses the CEL library to compile, cache, bind, and evaluate conditions over signed `claims` only; request fields, issuer, key ID, and token type are not CEL bindings. CEL errors, absent or unknown claims, type mismatches, and non-boolean results fail closed. Provider rule builders in `workers/cyspbot-token-exchange/src/policy/` own reusable issuer-specific claim conditions for policy definitions and tests. Policy does not mutate the requested token shape. At composition time, every policy issuer must name a configured OIDC Provider Registration, preventing unreachable or accidentally unverified issuer grants. Exact policy entries are service-owned authorization data rather than implementation documentation; the provider-specific behavior documented here is written as the steady-state contract and does not change merely because policy entries move or are deployed later.
+`workers/cyspbot-token-exchange/src/installation-access-token-request.ts` performs issuer-independent normalization from an explicit `resource` and optional `scope`, including canonical repository-resource parsing. It also owns the closed permission names and levels, canonical immutable permission maps, pointwise coverage and union, and the closed Repository Resource constructor. `workers/cyspbot-token-exchange/src/policy/token-issuance-policy.ts` defensively compiles independently complete Permit Statements into an opaque immutable policy. Each statement has an exact issuer, a total predicate over verified claims, one exact Repository Resource Constraint, and non-empty permissions. Evaluation finds all applicable statements, computes their pointwise permission union using `omitted < read < write`, and returns one Boolean indicating whether the Effective Permissions cover the request. Missing or wrongly typed claims make predicates false. Separate Boolean target- and scope-support queries classify RFC 8693 and OAuth errors after policy does not permit issuance; neither can authorize issuance. `configured-token-issuance-policy.ts` owns the nine production GitHub Actions statements. At composition time, every policy issuer must name a configured OIDC Provider Registration.
+
+### Policy authoring and compilation
+
+The policy module exports plain definition types and the `claimEquals`,
+`claimOneOf`, `oidcSubjectTokenConstraint`, and
+`githubRepositoryResourceConstraint` factories. A `PermitStatementDefinition`
+combines one subject-token constraint, one repository constraint, and non-empty
+permissions. `compileTokenIssuancePolicy` is the construction seam: it rejects
+unknown or inherited definition fields, invalid runtime values, duplicate Claim
+Names within one subject-token constraint, empty or duplicate `claimOneOf`
+alternatives, noncanonical repository components, and unsupported permissions.
+It copies and recursively freezes owned values and exposes only an opaque
+`TokenIssuancePolicy`.
+
+The current evaluator scans statements in source order while tracking requested
+permissions that remain uncovered. Exact resource and issuer comparisons happen
+before Claim predicates, and evaluation returns early once every requested
+permission is covered. This is equivalent to materializing Effective
+Permissions because Permit Statements can add but never revoke permissions.
+The opaque policy interface permits changing this algorithm without changing
+policy authoring or evaluation semantics. Tests exhaustively cover the closed
+permission domain, statement order, duplicates, split and merged definitions,
+and multi-statement composition.
 
 cyspbot does not accept a public GitHub App selector. It constrains this profile to cyspbot's configured GitHub App credentials, one signed subject-token `aud` string equal to `cyspbot`, one canonical GitHub repository API `resource`, and one normalized permission set. Plural subject-token audiences are rejected rather than interpreted by containment.
 
@@ -64,37 +87,45 @@ An omitted `scope` normalizes to a PR-authoring permission request.
 
 Every Installation Access Token Request requires an explicit Repository Resource, regardless of OIDC Provider Registration; subject-token claims never select the target.
 
-### Provider-specific Token Policy
+### Configured Token Issuance Policy
 
-#### Fly.io
-
-Fly Clients must supply an explicit repository `resource`; cyspbot does not derive a GitHub repository target from Fly claims. `flyMachineInstallationAccessTokenRule` builds an issuer-guarded condition that selects the provider-assigned organization and Fly App IDs and can optionally select one stable Machine ID. Its canonical repository resource and permissions must also match exactly. Authentication alone creates no grant.
+The production policy contains nine GitHub Actions Permit Statements and no Fly or Google statement. Issuer registration and authorization remain independent: production registers GitHub Actions and Google, but only GitHub Actions has Permit Statements.
 
 #### GitHub Actions
 
-GitHub Actions Clients must supply an explicit repository `resource`. The token request is allowed only when an issuer-guarded rule's CEL condition matches the signed GitHub Actions `repository`, event, `ref`, `sub`, and exact `workflow_ref` claims and the rule's canonical resource URI and permissions match the normalized request. The signed `repository` claim is subject identity available to policy, not an implicit target selector. The condition accepts the expected legacy GitHub subject or its immutable owner/repository-ID form; inconsistent names or IDs therefore do not match. Rule order is not semantically meaningful; authorization is `allow` if any rule matches and `deny` otherwise. Exact policy entries are intentionally not documented here because they may move to live configuration.
+GitHub Actions Clients must supply an explicit repository `resource`. A statement predicate selects the signed `repository`, `event_name`, `ref_type`, `ref`, and `workflow_ref` claims. It deliberately does not select `sub`, repository IDs, or owner IDs. The signed `repository` claim is subject identity available to policy, not an implicit target selector. Statement order is immaterial, and several applicable statements can jointly cover a permission request.
 
-Repository identity in Token Policy is intentionally name-based. GitHub Actions OIDC exposes `repository_id` and `repository_owner_id` as signed claims, immutable subject formats can include those IDs in `sub`, and GitHub's installation-access-token API supports `repository_ids`; cyspbot still chooses owner/repository names as the policy identifier because they are the maintained external resource names and because token issuance still requires the configured GitHub App installation to cover that repository name. Legacy subjects therefore do not require ID claims. Immutable subjects require `repository_id` to agree with `sub`; the optional `repository_owner_id` claim is checked only when present and non-null. These IDs reject internal inconsistencies but are not independent policy keys. If a repository is deleted and recreated with the same owner/name, matching existing policy for that name is accepted behavior rather than a bypass. GitHub subject strings are compared literally rather than percent-decoding repository or ref components.
-
-#### Google service account ID Tokens
-
-Google service account Clients must supply an explicit repository `resource`; cyspbot does not derive a GitHub repository target from Google claims. `googleServiceAccountInstallationAccessTokenRule` builds an issuer-guarded condition that compares the service account unique ID as an opaque string. It can additionally require an exact signed email with `email_verified == true`. Its canonical repository resource and permissions must also match exactly. Authentication alone creates no grant.
+Repository identity in Token Issuance Policy is intentionally name-based. If a repository is deleted and recreated with the same owner/name, matching existing policy for that name is accepted behavior rather than a bypass; a GitHub App installation with sufficient repository access and permissions remains independently required.
 
 ### Shared enforcement and issuance
 
-ID Token verification and OIDC ID Token Profile validation authenticate the signed claim set, while Token Policy decides which claims matter for a particular grant. Missing or incorrectly typed claims named by a condition fail closed as `invalid_target`; policy-irrelevant metadata does not affect authorization. An invalid standard ID Token claim or failed OIDC ID Token Profile validation causes authentication to fail as `invalid_request`.
+ID Token verification and any non-null OIDC ID Token Profile authenticate the signed claim set, while each Token Issuance Policy Permit Statement decides which claims matter to its authorization. Missing or incorrectly typed selected claims make statements non-applicable; when the Repository Resource and scope are otherwise supported, the subject token is unacceptable to policy and cyspbot returns `invalid_request`. For an unsupported Repository Resource, cyspbot returns `invalid_target`; for an unsupported scope on a supported resource, it returns `invalid_scope`. Policy-irrelevant metadata does not affect authorization. An invalid standard ID Token claim or failed non-null profile also causes authentication to fail as `invalid_request`.
 
 `issueInstallationAccessTokenForContext` in `workers/cyspbot-token-exchange/src/policy/installation-access-token-issuance.ts` does not fetch source repository metadata or reparse the resource. It uses the owner and repository retained by request normalization, resolves the target installation with `GET /repos/{owner}/{repo}/installation`, then passes `repositories: ["<repo>"]` and the normalized permissions to GitHub's installation-access-token endpoint.
 
+Policy observability records only `token_issuance_policy.permitted`. Surrounding
+request logs retain the verified issuer and Subject, OIDC verification evidence,
+normalized Repository Resource, permissions, and scope, but never the complete
+signed Claims object. Policy logs contain no statement identifier, contributor
+list, or denial-reason synthesis. A downstream GitHub failure after
+authorization therefore retains `permitted: true`.
+
+The issuance boundary does not infer an invalid OAuth target from an ambiguous
+GitHub status. GitHub 401 is treated as a service-owned credential failure;
+403 and 404 are conservatively upstream failures; and transport failures,
+GitHub 503 responses, and 403 or 429 rate-limit responses are upstream
+unavailability. Only policy's resource-support query produces
+`target_unsupported`.
+
 cyspbot treats exactly empty `scope` and `resource` form occurrences as omitted. It requires exactly one remaining resource, so empty-only resources and multiple non-empty resources receive `invalid_target`; one non-empty resource accompanied by empty occurrences remains unambiguous. It does not translate `scope=` into `permissions: {}`. GitHub documents that omitting `permissions` defaults to the app installation's granted permissions, and live testing showed that a present empty `permissions: {}` object receives the same default permission set. Minimal-permission token shapes must be expressed as explicit non-empty scopes such as `contents:read`. Scope values are parsed as OAuth scope tokens separated by a single ASCII space; order is not significant, and repeated identical tokens are normalized once. Leading whitespace, trailing whitespace, repeated spaces, tabs, and newlines are rejected. The normalized token request retains a canonical scope string, and `/token` success responses always include that issued scope so clients can observe defaults and normalized ordering.
 
-`workers/cyspbot-token-exchange/src/token-exchange-application.ts` groups one GitHub App credential set with its already validated Token Policy. The request runtime constructs this explicit application configuration before issuance; issuance has no optional policy dependency or hidden fallback. Future path-based application selection can therefore choose among application configurations without changing request normalization or policy evaluation.
+`workers/cyspbot-token-exchange/src/token-exchange-application.ts` groups one GitHub App credential set with its validated Token Issuance Policy. The request runtime constructs this explicit application configuration before issuance; issuance has no optional policy dependency or hidden fallback.
 
 cyspbot does not support OAuth client authentication at `/token`. Non-empty `client_id`, `client_secret`, `client_assertion`, and `client_assertion_type` form parameters are rejected with `invalid_request` so Clients cannot mistakenly believe client credentials affected token issuance. Value-less form parameters are treated as omitted. An `Authorization` header is rejected with `invalid_client` and `401` before body parsing. Non-empty `authorization_details` is also rejected because this profile expresses the token shape only through cyspbot's service app, `resource`, and `scope`.
 
 ## ID Token Verification
 
-`packages/oidc/src/id-token-authenticator.ts` exposes the deep `OidcIdTokenAuthenticator` authentication seam. An `OidcIdTokenAuthenticationTrust` contains one service-level `subjectTokenAudience` and exact `OidcProviderRegistration` records. Each registration contains only a case-sensitive Issuer Identifier, its own accepted ID Token signing-algorithm allowlist, and a code-owned OIDC ID Token Profile. A registration deliberately does not contain an audience, JWK Set URI, authorization rule, or claim mapping.
+`packages/oidc/src/id-token-authenticator.ts` exposes the deep `OidcIdTokenAuthenticator` authentication seam. An `OidcIdTokenAuthenticationTrust` contains one service-level `subjectTokenAudience` and exact `OidcProviderRegistration` records. Each registration contains a case-sensitive Issuer Identifier, its own accepted ID Token signing-algorithm allowlist, and either a code-owned OIDC ID Token Profile or explicit `null`. Omission is invalid. A registration deliberately does not contain an audience, JWK Set URI, authorization rule, or claim mapping.
 
 The audience is service-level because all accepted subject tokens have one recipient: cyspbot's token-exchange service. It is enforced during central ID Token validation as the exact scalar `aud` value `cyspbot`. Provider registrations answer which authorities and token kinds cyspbot trusts; duplicating the same recipient policy into every provider would permit configuration drift without expressing a real provider property. In contrast, signing algorithms remain per provider because provider capabilities and local trust decisions can differ. Changing one provider's accepted algorithms cannot silently widen another provider.
 
@@ -115,17 +146,12 @@ The implementation does not use root-relative URL resolution, which would discar
 
 ### Supported OIDC Provider Registrations
 
-| Provider                         | Issuer Identifier (`iss`)                     | Local algorithm allowlist | OIDC ID Token Profile                                             |
-| -------------------------------- | --------------------------------------------- | ------------------------- | ----------------------------------------------------------------- |
-| Fly                              | `https://oidc.fly.io/{org-slug}`              | `RS256`                   | binds `org_name`, `app_name`, `machine_name`, and canonical `sub` |
-| GitHub Actions                   | `https://token.actions.githubusercontent.com` | `RS256`                   | absent `azp`, or `azp == aud`                                     |
-| Google service-account ID Tokens | `https://accounts.google.com`                 | `RS256`                   | `azp == sub`                                                      |
+| Provider                         | Issuer Identifier (`iss`)                     | Local algorithm allowlist | OIDC ID Token Profile         |
+| -------------------------------- | --------------------------------------------- | ------------------------- | ----------------------------- |
+| GitHub Actions                   | `https://token.actions.githubusercontent.com` | `RS256`                   | absent `azp`, or `azp == aud` |
+| Google service-account ID Tokens | `https://accounts.google.com`                 | `RS256`                   | `azp == sub`                  |
 
-#### Fly.io
-
-The integration Worker parses `FLY_OIDC_ORG_SLUGS` as comma-delimited Fly Organization Slugs. An absent or exactly empty binding creates no Fly registration. Otherwise every trimmed entry must be non-empty, unique, and canonical lowercase alphanumeric/hyphen syntax without a leading or trailing hyphen. Any bad entry rejects the entire configuration; cyspbot never begins serving with an unintended partial trust set. Each accepted slug creates one exact provider registration. The immutable registration list and authenticator are cached by the raw binding and dependency identities.
-
-After shared ID Token verification, the Fly OIDC ID Token Profile requires the signed `org_name`, `app_name`, and `machine_name` values used by Fly's canonical Subject. It requires `org_name` to equal the organization slug in the verified Issuer Identifier and `sub` to equal `{org_name}:{app_name}:{machine_name}`. Other signed claims, including `org_id`, `app_id`, `machine_id`, `machine_version`, and `nbf`, do not participate in authentication. Token Policy can select any of those claims when they matter to a grant. The profile does not assign Fly-specific meaning to `azp`.
+The production registration list is the immutable `configuredOidcProviderRegistrations` array and contains exactly GitHub Actions and Google. It has no Worker binding or runtime path for adding issuers. The Fly provider package remains capable of constructing an exact organization-specific registration with an explicit null profile; production neither imports nor instantiates it.
 
 #### GitHub Actions
 
@@ -133,7 +159,7 @@ Central verification requires the standard ID Token claims. The GitHub Actions O
 
 #### Google service account ID Tokens
 
-The Google service-account registration accepts only the Google Cloud IAM authorization server's Issuer Identifier `https://accounts.google.com` and locally allows `RS256`. After shared ID Token verification has established a non-empty string Subject (`sub`), its profile requires the Authorized Party (`azp`) to equal that Subject. Google documents both claims as the service account unique ID for this token type. cyspbot treats that identifier as an opaque string. This excludes Google user ID Tokens, whose Authorized Party is an OAuth client ID, while the configured Issuer Identifier excludes self-signed service-account JWTs, whose Issuer is the service account. Email claims are not required for authentication; a policy rule that selects an email also requires the signed `email_verified` claim to be `true`.
+The Google service-account registration accepts only the Google Cloud IAM authorization server's Issuer Identifier `https://accounts.google.com` and locally allows `RS256`. After shared ID Token verification has established a non-empty string Subject (`sub`), its profile requires the Authorized Party (`azp`) to equal that Subject. Google documents both claims as the service account unique ID for this token type. cyspbot treats that identifier as an opaque string. This excludes Google user ID Tokens, whose Authorized Party is an OAuth client ID, while the configured Issuer Identifier excludes self-signed service-account JWTs, whose Issuer is the service account. Email claims are not required for authentication.
 
 ### Cache and failure behavior
 
@@ -176,7 +202,6 @@ The source Worker configs declare placeholder values and binding names only.
 
 Token exchange Worker bindings:
 
-- `FLY_OIDC_ORG_SLUGS`, a comma-delimited allow-list of Fly Organization Slugs; any empty, duplicate, or unsupported entry in a non-empty binding rejects the complete configuration
 - `GITHUB_APP_ID`
 - `GITHUB_APP_PRIVATE_KEY`
 - `GITHUB_API_BASE_URL`, defaulting to `https://api.github.com`
@@ -208,8 +233,8 @@ The public GitHub Actions `ci` workflow runs the same classes of checks as separ
 `test/support/token-exchange-oidc-node-fixture.ts` is the intentional Node-only test seam
 between this source repository and the separate deployment repository. It owns one
 process-random key pair, the deterministic OpenID Provider Configuration and JWK Set
-outbound adapter, the fixture Fly registration string, and the GitHub Actions fixture
-request builder and expected outbound URLs. Vitest configuration consumes the same seam.
+outbound adapter, Fly discovery and JWK Set integration cases, and the GitHub Actions
+fixture request builder and expected outbound URLs. Vitest configuration consumes the same seam.
 The token-exchange Workerd integration module receives the private key only through
 `OIDC_TEST_PRIVATE_KEY` and does not import the Node key-generation module.
 

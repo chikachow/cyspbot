@@ -8,6 +8,7 @@ This directory documents the current cyspbot implementation and public service c
 - [Implementation](implementation.md) explains the workspace packages, Worker entrypoints, request flows, bindings, and verification commands.
 - [Deployment](deployment.md) explains the source repository boundary and confirms deployment is handled outside this codebase.
 - [OIDC ID Token authentication decision](decisions/oidc-id-token-authentication.md) records the durable trust, discovery, and configuration-ownership rationale behind the implementation.
+- [CEL-free Token Issuance Policy decision](decisions/cel-free-token-issuance-policy.md) records the closed authorization language, permission composition, and verified-Claim trust decisions.
 - [Release checklist](release.md) is a publish-readiness checklist to run before making the repository public or tagging a release.
 - [Repository README](../README.md) is the setup and local development entrypoint.
 - [Domain glossary](../CONTEXT.md) defines project terminology used by the code and docs.

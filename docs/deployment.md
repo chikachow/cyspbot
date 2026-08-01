@@ -8,7 +8,7 @@ Production deployment is handled by a separate pipeline outside this codebase.
 
 The implementation is split into two deployable workspace packages:
 
-- `@cyspbot/token-exchange` deploys Worker `cyspbot-token-exchange`: `/token`, OpenID Connect ID Token verification, Token Policy, GitHub App installation access token issuance
+- `@cyspbot/token-exchange` deploys Worker `cyspbot-token-exchange`: `/token`, OpenID Connect ID Token verification, Token Issuance Policy, GitHub App installation access token issuance
 - `@cyspbot/github-webhook-receiver` deploys Worker `cyspbot-github-webhook-receiver`: `/github/webhooks`, signature validation, target app validation, JSON validation, and acknowledgement
 
 This source repository owns:
@@ -37,13 +37,9 @@ The separate deployment pipeline should:
 
 Local `pnpm run dev` uses Wrangler's multi-worker mode for separated Worker configs. Wrangler exposes only the first config locally and runs the rest as auxiliary Workers, so local dev does not replace same-origin route proof in the deployment environment. Local dev uses repository-local `.wrangler` state for Wrangler logs and the dev registry.
 
-## Fly.io OIDC Provider Registration Configuration
+## OIDC Trust and Authorization Configuration
 
-`FLY_OIDC_ORG_SLUGS` is non-secret but security-sensitive trust configuration owned by the production deployment pipeline. Set it to a comma-delimited list of reviewed Fly Organization Slugs to configure organization-specific OIDC Provider Registrations. A missing or exactly empty binding creates no Fly OIDC Provider Registration, which is the intentional default in the public-safe Wrangler template.
-
-Each accepted entry configures one independent OIDC Provider Registration with an Issuer Identifier of the form `https://oidc.fly.io/{org-slug}`. For a non-empty binding, every trimmed entry must be non-empty, unique, and use the supported lowercase alphanumeric/hyphen syntax. An empty, duplicate, or unsupported entry rejects the complete configuration so cyspbot never serves with an unintended partial trust set. Syntax acceptance does not establish that the organization exists.
-
-Changing this binding changes which Fly issuers cyspbot trusts for authentication and requires security review. Configuring an OIDC Provider Registration does not create an authorization grant; Token Policy separately controls Installation Access Token Issuance.
+The token-exchange Worker has no dynamic issuer or authorization-policy binding. Production OIDC Provider Registrations and Permit Statements are immutable checked-in values. Changing either set requires a reviewed source change and deployment. Configuring a provider registration makes authentication possible but creates no Permit Statement; Token Issuance Policy remains an independent control.
 
 ## Token Exchange Protocol Rollouts
 
