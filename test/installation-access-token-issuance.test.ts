@@ -104,6 +104,7 @@ describe("Installation Access Token Issuance", () => {
       },
     });
     expect(JSON.stringify(consoleInfo.mock.calls)).not.toContain("ghs_test_token");
+    expectLogsNotToContainGitHubAppCredentials(consoleInfo.mock.calls);
     expect(JSON.stringify(consoleInfo.mock.calls)).not.toMatch(
       /rule_id|deny_reasons|matched|"claims"/u,
     );
@@ -186,6 +187,10 @@ describe("Installation Access Token Issuance", () => {
       expect(JSON.stringify(consoleError.mock.calls)).not.toMatch(
         /rule_id|deny_reasons|matched|"claims"/u,
       );
+      if (typeof responseBody === "string") {
+        expect(JSON.stringify(consoleError.mock.calls)).not.toContain(responseBody);
+      }
+      expectLogsNotToContainGitHubAppCredentials(consoleError.mock.calls);
     },
   );
 
@@ -347,6 +352,13 @@ function unreadableResponseBody(): ReadableStream<Uint8Array> {
       throw new Error("response body read failed");
     },
   });
+}
+
+function expectLogsNotToContainGitHubAppCredentials(logCalls: unknown): void {
+  const serializedLogCalls = JSON.stringify(logCalls);
+
+  expect(serializedLogCalls).not.toContain(testEnv.GITHUB_APP_ID);
+  expect(serializedLogCalls).not.toContain(testEnv.GITHUB_APP_PRIVATE_KEY);
 }
 
 function issueInstallationAccessToken(

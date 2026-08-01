@@ -115,7 +115,14 @@ GitHub status. GitHub 401 is treated as a service-owned credential failure;
 403 and 404 are conservatively upstream failures; and transport failures,
 GitHub 503 responses, and 403 or 429 rate-limit responses are upstream
 unavailability. Only policy's resource-support query produces
-`target_unsupported`.
+`target_unsupported`. The durable rationale and complete response mapping are
+recorded in the [GitHub API Failure Classification decision](decisions/github-api-failure-classification.md).
+
+GitHub `429` responses are rate limited directly. For a `403`, the shared
+GitHub HTTP client checks `x-ratelimit-remaining: 0`, the presence of
+`retry-after`, or a JSON error body's string `message` containing `rate limit`.
+Error-body reads are limited to `16 KiB`; an absent, oversized, unreadable,
+malformed, or differently shaped body contributes no rate-limit evidence.
 
 cyspbot treats exactly empty `scope` and `resource` form occurrences as omitted. It requires exactly one remaining resource, so empty-only resources and multiple non-empty resources receive `invalid_target`; one non-empty resource accompanied by empty occurrences remains unambiguous. It does not translate `scope=` into `permissions: {}`. GitHub documents that omitting `permissions` defaults to the app installation's granted permissions, and live testing showed that a present empty `permissions: {}` object receives the same default permission set. Minimal-permission token shapes must be expressed as explicit non-empty scopes such as `contents:read`. Scope values are parsed as OAuth scope tokens separated by a single ASCII space; order is not significant, and repeated identical tokens are normalized once. Leading whitespace, trailing whitespace, repeated spaces, tabs, and newlines are rejected. The normalized token request retains a canonical scope string, and `/token` success responses always include that issued scope so clients can observe defaults and normalized ordering.
 

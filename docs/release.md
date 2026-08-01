@@ -17,6 +17,12 @@ Run this checklist before making the repository public or tagging a release.
 - `docs/service-contract.md` matches implemented behaviour.
 - `docs/implementation.md` matches the workspace packages, Worker entrypoints, bindings, and verification commands.
 - `docs/deployment.md` describes only the source repository boundary, including the sole Node-only test fixture seam intentionally consumed by the separate deployment repository, and does not publish deployment details.
+- Checked-in OIDC Provider Registrations match the intended production trust set; any authentication-only registration is intentional and documented.
+- Checked-in Token Issuance Policy Permit Statements match the intended production authorization set, and every referenced issuer has a Provider Registration.
+- No dynamic issuer-trust or authorization-policy binding has been introduced.
+- Deployment overlays do not override source-owned issuer trust or
+  authorization policy and preserve deployment-owned routes, identifiers, rate
+  limits, and secret bindings.
 - `CONTEXT.md` remains the glossary source of truth.
 - Deployment remains outside this codebase.
 
