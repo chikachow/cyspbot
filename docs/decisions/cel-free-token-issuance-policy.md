@@ -4,14 +4,20 @@
 
 Decision status: Accepted.
 
+Decision scope: This record defines authorization-model capabilities, not the
+current production Permit Statement inventory. Conditional examples describe
+what a reviewed application composition can express. The service contract and
+implementation reference record which capabilities production currently
+configures.
+
 ## Context
 
-The Token Exchange service authorizes one operation: issuing a GitHub App
-Installation Access Token for a normalized Installation Access Token Request
+The Token Exchange service authorizes one operation: issuing an Installation
+Access Token for a normalized Installation Access Token Request
 presented with a Verified Subject Token.
 
 The former CEL policy combined structural issuer, resource, and permission
-fields with CEL expressions over verified OIDC Claims. CEL admitted
+fields with CEL expressions over verified Subject Token Claims. CEL admitted
 substantially more syntax, types, and operations than checked-in policy needed.
 It also required a parser, planner, binding adapter, compilation cache, runtime
 error handling, and tests for expression-language behavior outside the
@@ -26,22 +32,21 @@ explained why the complete request was not permitted.
 
 ### Ubiquitous language
 
-| Concept                                                    | Term                           |
-| ---------------------------------------------------------- | ------------------------------ |
-| Complete checked-in authorization configuration            | Token Issuance Policy          |
-| One positive authorization declaration                     | Permit Statement               |
-| Authenticated RFC 8693 policy input                        | Verified Subject Token         |
-| Typed requirement over that input                          | OIDC Subject Token Constraint  |
-| Exact OIDC issuer URL                                      | OIDC Issuer Identifier         |
-| Atomic typed test of an asserted Claim                     | Claim predicate                |
-| GitHub repository named by the OAuth `resource` value      | Repository Resource            |
-| Checked-in selector for one Repository Resource            | Repository Resource Constraint |
-| Permissions declared by one Permit Statement               | permissions                    |
-| Client-selected permission map                             | requested permissions          |
-| Pointwise union of applicable statements' permissions      | effective permissions          |
-| Subject-token and resource result for one Permit Statement | applicable or not applicable   |
-| Complete policy result                                     | permits or does not permit     |
-| Service response when policy does not permit issuance      | deny                           |
+| Concept                                                     | Term                           |
+| ----------------------------------------------------------- | ------------------------------ |
+| Complete checked-in authorization configuration             | Token Issuance Policy          |
+| One positive authorization declaration                      | Permit Statement               |
+| Authenticated RFC 8693 policy input                         | Verified Subject Token         |
+| Typed requirement over that input                           | OIDC Subject Token Constraint  |
+| Exact OIDC issuer URL                                       | OIDC Issuer Identifier         |
+| Atomic typed test of an asserted Claim                      | Claim predicate                |
+| GitHub repository named by the OAuth `resource` value       | Repository Resource            |
+| Checked-in selector for one Repository Resource             | Repository Resource Constraint |
+| Permissions declared by one Permit Statement                | permissions                    |
+| Canonical map derived from OAuth `scope` or service default | Requested Permissions          |
+| Pointwise union of applicable statements' permissions       | Effective Permissions          |
+| Subject-token and resource result for one Permit Statement  | applicable or not applicable   |
+| Complete policy result                                      | permits or does not permit     |
 
 The entry is a **Permit Statement**, not a grant or rule. OAuth defines an
 authorization grant as a protocol credential, while this entry is checked-in
@@ -72,7 +77,7 @@ predicates form the only discriminated AST union. Permit Statements remain
 plain objects without identifiers, effects, action fields, generic conditions,
 or a `permit(...)` wrapper.
 
-### Applicability and effective permissions
+### Applicability and Effective Permissions
 
 A Permit Statement is applicable when its complete OIDC Subject Token Constraint
 and Repository Resource Constraint match. Only an applicable statement contributes
@@ -85,12 +90,12 @@ Applicable permissions combine pointwise using:
 omitted < read < write
 ```
 
-The result is the effective permissions. The policy permits issuance when the
-effective permissions cover every requested permission at an equal or stronger
-level. The exact requested map is sent to GitHub unchanged.
+The result is the Effective Permissions. The policy permits issuance when the
+Effective Permissions cover the Requested Permissions at equal or stronger
+levels. The exact Requested Permissions map is sent to GitHub unchanged.
 
-Permission authorization is separable. For the same Verified Subject Token and
-Repository Resource:
+Authorization of Requested Permissions is separable. For the same Verified
+Subject Token and Repository Resource:
 
 ```text
 permits(P ∪ Q) iff permits(P) and permits(Q)
@@ -108,8 +113,8 @@ Consequently:
 - splitting or merging a permission map under equivalent constraints does not
   change Effective Permissions;
 - statement order and exact duplicates do not change Effective Permissions;
-- adding or broadening a positive statement can only preserve or add permitted
-  permissions;
+- adding or broadening a positive statement can only preserve or expand the
+  Requested Permissions the policy can cover;
   and
 - the policy intentionally cannot permit permissions separately while
   forbidding their combination for the same subject token and resource.
@@ -145,12 +150,12 @@ permit issuance. An unsupported Repository Resource maps to RFC 8693
 when both are supported, the subject token is unacceptable to policy and maps
 to `invalid_request`.
 
-### Trust verified provider Claims
+### Trust verified Subject Token Claims
 
 Successful OIDC validation authenticates the complete signed Claim set from one
 exact configured issuer for the cyspbot audience. Policy directly selects the
-signed Claims material to authorization; it does not reconstruct one signed
-representation from another merely to check their consistency.
+Subject Token Claims that are material to authorization; it does not reconstruct
+one signed representation from another merely to check their consistency.
 
 GitHub Actions policy therefore selects exact signed `repository`,
 `event_name`, `ref_type`, `ref`, and `workflow_ref` values without constraining
@@ -160,13 +165,14 @@ configured Claim template, so treating the default format as a mandatory
 consistency checksum rejects legitimate tokens without adding protection
 against payload tampering or issuer compromise.
 
-Fly uses no additional OIDC ID Token Profile. The former checks that
-`org_name` matched the issuer organization slug and that `sub` reconstructed
-from `org_name`, `app_name`, and `machine_name` are removed. A Fly Permit
-Statement directly selects whichever signed Claims are material to that
-authorization. Missing or differently typed selected Claims make the statement
-not applicable rather than making an otherwise validly signed token fail
-authentication.
+The Fly provider capability uses no additional OIDC ID Token Profile. The
+former checks that `org_name` matched the issuer organization slug and that
+`sub` reconstructed from `org_name`, `app_name`, and `machine_name` are
+removed. If a reviewed application composition configures a Fly registration
+and Permit Statement, that statement directly selects whichever Subject Token
+Claims are material to its authorization. Missing or differently typed selected
+Claims make the statement not applicable rather than making an otherwise
+validly signed token fail authentication.
 
 GitHub Actions retains its Authorized Party check. Google retains `azp == sub`
 as a token-kind discriminator separating the accepted service-account token
@@ -184,8 +190,8 @@ Policy refers to the exact Issuer Identifier carried by a Provider
 Registration. Provider-specific policy matchers, inheritance, issuer aliases,
 registration-derived capabilities, and automatic statement generation are not
 introduced. Ordinary TypeScript constants, arrays, spreads, `map`, and
-`flatMap` provide authoring reuse, including parameterized checked-in Fly
-registrations and statements.
+`flatMap` provide authoring reuse, including the capability to construct
+parameterized checked-in Fly registrations and statements.
 
 ### Scope
 
@@ -202,13 +208,15 @@ mechanism, callback registry, or service-specific base implementation.
 - CEL and its direct dependencies, bindings, caches, helpers, and
   expression-specific tests are removed.
 - Policy authoring exposes only operations required by checked-in policy.
-- Weaker requested levels are permitted by stronger configured levels.
-- Independently authored applicable statements contribute to the same effective
-  permissions without changing the request sent to GitHub.
+- Weaker levels in the Requested Permissions are permitted by stronger
+  configured levels.
+- Independently authored applicable statements contribute to the same Effective
+  Permissions without changing the request sent to GitHub.
 - The authorization model is deliberately closed under pointwise permission
   union.
-- GitHub Actions and Fly policy trust verified issuer-signed Claims rather than
-  imposing redundant cross-Claim consistency checks.
+- GitHub Actions policy, and any configured Fly policy, trust verified Subject
+  Token Claims rather than imposing redundant cross-Claim consistency
+  checks.
 - A policy result that does not permit issuance is direct Boolean control flow.
 - Operational logs retain the verified subject-token and normalized request
   context but contain only the Boolean policy outcome.
@@ -261,7 +269,7 @@ Rejected because permission combination is the intended policy algebra. IDs,
 groups, and overlap inventories would create non-domain coupling without
 changing the permissions obtainable through separate permitted tokens.
 
-### Cross-check redundant signed Claims
+### Cross-check redundant Subject Token Claims
 
 Rejected because signature and issuer verification authenticate the provider's
 complete payload. Cross-checking two provider-signed representations detects a
@@ -280,7 +288,7 @@ compromised issuer. It can also reject supported customized Claim formats.
 - Ordered permission levels intentionally allow a configured stronger level to
   cover a weaker request.
 - Permit-only composition is monotonic and cannot forbid a combined request
-  when each requested permission is independently permitted for the same
+  when each Requested Permission is independently permitted for the same
   subject token and resource.
 - Boolean authorization and logging do not attribute results to individual
   statements. A future attribution or inspection requirement needs a separate

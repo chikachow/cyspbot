@@ -40,9 +40,9 @@ Requests are rate limited by the `TOKEN_EXCHANGE_RATE_LIMIT` Cloudflare binding 
 https://api.github.com/repos/{owner}/{repo}
 ```
 
-Exactly empty `resource` occurrences are treated as omitted under [OAuth token endpoint parameter rules](https://www.rfc-editor.org/rfc/rfc6749#section-3.2). After omission, exactly one effective value is required. No effective resource or multiple effective resources are rejected as `invalid_target`, consistent with the repeatable `resource` parameter and `invalid_target` response defined by [OAuth 2.0 Token Exchange](https://www.rfc-editor.org/rfc/rfc8693#section-2.1). Repository shorthand, GitHub HTML URLs, endpoint URLs, query strings, fragments, userinfo, encoded slashes, dot segments, leading or trailing whitespace, arrays, and malformed resources are also rejected. cyspbot never infers the target resource from subject-token claims. Target syntax is normalized before subject-token authentication.
+Exactly empty `resource` occurrences are treated as omitted under [OAuth token endpoint parameter rules](https://www.rfc-editor.org/rfc/rfc6749#section-3.2). After omission, exactly one effective value is required. No effective resource or multiple effective resources are rejected as `invalid_target`, consistent with RFC 8693's [repeatable `resource` parameter](https://www.rfc-editor.org/rfc/rfc8693#section-2.1) and [`invalid_target` response](https://www.rfc-editor.org/rfc/rfc8693#section-2.2.2). Repository shorthand, GitHub HTML URLs, endpoint URLs, query strings, fragments, userinfo, encoded slashes, dot segments, leading or trailing whitespace, arrays, and malformed resources are also rejected. cyspbot never infers the target Repository Resource from Subject Token Claims. Target syntax is normalized before subject-token authentication.
 
-`scope`, when present, is a single-ASCII-space-delimited list of exact GitHub App permission requests, such as `actions:read`, `actions:write`, or `contents:read pull_requests:read`. Scope order is not significant, and repeated identical scope tokens are normalized once. Leading whitespace, trailing whitespace, repeated spaces, tabs, newlines, and other non-`0x20` separators are rejected. When `scope` is omitted or exactly empty, cyspbot normalizes it to `contents:write pull_requests:write`. A whitespace-only `scope` field is rejected as `invalid_scope`; omission and `scope=` are equivalent.
+`scope`, when present, is a single-ASCII-space-delimited list of exact GitHub App permission requests, such as `actions:read`, `actions:write`, or `contents:read pull_requests:read`. Scope order is not significant, and repeated identical scope tokens are normalized once. The resulting canonical map is the Requested Permissions. Leading whitespace, trailing whitespace, repeated spaces, tabs, newlines, and other non-`0x20` separators are rejected. When `scope` is omitted or exactly empty, cyspbot normalizes it to `contents:write pull_requests:write`. A whitespace-only `scope` field is rejected as `invalid_scope`; omission and `scope=` are equivalent.
 
 An empty `scope` is not a no-permissions request. Following OAuth token endpoint parameter handling for this optional field, `scope=` is treated as omitted and receives the cyspbot default scope. GitHub documents that an omitted installation-access-token `permissions` object receives the app installation's granted permissions, and live testing showed that a present empty `permissions: {}` object receives the same default permissions. cyspbot therefore never translates an empty scope to an empty GitHub permissions object.
 
@@ -55,7 +55,7 @@ cyspbot also does not support OAuth client authentication or Rich Authorization 
 Successful ID Token verification establishes that the configured issuer signed the token for the cyspbot audience and establishes its verified Subject and other claims; it does not authenticate the Client. The service owns the configured GitHub App credentials; `resource` names the GitHub API repository target where the issued token will be used; and Token Issuance Policy decides whether issuance is permitted for the resulting Verified Subject Token and Installation Access Token Request. Plural subject-token audiences are rejected rather than interpreted by containment.
 
 When Token Issuance Policy does not permit issuance, cyspbot distinguishes the
-OAuth failure at the protocol boundary. An unsupported Repository Resource
+Token Endpoint failure at the protocol boundary. An unsupported Repository Resource
 receives `400 {"error":"invalid_target"}`. An unsupported permission scope for
 a supported resource receives `400 {"error":"invalid_scope"}`. When both the
 resource and scope are supported but the Verified Subject Token is not
@@ -73,7 +73,20 @@ Successful responses are JSON with `Cache-Control: no-store` and `Pragma: no-cac
 }
 ```
 
-OAuth error responses use JSON with the same no-store headers:
+Token Endpoint error responses use JSON with the same no-store headers. The
+registered OAuth and token-exchange errors below follow their cited
+specifications. cyspbot also defines service-specific operational error
+responses: its use of `server_error` and `temporarily_unavailable` at the Token
+Endpoint, and the `413`, `429`, `500`, `502`, and `503` status mappings below, are
+deliberate cyspbot protocol extensions. They are not claimed to comply with RFC
+6749 section 5.2, which normally specifies HTTP `400` for Token Endpoint error
+responses, and the [IANA OAuth Extensions Error
+Registry](https://www.iana.org/assignments/oauth-parameters/oauth-parameters.xhtml)
+registers those two names for the authorization endpoint. Clients must
+interpret the complete HTTP-status and error-code pair as this service's
+contract.
+
+Request, authentication, policy, and service-level failures map as follows:
 
 - malformed request: `400 {"error":"invalid_request"}`
 - unsupported subject-token type, including the generic JWT identifier: `400 {"error":"invalid_request"}`
@@ -87,10 +100,26 @@ OAuth error responses use JSON with the same no-store headers:
 - missing, empty, malformed, or unsupported target selector: `400 {"error":"invalid_target"}`
 - unsupported permission scope for a supported Repository Resource: `400 {"error":"invalid_scope"}`
 - subject token unacceptable to Token Issuance Policy for an otherwise supported resource and scope: `400 {"error":"invalid_request"}`
-- upstream GitHub transport failure, 503 response, or rate limit:
-  `503 {"error":"temporarily_unavailable"}`
-- upstream GitHub server failure: `502 {"error":"server_error"}`
 - internal server failure: `500 {"error":"server_error"}`
+
+After Token Issuance Policy permits a request, GitHub-side failures have this
+complete observable mapping:
+
+| GitHub-side condition                         | HTTP status | Error code                |
+| --------------------------------------------- | ----------- | ------------------------- |
+| request rejected with `400`                   | `500`       | `server_error`            |
+| service-owned credentials rejected with `401` | `500`       | `server_error`            |
+| non-rate-limit `403`                          | `502`       | `server_error`            |
+| `404`                                         | `502`       | `server_error`            |
+| rate-limit `403` or `429`                     | `503`       | `temporarily_unavailable` |
+| `503`                                         | `503`       | `temporarily_unavailable` |
+| transport failure                             | `503`       | `temporarily_unavailable` |
+| other GitHub `5xx`                            | `502`       | `server_error`            |
+| otherwise unclassified issuance failure       | `500`       | `server_error`            |
+
+The [GitHub API Failure Classification
+decision](decisions/github-api-failure-classification.md) records the rationale,
+rate-limit evidence, and sanitization boundary behind this normative mapping.
 
 OpenID Provider Configuration or JWK Set unavailability means cyspbot cannot obtain validated OpenID Provider Metadata or a usable JWK Set: network failures, timeouts, non-200 responses, unexpected media types, oversized responses, malformed JSON or shape, an issuer mismatch, an invalid `jwks_uri`, incompatible advertised algorithms, an empty or wholly incompatible JWK Set, or ambiguous provider key material. Bounded last-known-good OpenID Provider Metadata or a JWK Set may be used according to documented cache controls. ID Tokens whose protected header names a `kid` absent from an otherwise usable JWK Set are invalid subject tokens and return `400 {"error":"invalid_request"}` because the protected header is part of the Client-presented token.
 
@@ -105,7 +134,7 @@ Every provider requires the Client to supply an explicit repository `resource`.
 
 #### GitHub Actions
 
-GitHub Actions Clients present a [GitHub Actions OIDC token](https://docs.github.com/en/actions/concepts/security/openid-connect), which is an ID Token issued by `https://token.actions.githubusercontent.com`. An absent Authorized Party (`azp`) claim is accepted; when present, it must equal `cyspbot`. GitHub Actions Clients must provide an explicit repository `resource`; the signed `repository` claim remains subject identity available to Token Issuance Policy and is not used to select the token target. Authentication produces a Verified Subject Token but does not create a Permit Statement.
+GitHub Actions Clients present a [GitHub Actions OIDC token](https://docs.github.com/en/actions/concepts/security/openid-connect), which is an ID Token issued by `https://token.actions.githubusercontent.com`. An absent Authorized Party (`azp`) claim is accepted; when present, it must equal `cyspbot`. GitHub Actions Clients must provide an explicit repository `resource`; the signed `repository` Claim is verified context in the Subject Token Claims available to Token Issuance Policy and is not used to select the token target. Authentication produces a Verified Subject Token but does not create a Permit Statement.
 
 #### Google service account ID Tokens
 
@@ -117,9 +146,9 @@ The Fly provider package can construct a reviewed, exact organization-specific r
 
 ### Token Issuance Policy
 
-Installation Access Token Issuance is allowed only when the normalized request is covered by the closed, immutable set of checked-in Permit Statements. Each independently complete statement contains an exact issuer, a total predicate over verified signed claims, one exact Repository Resource Constraint, and a non-empty permission map. Missing or wrongly typed selected claims make a statement non-applicable; evaluation never throws for verified claim data.
+Installation Access Token Issuance is allowed only when the normalized request is covered by the closed, immutable set of checked-in Permit Statements. Each independently complete statement contains an exact issuer, a total predicate over verified Subject Token Claims, one exact Repository Resource Constraint, and a non-empty permission map. Missing or wrongly typed selected Claims make a statement non-applicable; evaluation never throws for verified Claim data.
 
-All statements whose issuer, claim predicate, and Repository Resource Constraint apply contribute permissions pointwise using `omitted < read < write`. The policy permits the request only when those Effective Permissions cover every requested permission. Statement order is irrelevant, stronger contributed permissions cover weaker requests, and several statements may jointly cover a request. There are no deny statements, inheritance, dynamic configuration, generic expression language, or authorization decision objects.
+All statements whose issuer, claim predicate, and Repository Resource Constraint apply contribute permissions pointwise using `omitted < read < write`. The policy permits the request only when those Effective Permissions cover the Requested Permissions. Statement order is irrelevant, stronger contributed permissions cover weaker Requested Permissions, and several statements may jointly cover a request. There are no deny statements, inheritance, dynamic configuration, generic expression language, or authorization decision objects.
 
 The production policy authorizes only checked-in GitHub Actions contexts and
 contains no Fly or Google Permit Statement. Every policy issuer must resolve to
@@ -143,7 +172,7 @@ After authentication, a GitHub Actions Permit Statement applies only when:
 
 Claims a statement does not select, including `sub`, repository IDs, owner IDs, and actor metadata, do not affect authorization. A GitHub Actions token that fails its OIDC ID Token Profile, including an invalid `azp` claim, remains an invalid subject token and returns `400 {"error":"invalid_request"}`. Repository identity remains name-based; a repository deleted and recreated with the same owner/name can continue to match when the GitHub App installation still grants sufficient permissions.
 
-An omitted `scope` for an explicit repository resource produces this normalized permission request for cyspbot's service-owned GitHub App:
+An omitted `scope` for an explicit Repository Resource produces these Requested Permissions for cyspbot's service-owned GitHub App:
 
 ```json
 {
@@ -156,17 +185,16 @@ cyspbot denies forked pull request contexts, unconfigured refs, unconfigured wor
 
 #### Shared enforcement and issuance
 
-The Client cannot select arbitrary GitHub Apps, GitHub permissions, or repository IDs. The validated `scope` and `resource` are normalized into one Installation Access Token Request. Token Issuance Policy answers only whether its Effective Permissions cover that request, including cross-owner requests when explicit statements permit them. If it does not permit issuance, cyspbot returns `invalid_target` when the Repository Resource is unsupported, `invalid_scope` when the resource is supported but the requested permissions are not, and `invalid_request` when both are supported but the Verified Subject Token is unacceptable to policy. The [GitHub App installation](https://docs.github.com/en/rest/apps/apps#create-an-installation-access-token-for-an-app) independently remains the upper bound on repositories and permissions.
+The Client cannot select arbitrary GitHub Apps, GitHub permissions, or repository IDs. The validated `scope` and `resource` are normalized into one Installation Access Token Request. Token Issuance Policy answers only whether its Effective Permissions cover the Requested Permissions, including cross-owner requests when explicit statements permit them. If it does not permit issuance, cyspbot returns `invalid_target` when the Repository Resource is unsupported, `invalid_scope` when the resource is supported but the Requested Permissions are not, and `invalid_request` when both are supported but the Verified Subject Token is unacceptable to policy. The [GitHub App installation](https://docs.github.com/en/rest/apps/apps#create-an-installation-access-token-for-an-app) independently remains the upper bound on repositories and permissions.
 
 Missing or incorrectly typed claims selected by Permit Statements authenticate as verified token data but make the Verified Subject Token unacceptable to policy for a supported target, returning `400 {"error":"invalid_request"}`. An invalid standard ID Token claim or failed non-null OIDC ID Token Profile is also an invalid subject token and returns `400 {"error":"invalid_request"}` before policy evaluation.
 
-cyspbot resolves the target installation with `GET /repos/{owner}/{repo}/installation`, then mints the final installation access token with GitHub's `repositories` selector and the normalized permissions. It does not fetch source repository metadata or use live default-branch metadata as policy criteria.
+cyspbot resolves the target installation with `GET /repos/{owner}/{repo}/installation`, then mints the final installation access token with GitHub's `repositories` selector and the Requested Permissions. It does not fetch source repository metadata or use live default-branch metadata as policy criteria.
 
 GitHub response status alone does not establish that the Client selected an
-invalid target. Service-owned credential failures return `server_error`, GitHub
-403 and 404 responses are conservatively treated as upstream failures, and
-GitHub transport failures, 503 responses, and rate-limit responses return
-`temporarily_unavailable`; none is translated to `invalid_target`.
+invalid target. The complete Token Endpoint mapping above distinguishes
+service-owned, upstream, and temporarily unavailable failures; none is
+translated to `invalid_target`.
 
 cyspbot denies unsupported scopes and non-canonical resource forms.
 
