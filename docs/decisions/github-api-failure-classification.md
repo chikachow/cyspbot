@@ -28,7 +28,7 @@ succeed.
 The issuance boundary classifies failures by ownership and retryability rather
 than inferring OAuth target validity from a GitHub response status.
 
-| GitHub-side condition                         | Internal reason        | OAuth response                            |
+| GitHub-side condition                         | Internal reason        | cyspbot Token Endpoint response           |
 | --------------------------------------------- | ---------------------- | ----------------------------------------- |
 | request rejected with `400`                   | `internal_failure`     | `500 {"error":"server_error"}`            |
 | service-owned credentials rejected with `401` | `internal_failure`     | `500 {"error":"server_error"}`            |
@@ -39,6 +39,18 @@ than inferring OAuth target validity from a GitHub response status.
 | transport failure                             | `upstream_unavailable` | `503 {"error":"temporarily_unavailable"}` |
 | other GitHub `5xx`                            | `upstream_failure`     | `502 {"error":"server_error"}`            |
 | otherwise unclassified failure                | `internal_failure`     | `500 {"error":"server_error"}`            |
+
+### Protocol extension status
+
+These HTTP-status and error-code pairs are deliberate cyspbot protocol
+extensions. RFC 8693 delegates token-exchange errors to RFC 6749 section 5.2,
+which normally specifies HTTP `400` for Token Endpoint error responses. The
+IANA OAuth Extensions Error Registry registers `server_error` and
+`temporarily_unavailable` for the authorization endpoint, not the Token
+Endpoint. cyspbot reuses those names at the Token Endpoint with `500`, `502`,
+and `503` statuses as an explicit service contract; this decision does not
+claim that those pairs comply with RFC 6749 section 5.2. Clients must interpret
+the complete status and error-code pair.
 
 Only Token Issuance Policy's Repository Resource support query can produce
 `target_unsupported` and therefore `invalid_target` after request normalization.
@@ -61,9 +73,10 @@ Client.
 
 ### Response and logging boundary
 
-The OAuth response contains only the documented error code. It does not expose
-GitHub response bodies, GitHub credentials, installation access tokens, network
-exception messages, or installation identifiers that were not yet resolved.
+The cyspbot Token Endpoint response contains only the documented error code. It
+does not expose GitHub response bodies, GitHub credentials, installation access
+tokens, network exception messages, or installation identifiers that were not
+yet resolved.
 Operational logs retain the sanitized GitHub request path, upstream status when
 available, whether Token Issuance Policy permitted the request, and a target
 installation ID only after resolution succeeds.
@@ -84,9 +97,12 @@ require a separate decision.
   misleading and a poor resource-existence signal.
 - GitHub documents `403` and `429` rate-limit responses and their distinguishing
   headers and error message. Those signals justify a retryable classification.
-- HTTP `502` distinguishes a non-retry-classified upstream failure from an
-  internal request or credential failure. HTTP `503` and OAuth
-  `temporarily_unavailable` tell the Client that a later retry can succeed.
+- cyspbot uses HTTP `502` as an application-level distinction between a
+  non-retry-classified upstream failure and an internal request or credential
+  failure. It does not claim that every classified GitHub `403` or `404` is an
+  invalid upstream HTTP response under RFC 9110. HTTP `503` and cyspbot's
+  `temporarily_unavailable` Token Endpoint extension tell the Client that a
+  later retry can succeed.
 
 ## Consequences
 
@@ -126,6 +142,7 @@ contract requiring its own validation and policy.
 
 - [OAuth 2.0 Token Exchange, RFC 8693 section 2.2.2](https://www.rfc-editor.org/rfc/rfc8693.html#section-2.2.2)
 - [OAuth 2.0, RFC 6749 section 5.2](https://www.rfc-editor.org/rfc/rfc6749.html#section-5.2)
+- [IANA OAuth Extensions Error Registry](https://www.iana.org/assignments/oauth-parameters/oauth-parameters.xhtml)
 - [HTTP Semantics, RFC 9110 sections 15.6.3 and 15.6.4](https://www.rfc-editor.org/rfc/rfc9110.html#section-15.6.3)
 - [GitHub REST API rate limits](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api?apiVersion=2022-11-28)
 - [GitHub REST API troubleshooting](https://docs.github.com/en/rest/using-the-rest-api/troubleshooting-the-rest-api?apiVersion=2022-11-28)

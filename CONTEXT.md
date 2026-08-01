@@ -31,8 +31,9 @@ Audit-only facts about how a **Verified Subject Token** was authenticated, curre
 _Avoid_: Subject Token Claims, authorization attribute, provider registration
 
 **Subject Token Claims**:
-The verified claims carried by a **Verified Subject Token**. They describe the identity and context asserted by an **OpenID Provider**.
-_Avoid_: The serialized subject token, derived principal fields, Client-provided attributes
+The verified claims carried by a **Verified Subject Token**; they describe the identity and context asserted by an **OpenID Provider**.
+Only `sub` is the OIDC **Subject Identifier**; contextual Claims such as `repository` are not subject identity.
+_Avoid_: The serialized subject token, derived principal fields, Client-provided attributes, subject identity for contextual Claims
 
 **Installation Access Token Issuance**:
 The cyspbot capability that exchanges a **Verified Subject Token** for a short-lived GitHub App installation access token when **Token Issuance Policy** permits issuance for the combination of that token and an **Installation Access Token Request**.
@@ -41,6 +42,10 @@ _Avoid_: cyspbot itself, app login
 **Installation Access Token Request**:
 The normalized cyspbot-internal request for one GitHub App installation access token. It contains exactly one canonical GitHub repository API resource and the GitHub App permissions requested for that resource.
 _Avoid_: Profile, grant, target selector, raw form values
+
+**Requested Permissions**:
+The canonical permission map derived from the **Token Exchange Client**'s optional OAuth `scope`, or from the service default when `scope` is omitted, for one **Installation Access Token Request**.
+_Avoid_: Client-selected permission map, raw scope string, GitHub `permissions` request object
 
 **Repository Resource**:
 A canonical GitHub API repository URI in the form `https://api.github.com/repos/{owner}/{repo}`. One **Installation Access Token Request** contains exactly one **Repository Resource**.
@@ -59,7 +64,7 @@ The short-lived GitHub App installation access token issued for a **Repository R
 _Avoid_: PAT, app JWT, repository secret
 
 **Token Issuance Policy**:
-The closed, immutable set of checked-in **Permit Statements** that decides whether issuance is permitted for a **Verified Subject Token** and normalized **Installation Access Token Request**. All applicable statements contribute permissions pointwise; issuance is permitted only when their **Effective Permissions** cover every requested permission.
+The closed, immutable set of checked-in **Permit Statements** that decides whether issuance is permitted for a **Verified Subject Token** and normalized **Installation Access Token Request**. All applicable statements contribute permissions pointwise; issuance is permitted only when their **Effective Permissions** cover the **Requested Permissions**.
 _Avoid_: Ordered rules, first-match policy, caller-defined policy, generic expression language
 
 **Permit Statement**:
@@ -71,7 +76,7 @@ An exact **OIDC Issuer Identifier** plus a total predicate over verified **Subje
 _Avoid_: Authentication profile, claim mapping, unverified JWT inspection
 
 **Effective Permissions**:
-The pointwise maximum of permissions contributed by all applicable **Permit Statements**, using `omitted < read < write`. A request is permitted only when each requested level is covered.
+The pointwise maximum of permissions contributed by all applicable **Permit Statements**, using `omitted < read < write`. A request is permitted only when the **Effective Permissions** cover the **Requested Permissions**.
 _Avoid_: First matching statement, whole-map equality, GitHub installation permissions
 
 **Webhook Receiver**:
@@ -123,10 +128,10 @@ _Avoid_: Permanent key store, token cache, Client-controlled key source
 - An **OIDC ID Token Profile**, when present on an **OIDC Provider Registration**, validates token-kind rules before an ID Token becomes a **Verified Subject Token**.
 - The **OIDC ID Token Authenticator** validates a subject token only through an **OIDC Provider Registration**.
 - **cyspbot** normalizes exactly one **Installation Access Token Request** from an explicit token-exchange `resource` and optional `scope` before validating the subject token.
-- The **Token Issuance Policy** is the first layer that combines a normalized **Installation Access Token Request** with a **Verified Subject Token**; subject-token claims never select the target **Repository Resource**.
+- The **Token Issuance Policy** is the first layer that combines a normalized **Installation Access Token Request** with a **Verified Subject Token**; **Subject Token Claims** never select the target **Repository Resource**.
 - **Installation Access Token Issuance** in **cyspbot** issues at most one **Installation Access Token** for one **Repository Resource**.
 - The **Token Issuance Policy** is fixed by **cyspbot** as checked-in **Permit Statements**, while the GitHub App installation remains the upper bound.
-- Applicable **Permit Statements** combine permissions pointwise; a broader request may be covered by several independently complete statements.
+- Applicable **Permit Statements** combine permissions pointwise; broader **Requested Permissions** may be covered by several independently complete statements.
 - Every issuer used by **Token Issuance Policy** must have an **OIDC Provider Registration**, but a registration creates no **Permit Statement** by itself.
 - The **Token Exchange Client** is the OAuth Client, **cyspbot** is the Authorization Server exposing the **Token Exchange Endpoint**, and the GitHub API is the Resource Server for the issued **Installation Access Token**.
 - The **Token Exchange Endpoint** is the only public interface for **Installation Access Token Issuance**.
@@ -139,13 +144,13 @@ _Avoid_: Permanent key store, token cache, Client-controlled key source
 ## Example dialogue
 
 > **Dev:** "Can this workflow ask for a token for another repository?"
-> **Domain expert:** "Only when applicable checked-in **Permit Statements** for that exact **Repository Resource** combine to cover the permission request."
+> **Domain expert:** "Only when applicable checked-in **Permit Statements** for that exact **Repository Resource** combine to cover the **Requested Permissions**."
 
 > **Dev:** "Can the workflow ask for broader permissions when it needs them?"
-> **Domain expert:** "The workflow can request exact GitHub permission scopes, but **Token Issuance Policy** must cover the normalized **Installation Access Token Request**. GitHub also caps the request to the permissions granted to the GitHub App installation."
+> **Domain expert:** "The workflow can request exact GitHub permission scopes, but **Token Issuance Policy** must cover the resulting **Requested Permissions** in the normalized **Installation Access Token Request**. GitHub also caps the request to the permissions granted to the GitHub App installation."
 
 > **Dev:** "Do we keep the issued tokens for reuse?"
 > **Domain expert:** "No. **cyspbot** does not cache issued **Installation Access Tokens**."
 
 > **Dev:** "What decides whether a workflow run is trusted enough for Installation Access Token Issuance?"
-> **Domain expert:** "The **Token Issuance Policy** evaluates the **Verified Subject Token** and normalized **Installation Access Token Request**. It permits issuance only when the **Effective Permissions** composed from applicable checked-in **Permit Statements** cover the request."
+> **Domain expert:** "The **Token Issuance Policy** evaluates the **Verified Subject Token** and normalized **Installation Access Token Request**. It permits issuance only when the **Effective Permissions** composed from applicable checked-in **Permit Statements** cover the **Requested Permissions**."

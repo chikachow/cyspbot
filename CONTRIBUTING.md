@@ -14,3 +14,10 @@ Before opening a pull request:
 Do not commit local deployment state or secrets. In particular, keep `.dev.vars`, `.env`, `.wrangler/`, `.local-secrets/`, GitHub App private keys, Cloudflare tokens, and webhook secrets out of commits.
 
 Use present-tense documentation for implemented behaviour.
+
+Decision records may also document source-supported capabilities that are not
+currently configured in production. Label capability statements explicitly and
+use conditional language; use `docs/service-contract.md` and
+`docs/implementation.md` for the current production registration and Token
+Issuance Policy inventory. Do not treat a clearly labelled capability as a
+configured policy.
