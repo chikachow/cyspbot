@@ -46,13 +46,29 @@ describe("GitHub App authentication", () => {
 
   it("matches the installation account owner case-insensitively", async () => {
     await expect(
-      resolveTestInstallation(githubInstallationResponse("FIXTURE-OWNER", 12345)),
+      resolveTestInstallation(testRepository, githubInstallationResponse("FIXTURE-OWNER", 12345)),
     ).resolves.toEqual({ id: 12345 });
   });
 
   it("rejects an installation account for a different owner", async () => {
     await expect(
-      resolveTestInstallation(githubInstallationResponse("transferred-owner", 12345)),
+      resolveTestInstallation(
+        testRepository,
+        githubInstallationResponse("transferred-owner", 12345),
+      ),
+    ).rejects.toMatchObject({
+      message: "invalid installation response",
+      status: 502,
+    });
+  });
+
+  it.each([
+    { repository: "", scenario: "an empty repository" },
+    { repository: "fixture-owner", scenario: "a repository without a separator" },
+    { repository: "/fixture-repository", scenario: "a repository with an empty owner" },
+  ])("rejects $scenario before owner comparison", async ({ repository }) => {
+    await expect(
+      resolveTestInstallation(repository, githubInstallationResponse("fixture-owner", 12345)),
     ).rejects.toMatchObject({
       message: "invalid installation response",
       status: 502,
@@ -89,44 +105,74 @@ describe("GitHub App authentication", () => {
       scenario: "a response with a non-numeric installation ID",
     },
   ])("rejects $scenario", async ({ response }) => {
-    await expect(resolveTestInstallation(Response.json(response))).rejects.toMatchObject({
+    await expect(
+      resolveTestInstallation(testRepository, Response.json(response)),
+    ).rejects.toMatchObject({
       message: "invalid installation response",
       status: 502,
     });
   });
 
-  it("rejects a malformed installation access token response", async () => {
-    await expect(
-      createInstallationAccessTokenForRepositoryName(
-        {
-          GITHUB_APP_ID: "2419473",
-          GITHUB_APP_PRIVATE_KEY: testPrivateKeyPem,
-        },
-        12345,
-        "fixture-repository",
-        { contents: "read" },
-        {
-          fetch: async () =>
-            Response.json({
-              expires_at: "2030-01-01T00:00:00Z",
-              permissions: { contents: "read" },
-            }),
-        },
-      ),
-    ).rejects.toMatchObject({
+  it.each([
+    {
+      response: {
+        expires_at: "2030-01-01T00:00:00Z",
+        permissions: { contents: "read" },
+      },
+      scenario: "a missing token",
+    },
+    {
+      response: {
+        expires_at: "2030-01-01T00:00:00Z",
+        permissions: null,
+        token: "ghs_test_token",
+      },
+      scenario: "null permissions",
+    },
+    {
+      response: {
+        expires_at: "2030-01-01T00:00:00Z",
+        permissions: [],
+        token: "ghs_test_token",
+      },
+      scenario: "array permissions",
+    },
+    {
+      response: {
+        expires_at: "2030-01-01T00:00:00Z",
+        permissions: "read",
+        token: "ghs_test_token",
+      },
+      scenario: "scalar permissions",
+    },
+  ])("rejects an installation access token response with $scenario", async ({ response }) => {
+    await expect(createTestInstallationAccessToken(Response.json(response))).rejects.toMatchObject({
       message: "invalid installation access token response",
       status: 502,
     });
   });
 });
 
-function resolveTestInstallation(response: Response) {
+function resolveTestInstallation(repository: string, response: Response) {
   return resolveInstallationForRepository(
     {
       GITHUB_APP_ID: "2419473",
       GITHUB_APP_PRIVATE_KEY: testPrivateKeyPem,
     },
-    testRepository,
+    repository,
+    { fetch: async () => response },
+  );
+}
+
+function createTestInstallationAccessToken(response: Response) {
+  return createInstallationAccessTokenForRepositoryName(
+    {
+      GITHUB_APP_ID: "2419473",
+      GITHUB_APP_PRIVATE_KEY: testPrivateKeyPem,
+    },
+    12345,
+    "fixture-repository",
+    { contents: "read" },
     { fetch: async () => response },
   );
 }
