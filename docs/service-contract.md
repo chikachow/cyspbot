@@ -120,6 +120,7 @@ complete observable mapping:
 | rate-limit `403` or `429`                     | `503`       | `temporarily_unavailable` |
 | `503`                                         | `503`       | `temporarily_unavailable` |
 | transport failure                             | `503`       | `temporarily_unavailable` |
+| malformed or invalid successful response      | `502`       | `server_error`            |
 | other GitHub `5xx`                            | `502`       | `server_error`            |
 | otherwise unclassified issuance failure       | `500`       | `server_error`            |
 
