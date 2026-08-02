@@ -1167,6 +1167,46 @@ describe("OIDC ID Token Authenticator", () => {
     expect(fetchOidcRemoteDocumentResponse).toHaveBeenCalledTimes(4);
   });
 
+  it("does not use stale Provider Configuration marked no-cache after failed revalidation", async () => {
+    let available = true;
+    const fetchOidcRemoteDocumentResponse = vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
+      available
+        ? providerFetch({ cacheControl: "no-cache" })(input, init)
+        : Promise.resolve(new Response(null, { status: 503 })),
+    );
+    const authenticator = testAuthenticator(fetchOidcRemoteDocumentResponse);
+    const subjectToken = await signedIdToken();
+
+    expect((await authenticator.authenticateIdToken(subjectToken)).ok).toBe(true);
+    available = false;
+    await expect(authenticator.authenticateIdToken(subjectToken)).resolves.toEqual(
+      expectedFailure("provider_unavailable", "ERR_OIDC_PROVIDER_CONFIGURATION_HTTP_STATUS", 503),
+    );
+    expect(fetchOidcRemoteDocumentResponse).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not use stale JWKS marked no-cache after failed revalidation", async () => {
+    let jwksAvailable = true;
+    const fetchOidcRemoteDocumentResponse = vi.fn(
+      (input: RequestInfo | URL, init?: RequestInit) => {
+        if (new Request(input).url === jwksUri && !jwksAvailable) {
+          return Promise.resolve(new Response(null, { status: 503 }));
+        }
+
+        return providerFetch({ cacheControl: "no-cache" })(input, init);
+      },
+    );
+    const authenticator = testAuthenticator(fetchOidcRemoteDocumentResponse);
+    const subjectToken = await signedIdToken();
+
+    expect((await authenticator.authenticateIdToken(subjectToken)).ok).toBe(true);
+    jwksAvailable = false;
+    await expect(authenticator.authenticateIdToken(subjectToken)).resolves.toEqual(
+      expectedFailure("provider_unavailable", "ERR_OIDC_JWKS_HTTP_STATUS", 503),
+    );
+    expect(fetchOidcRemoteDocumentResponse).toHaveBeenCalledTimes(4);
+  });
+
   it("does not use stale Provider Configuration or JWKS responses marked must-revalidate", async () => {
     let available = true;
     const fetchOidcRemoteDocumentResponse = vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
