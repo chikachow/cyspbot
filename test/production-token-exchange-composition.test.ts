@@ -84,7 +84,7 @@ function createProductionTokenExchangeFixture() {
       request.method === "GET" &&
       url.href === "https://api.github.com/repos/chikachow/cyspbot/installation"
     ) {
-      return Response.json({ id: 13_579 });
+      return Response.json({ account: { login: "chikachow" }, id: 13_579 });
     }
 
     if (

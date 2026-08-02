@@ -52,6 +52,10 @@ _Avoid_: `owner/repo` shorthand, GitHub HTML URL, workflow endpoint URL
 A selector for one exact **Repository Resource** within a **Permit Statement**.
 _Avoid_: Repository Resource, arbitrary URI matcher, subject-token repository Claim
 
+**Requested Repository Owner**:
+The owner segment of the normalized **Repository Resource** authorized by **Token Issuance Policy**; GitHub installation resolution must return an installation account with the same owner login, case-insensitively, before minting.
+_Avoid_: redirected owner, installation ID as owner identity, repository basename as owner identity
+
 **GitHub App Installation**:
 An installation of a GitHub App on a repository or owner scope.
 _Avoid_: App session, app login

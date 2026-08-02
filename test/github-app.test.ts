@@ -35,7 +35,10 @@ describe("GitHub App authentication", () => {
           expect(headers.get("x-github-api-version")).toBe("2022-11-28");
           expect(headers.get("authorization")).toMatch(/^Bearer /u);
 
-          return Response.json({ id: 12345 });
+          return Response.json({
+            account: { login: "fixture-owner" },
+            id: 12345,
+          });
         },
       },
     );
