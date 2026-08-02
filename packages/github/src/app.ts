@@ -2,7 +2,7 @@ import { importPKCS8, SignJWT } from "jose";
 
 import {
   defaultGitHubApiDependencies,
-  fetchGitHubApi,
+  fetchGitHubApiJson,
   GitHubApiError,
   githubAcceptHeader,
   githubApiVersion,
@@ -58,14 +58,12 @@ export async function resolveInstallationForRepository(
   repository: string,
   dependencies: GitHubApiDependencies = defaultGitHubApiDependencies,
 ): Promise<ResolvedGitHubAppInstallation> {
-  const response = await fetchGitHubApi(
+  const body = (await fetchGitHubApiJson(
     env,
     `/repos/${repository}/installation`,
     await appAuthenticationHeaders(env),
     dependencies,
-  );
-
-  const body = (await response.json()) as GitHubInstallationResponse;
+  )) as GitHubInstallationResponse;
 
   if (typeof body.id !== "number") {
     throw new GitHubApiError(502, "invalid installation response");
@@ -86,7 +84,7 @@ export async function createInstallationAccessTokenForRepositoryName(
     repositories: [repositoryName],
   };
 
-  const response = await fetchGitHubApi(
+  const responseBody = (await fetchGitHubApiJson(
     env,
     `/app/installations/${installationId}/access_tokens`,
     await appAuthenticationHeaders(env),
@@ -99,9 +97,7 @@ export async function createInstallationAccessTokenForRepositoryName(
       },
       method: "POST",
     },
-  );
-
-  const responseBody = (await response.json()) as GitHubInstallationAccessTokenResponse;
+  )) as GitHubInstallationAccessTokenResponse;
 
   if (
     typeof responseBody.token !== "string" ||

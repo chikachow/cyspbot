@@ -361,6 +361,62 @@ describe("Installation Access Token Issuance", () => {
     );
   });
 
+  it("maps an unreadable successful installation response body to upstream unavailability", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const privateResponseToken = "ghs_private_installation_body_token";
+    const privateResponseContent = `private installation response content ${privateResponseToken}`;
+    const privateStreamError = "private installation response body read failure";
+
+    await expect(
+      issueInstallationAccessToken({
+        fetch: async () =>
+          new Response(unreadableResponseBody(privateResponseContent, privateStreamError)),
+      }),
+    ).resolves.toEqual({ ok: false, reason: "upstream_unavailable" });
+
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        error: {
+          message:
+            "GitHub API request failed: /repos/fixture-owner/fixture-source-repository/installation",
+          name: "GitHubApiTransportError",
+          status: undefined,
+        },
+        target_installation: { id: undefined },
+        token_issuance_policy: { permitted: true },
+      }),
+    );
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(privateStreamError);
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(privateResponseContent);
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(privateResponseToken);
+    expectLogsNotToContainGitHubAppCredentials(consoleError.mock.calls);
+  });
+
+  it("keeps malformed successful GitHub JSON classified as an internal failure", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const malformedResponseBody = '{"private":"response content"';
+
+    await expect(
+      issueInstallationAccessToken({
+        fetch: async () => new Response(malformedResponseBody),
+      }),
+    ).resolves.toEqual({ ok: false, reason: "internal_failure" });
+
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        error: {
+          message: "unexpected Installation Access Token Issuance error",
+          name: "SyntaxError",
+          status: undefined,
+        },
+        target_installation: { id: undefined },
+        token_issuance_policy: { permitted: true },
+      }),
+    );
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(malformedResponseBody);
+    expectLogsNotToContainGitHubAppCredentials(consoleError.mock.calls);
+  });
+
   it("maps a token-minting network error to upstream unavailability", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
@@ -387,6 +443,41 @@ describe("Installation Access Token Issuance", () => {
     expect(JSON.stringify(consoleError.mock.calls)).not.toContain(
       "private token-minting network failure details",
     );
+  });
+
+  it("maps an unreadable successful token-mint response body to upstream unavailability", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const privateResponseToken = "ghs_private_token_mint_body_token";
+    const privateResponseContent = `private token-mint response content ${privateResponseToken}`;
+    const privateStreamError = "private token-mint response body read failure";
+
+    await expect(
+      issueInstallationAccessToken({
+        fetch: async (input, init) => {
+          const request = new Request(input, init);
+
+          return request.method === "POST"
+            ? new Response(unreadableResponseBody(privateResponseContent, privateStreamError))
+            : fetchGitHubTestDouble(input, init);
+        },
+      }),
+    ).resolves.toEqual({ ok: false, reason: "upstream_unavailable" });
+
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        error: {
+          message: `GitHub API request failed: /app/installations/${testInstallationId}/access_tokens`,
+          name: "GitHubApiTransportError",
+          status: undefined,
+        },
+        target_installation: { id: testInstallationId },
+        token_issuance_policy: { permitted: true },
+      }),
+    );
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(privateStreamError);
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(privateResponseContent);
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(privateResponseToken);
+    expectLogsNotToContainGitHubAppCredentials(consoleError.mock.calls);
   });
 
   it("logs when policy does not permit issuance without requesting GitHub", async () => {
@@ -446,10 +537,16 @@ function oversizedRateLimitResponseBody(): ReadableStream<Uint8Array> {
   );
 }
 
-function unreadableResponseBody(): ReadableStream<Uint8Array> {
+function unreadableResponseBody(
+  partialBody = "",
+  errorMessage = "response body read failed",
+): ReadableStream<Uint8Array> {
   return new ReadableStream<Uint8Array>({
-    pull() {
-      throw new Error("response body read failed");
+    pull(controller) {
+      if (partialBody.length > 0) {
+        controller.enqueue(new TextEncoder().encode(partialBody));
+      }
+      controller.error(new Error(errorMessage));
     },
   });
 }

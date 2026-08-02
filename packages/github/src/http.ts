@@ -34,13 +34,13 @@ export class GitHubApiTransportError extends Error {
   }
 }
 
-export async function fetchGitHubApi(
+export async function fetchGitHubApiJson(
   env: GitHubApiEnv,
   path: string,
   headers: HeadersInit,
   dependencies: GitHubApiDependencies,
   init?: RequestInit,
-): Promise<Response> {
+): Promise<unknown> {
   const requestHeaders = new Headers(headers);
 
   for (const [name, value] of new Headers(init?.headers)) {
@@ -61,15 +61,23 @@ export async function fetchGitHubApi(
     throw new GitHubApiTransportError(`GitHub API request failed: ${path}`);
   }
 
-  if (response.ok) {
-    return response;
+  if (!response.ok) {
+    throw new GitHubApiError(
+      response.status,
+      `GitHub API request failed: ${path}`,
+      await githubResponseIsRateLimited(response),
+    );
   }
 
-  throw new GitHubApiError(
-    response.status,
-    `GitHub API request failed: ${path}`,
-    await githubResponseIsRateLimited(response),
-  );
+  let responseText: string;
+
+  try {
+    responseText = await response.text();
+  } catch {
+    throw new GitHubApiTransportError(`GitHub API request failed: ${path}`);
+  }
+
+  return JSON.parse(responseText) as unknown;
 }
 
 async function githubResponseIsRateLimited(response: Response): Promise<boolean> {
