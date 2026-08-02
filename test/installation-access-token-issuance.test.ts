@@ -3,7 +3,7 @@ import type { VerifiedSubjectToken } from "@cyspbot/token-exchange/authenticatio
 
 import { issueInstallationAccessTokenForContext } from "../workers/cyspbot-token-exchange/src/policy/installation-access-token-issuance.ts";
 import { testRepository, testInstallationId } from "./support/constants.ts";
-import { fetchGitHubTestDouble } from "./support/github-api.ts";
+import { fetchGitHubTestDouble, githubInstallationResponse } from "./support/github-api.ts";
 import { createVerifiedSubjectToken } from "./support/oidc.ts";
 import { testTokenIssuancePolicy } from "./support/token-issuance-policy.ts";
 import { testEnv } from "./support/worker-env.ts";
@@ -88,10 +88,7 @@ describe("Installation Access Token Issuance", () => {
             request.method === "GET" &&
             url.pathname === `/repos/${testRepository}/installation`
           ) {
-            return Response.json({
-              account: { login: "transferred-owner" },
-              id: testInstallationId,
-            });
+            return githubInstallationResponse("transferred-owner", testInstallationId);
           }
 
           return new Response(null, { status: 500 });
