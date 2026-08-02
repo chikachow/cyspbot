@@ -1,6 +1,6 @@
 import { createPrivateKey } from "node:crypto";
 
-import { SignJWT } from "jose";
+import { importPKCS8, SignJWT } from "jose";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -1492,6 +1492,7 @@ async function signedIdToken(
   } = {},
 ): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
+  const privateKey = await importPKCS8(testPrivateKeyPem, options.algorithm ?? "RS256");
 
   return new SignJWT({})
     .setProtectedHeader({ alg: options.algorithm ?? "RS256", kid: options.kid ?? "test-key-1" })
@@ -1500,5 +1501,5 @@ async function signedIdToken(
     .setSubject("subject")
     .setIssuedAt(now - 10)
     .setExpirationTime(now + 300)
-    .sign(createPrivateKey(testPrivateKeyPem));
+    .sign(privateKey);
 }
