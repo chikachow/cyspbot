@@ -7,6 +7,7 @@ import {
   fetchOidcRemoteDocumentResponseTestDouble,
   tokenExchangeRequestBody,
 } from "./support/oidc.ts";
+import { githubInstallationResponse } from "./support/github-api.ts";
 import type { TokenExchangeRequestBodyOptions } from "./support/oidc-token.ts";
 import { testEnv } from "./support/worker-env.ts";
 
@@ -84,7 +85,7 @@ function createProductionTokenExchangeFixture() {
       request.method === "GET" &&
       url.href === "https://api.github.com/repos/chikachow/cyspbot/installation"
     ) {
-      return Response.json({ account: { login: "chikachow" }, id: 13_579 });
+      return githubInstallationResponse("chikachow", 13_579);
     }
 
     if (

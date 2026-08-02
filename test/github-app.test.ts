@@ -5,6 +5,7 @@ import {
   resolveInstallationForRepository,
 } from "../packages/github/src/app.ts";
 import { testRepository } from "./support/constants.ts";
+import { githubInstallationResponse } from "./support/github-api.ts";
 import { testPrivateKeyPem } from "./support/rsa-test-key-pair.ts";
 
 describe("GitHub App authentication", () => {
@@ -35,15 +36,63 @@ describe("GitHub App authentication", () => {
           expect(headers.get("x-github-api-version")).toBe("2022-11-28");
           expect(headers.get("authorization")).toMatch(/^Bearer /u);
 
-          return Response.json({
-            account: { login: "fixture-owner" },
-            id: 12345,
-          });
+          return githubInstallationResponse("fixture-owner", 12345);
         },
       },
     );
 
     expect(installation).toEqual({ id: 12345 });
+  });
+
+  it("matches the installation account owner case-insensitively", async () => {
+    await expect(
+      resolveTestInstallation(githubInstallationResponse("FIXTURE-OWNER", 12345)),
+    ).resolves.toEqual({ id: 12345 });
+  });
+
+  it("rejects an installation account for a different owner", async () => {
+    await expect(
+      resolveTestInstallation(githubInstallationResponse("transferred-owner", 12345)),
+    ).rejects.toMatchObject({
+      message: "invalid installation response",
+      status: 502,
+    });
+  });
+
+  it.each([
+    { response: "not an object", scenario: "a scalar response" },
+    { response: null, scenario: "a null response" },
+    { response: [], scenario: "an array response" },
+    { response: { id: 12345 }, scenario: "a response without an account" },
+    {
+      response: { account: { login: "fixture-owner" } },
+      scenario: "a response without an installation ID",
+    },
+    {
+      response: { account: null, id: 12345 },
+      scenario: "a response with a null account",
+    },
+    {
+      response: { account: [], id: 12345 },
+      scenario: "a response with an array account",
+    },
+    {
+      response: { account: {}, id: 12345 },
+      scenario: "an account without a login",
+    },
+    {
+      response: { account: { login: 12345 }, id: 12345 },
+      scenario: "an account with a non-string login",
+    },
+    {
+      response: { account: { login: "fixture-owner" }, id: "12345" },
+      scenario: "a response with a non-numeric installation ID",
+    },
+  ])("rejects $scenario", async ({ response }) => {
+    await expect(resolveTestInstallation(Response.json(response))).rejects.toMatchObject({
+      message: "invalid installation response",
+      status: 502,
+    });
   });
 
   it("rejects a malformed installation access token response", async () => {
@@ -70,3 +119,14 @@ describe("GitHub App authentication", () => {
     });
   });
 });
+
+function resolveTestInstallation(response: Response) {
+  return resolveInstallationForRepository(
+    {
+      GITHUB_APP_ID: "2419473",
+      GITHUB_APP_PRIVATE_KEY: testPrivateKeyPem,
+    },
+    testRepository,
+    { fetch: async () => response },
+  );
+}

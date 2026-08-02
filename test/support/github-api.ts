@@ -27,17 +27,14 @@ export async function fetchGitHubTestDouble(
   }
 
   if (request.method === "GET" && apiPath === `/repos/${testRepository}/installation`) {
-    return Response.json({ account: { login: "fixture-owner" }, id: testInstallationId });
+    return githubInstallationResponse("fixture-owner", testInstallationId);
   }
 
   if (
     request.method === "GET" &&
     apiPath === `/repos/${testWorkflowDispatchRepository}/installation`
   ) {
-    return Response.json({
-      account: { login: "fixture-target-owner" },
-      id: testWorkflowDispatchInstallationId,
-    });
+    return githubInstallationResponse("fixture-target-owner", testWorkflowDispatchInstallationId);
   }
 
   if (request.method === "GET" && apiPath === `/repos/${testRepository}`) {
@@ -148,6 +145,10 @@ export async function fetchGitHubTestDouble(
   }
 
   return new Response(`No test GitHub response for ${request.method} ${path}`, { status: 404 });
+}
+
+export function githubInstallationResponse(accountLogin: string, installationId: number): Response {
+  return Response.json({ account: { login: accountLogin }, id: installationId });
 }
 
 function hasSelectedRepository(body: Record<string, unknown>, repository: string): boolean {
