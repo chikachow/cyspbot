@@ -129,7 +129,7 @@ export async function issueInstallationAccessTokenForContext(
       error: {
         message: logMessageForInstallationAccessTokenIssuanceError(error),
         name: error instanceof Error ? error.name : typeof error,
-        status: error instanceof GitHubApiError ? error.status : undefined,
+        status: error instanceof GitHubApiError ? error.upstreamStatus : undefined,
       },
       event: "installation_access_token_issuance_failed",
       installation_access_token_request: installationAccessTokenRequestLogFields(

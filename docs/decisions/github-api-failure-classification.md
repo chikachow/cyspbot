@@ -39,6 +39,7 @@ than inferring OAuth target validity from a GitHub response status.
 | rate-limit `403` or `429`                     | `upstream_unavailable` | `503 {"error":"temporarily_unavailable"}` |
 | `503`                                         | `upstream_unavailable` | `503 {"error":"temporarily_unavailable"}` |
 | transport failure                             | `upstream_unavailable` | `503 {"error":"temporarily_unavailable"}` |
+| malformed or invalid successful response      | `upstream_failure`     | `502 {"error":"server_error"}`            |
 | other GitHub `5xx`                            | `upstream_failure`     | `502 {"error":"server_error"}`            |
 | otherwise unclassified failure                | `internal_failure`     | `500 {"error":"server_error"}`            |
 
@@ -105,6 +106,8 @@ require a separate decision.
   misleading and a poor resource-existence signal.
 - GitHub documents `403` and `429` rate-limit responses and their distinguishing
   headers and error message. Those signals justify a retryable classification.
+- A malformed or schema-invalid successful GitHub response violates the
+  operation's upstream response contract and is therefore an upstream failure.
 - cyspbot uses HTTP `502` as an application-level distinction between a
   non-retry-classified upstream failure and an internal request or credential
   failure. It does not claim that every classified GitHub `403` or `404` is an

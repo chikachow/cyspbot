@@ -36,7 +36,11 @@ describe("GitHub App authentication", () => {
           expect(headers.get("x-github-api-version")).toBe("2022-11-28");
           expect(headers.get("authorization")).toMatch(/^Bearer /u);
 
-          return githubInstallationResponse("fixture-owner", 12345);
+          return Response.json({
+            account: { login: "fixture-owner" },
+            id: 12345,
+            node_id: "MDQ6VXNlcjE=",
+          });
         },
       },
     );
@@ -101,15 +105,51 @@ describe("GitHub App authentication", () => {
       scenario: "an account with a non-string login",
     },
     {
+      response: { account: { login: "" }, id: 12345 },
+      scenario: "an account with an empty login",
+    },
+    {
       response: { account: { login: "fixture-owner" }, id: "12345" },
       scenario: "a response with a non-numeric installation ID",
+    },
+    {
+      response: { account: { login: "fixture-owner" }, id: 0 },
+      scenario: "a response with a non-positive installation ID",
+    },
+    {
+      response: { account: { login: "fixture-owner" }, id: 123.45 },
+      scenario: "a response with a fractional installation ID",
     },
   ])("rejects $scenario", async ({ response }) => {
     await expect(
       resolveTestInstallation(testRepository, Response.json(response)),
     ).rejects.toMatchObject({
-      message: "invalid installation response",
+      message: invalidGitHubApiResponseMessage(`/repos/${testRepository}/installation`),
       status: 502,
+    });
+  });
+
+  it("rejects malformed successful installation JSON", async () => {
+    await expect(resolveTestInstallation(testRepository, new Response("{"))).rejects.toMatchObject({
+      message: invalidGitHubApiResponseMessage(`/repos/${testRepository}/installation`),
+      status: 502,
+    });
+  });
+
+  it("maps a valid access-token response and ignores unknown fields", async () => {
+    await expect(
+      createTestInstallationAccessToken(
+        Response.json({
+          expires_at: "2030-01-01T00:00:00Z",
+          permissions: { contents: "read" },
+          token: "ghs_test_token",
+          token_last_eight: "st_token",
+        }),
+      ),
+    ).resolves.toEqual({
+      expiresAt: "2030-01-01T00:00:00Z",
+      permissions: { contents: "read" },
+      token: "ghs_test_token",
     });
   });
 
@@ -120,6 +160,14 @@ describe("GitHub App authentication", () => {
         permissions: { contents: "read" },
       },
       scenario: "a missing token",
+    },
+    {
+      response: {
+        expires_at: "not an ISO 8601 datetime",
+        permissions: { contents: "read" },
+        token: "ghs_test_token",
+      },
+      scenario: "an ill-formed expiration timestamp",
     },
     {
       response: {
@@ -145,9 +193,32 @@ describe("GitHub App authentication", () => {
       },
       scenario: "scalar permissions",
     },
+    {
+      response: {
+        expires_at: "2030-01-01T00:00:00Z",
+        permissions: { contents: 1 },
+        token: "ghs_test_token",
+      },
+      scenario: "a non-string permission value",
+    },
+    {
+      response: {
+        expires_at: "2030-01-01T00:00:00Z",
+        permissions: { contents: "read" },
+        token: "",
+      },
+      scenario: "an empty token",
+    },
   ])("rejects an installation access token response with $scenario", async ({ response }) => {
     await expect(createTestInstallationAccessToken(Response.json(response))).rejects.toMatchObject({
-      message: "invalid installation access token response",
+      message: invalidGitHubApiResponseMessage("/app/installations/12345/access_tokens"),
+      status: 502,
+    });
+  });
+
+  it("rejects malformed successful access-token JSON", async () => {
+    await expect(createTestInstallationAccessToken(new Response("{"))).rejects.toMatchObject({
+      message: invalidGitHubApiResponseMessage("/app/installations/12345/access_tokens"),
       status: 502,
     });
   });
@@ -175,4 +246,8 @@ function createTestInstallationAccessToken(response: Response) {
     { contents: "read" },
     { fetch: async () => response },
   );
+}
+
+function invalidGitHubApiResponseMessage(path: string): string {
+  return `GitHub API returned an invalid response: ${path}`;
 }

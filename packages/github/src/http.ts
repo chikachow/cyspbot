@@ -1,8 +1,10 @@
 import { readBodyUpTo } from "@cyspbot/http/body";
+import * as z from "zod";
 
 export const githubAcceptHeader = "application/vnd.github+json";
 export const githubApiVersion = "2022-11-28";
 const maxGitHubErrorBodyBytes = 16 * 1024;
+const githubErrorResponseSchema = z.object({ message: z.string() });
 
 export interface GitHubApiEnv {
   GITHUB_API_BASE_URL?: string;
@@ -19,11 +21,18 @@ export const defaultGitHubApiDependencies: GitHubApiDependencies = {
 export class GitHubApiError extends Error {
   public readonly rateLimited: boolean;
   public readonly status: number;
+  public readonly upstreamStatus: number;
 
-  public constructor(status: number, message: string, rateLimited = false) {
+  public constructor(
+    status: number,
+    message: string,
+    rateLimited = false,
+    upstreamStatus = status,
+  ) {
     super(message);
     this.rateLimited = rateLimited;
     this.status = status;
+    this.upstreamStatus = upstreamStatus;
   }
 }
 
@@ -34,13 +43,21 @@ export class GitHubApiTransportError extends Error {
   }
 }
 
-export async function fetchGitHubApiJson(
+export async function fetchGitHubApiJson<Schema extends z.ZodType>(
   env: GitHubApiEnv,
-  path: string,
-  headers: HeadersInit,
   dependencies: GitHubApiDependencies,
-  init?: RequestInit,
-): Promise<unknown> {
+  {
+    headers,
+    init,
+    path,
+    responseSchema,
+  }: {
+    headers: HeadersInit;
+    init?: RequestInit;
+    path: string;
+    responseSchema: Schema;
+  },
+): Promise<z.output<Schema>> {
   const requestHeaders = new Headers(headers);
 
   for (const [name, value] of new Headers(init?.headers)) {
@@ -77,7 +94,21 @@ export async function fetchGitHubApiJson(
     throw new GitHubApiTransportError(`GitHub API request failed: ${path}`);
   }
 
-  return JSON.parse(responseText) as unknown;
+  let responseBody: unknown;
+
+  try {
+    responseBody = JSON.parse(responseText);
+  } catch {
+    throw invalidGitHubApiResponse(path, response.status);
+  }
+
+  const parsed = responseSchema.safeParse(responseBody);
+
+  if (!parsed.success) {
+    throw invalidGitHubApiResponse(path, response.status);
+  }
+
+  return parsed.data;
 }
 
 async function githubResponseIsRateLimited(response: Response): Promise<boolean> {
@@ -111,18 +142,22 @@ async function githubResponseIsRateLimited(response: Response): Promise<boolean>
   const body = new TextDecoder().decode(bodyRead.bytes);
 
   try {
-    const parsed = JSON.parse(body) as unknown;
+    const parsed: unknown = JSON.parse(body);
+    const errorResponse = githubErrorResponseSchema.safeParse(parsed);
 
-    return (
-      typeof parsed === "object" &&
-      parsed !== null &&
-      !Array.isArray(parsed) &&
-      typeof (parsed as Record<string, unknown>)["message"] === "string" &&
-      /\brate limit\b/iu.test((parsed as Record<string, string>)["message"] ?? "")
-    );
+    return errorResponse.success && /\brate limit\b/iu.test(errorResponse.data.message);
   } catch {
     return false;
   }
+}
+
+function invalidGitHubApiResponse(path: string, upstreamStatus: number): GitHubApiError {
+  return new GitHubApiError(
+    502,
+    `GitHub API returned an invalid response: ${path}`,
+    false,
+    upstreamStatus,
+  );
 }
 
 function ensureTrailingSlash(url: string): string {

@@ -204,7 +204,18 @@ describe("Installation Access Token Issuance", () => {
       responseBody: "private GitHub validation detail",
       scenario: "validation rejection",
     },
-    { githubStatus: 403, issuanceReason: "upstream_failure", scenario: "forbidden" },
+    {
+      githubStatus: 403,
+      issuanceReason: "upstream_failure",
+      responseBody: "not JSON",
+      scenario: "forbidden with a malformed error body",
+    },
+    {
+      githubStatus: 403,
+      issuanceReason: "upstream_failure",
+      responseBody: JSON.stringify({ message: 12345 }),
+      scenario: "forbidden with an invalid error body",
+    },
     {
       githubStatus: 403,
       headers: { "x-ratelimit-remaining": "0" },
@@ -420,7 +431,7 @@ describe("Installation Access Token Issuance", () => {
     expectLogsNotToContainGitHubAppCredentials(consoleError.mock.calls);
   });
 
-  it("keeps malformed successful GitHub JSON classified as an internal failure", async () => {
+  it("maps malformed successful GitHub JSON to an upstream failure", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const malformedResponseBody = '{"private":"response content"';
 
@@ -428,14 +439,15 @@ describe("Installation Access Token Issuance", () => {
       issueInstallationAccessToken({
         fetch: async () => new Response(malformedResponseBody),
       }),
-    ).resolves.toEqual({ ok: false, reason: "internal_failure" });
+    ).resolves.toEqual({ ok: false, reason: "upstream_failure" });
 
     expect(consoleError).toHaveBeenCalledWith(
       expect.objectContaining({
         error: {
-          message: "unexpected Installation Access Token Issuance error",
-          name: "SyntaxError",
-          status: undefined,
+          message:
+            "GitHub API returned an invalid response: /repos/fixture-owner/fixture-source-repository/installation",
+          name: "Error",
+          status: 200,
         },
         target_installation: { id: undefined },
         token_issuance_policy: { permitted: true },

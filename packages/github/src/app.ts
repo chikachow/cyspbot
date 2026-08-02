@@ -1,4 +1,5 @@
 import { importPKCS8, SignJWT, type CryptoKey } from "jose";
+import * as z from "zod";
 
 import {
   defaultGitHubApiDependencies,
@@ -43,35 +44,29 @@ export type GitHubAppEnv = GitHubApiEnv & {
   GITHUB_APP_PRIVATE_KEY: SecretTextBinding;
 };
 
-interface GitHubInstallationResponse {
-  id: number;
-  account: {
-    login: string;
-  };
-}
+const githubInstallationResponseSchema = z.object({
+  account: z.object({ login: z.string().min(1) }),
+  id: z.int().positive(),
+});
 
-interface GitHubInstallationAccessTokenResponse {
-  expires_at: string;
-  permissions?: Record<string, unknown>;
-  token: string;
-}
+const githubInstallationAccessTokenResponseSchema = z.object({
+  expires_at: z.iso.datetime({ offset: true }),
+  permissions: z.record(z.string(), z.string()),
+  token: z.string().min(1),
+});
 
 export async function resolveInstallationForRepository(
   env: GitHubAppEnv,
   repository: string,
   dependencies: GitHubApiDependencies = defaultGitHubApiDependencies,
 ): Promise<ResolvedGitHubAppInstallation> {
-  const body = await fetchGitHubApiJson(
-    env,
-    `/repos/${repository}/installation`,
-    await appAuthenticationHeaders(env),
-    dependencies,
-  );
+  const body = await fetchGitHubApiJson(env, dependencies, {
+    headers: await appAuthenticationHeaders(env),
+    path: `/repos/${repository}/installation`,
+    responseSchema: githubInstallationResponseSchema,
+  });
 
-  if (
-    !isGitHubInstallationResponse(body) ||
-    !githubRepositoryOwnerMatches(repository, body.account.login)
-  ) {
+  if (!githubRepositoryOwnerMatches(repository, body.account.login)) {
     throw new GitHubApiError(502, "invalid installation response");
   }
 
@@ -90,23 +85,6 @@ function githubRepositoryOwnerMatches(repository: string, installationOwner: str
   return repositoryOwner.toLowerCase() === installationOwner.toLowerCase();
 }
 
-function isGitHubInstallationResponse(value: unknown): value is GitHubInstallationResponse {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
-
-  const response = value as Record<string, unknown>;
-  const account = response["account"];
-
-  return (
-    typeof response["id"] === "number" &&
-    typeof account === "object" &&
-    account !== null &&
-    !Array.isArray(account) &&
-    typeof (account as Record<string, unknown>)["login"] === "string"
-  );
-}
-
 export async function createInstallationAccessTokenForRepositoryName(
   env: GitHubAppEnv,
   installationId: number,
@@ -119,12 +97,9 @@ export async function createInstallationAccessTokenForRepositoryName(
     repositories: [repositoryName],
   };
 
-  const responseBody = (await fetchGitHubApiJson(
-    env,
-    `/app/installations/${installationId}/access_tokens`,
-    await appAuthenticationHeaders(env),
-    dependencies,
-    {
+  const responseBody = await fetchGitHubApiJson(env, dependencies, {
+    headers: await appAuthenticationHeaders(env),
+    init: {
       body: JSON.stringify(requestBody),
       headers: {
         "content-type": "application/json",
@@ -132,15 +107,9 @@ export async function createInstallationAccessTokenForRepositoryName(
       },
       method: "POST",
     },
-  )) as GitHubInstallationAccessTokenResponse;
-
-  if (
-    typeof responseBody.token !== "string" ||
-    typeof responseBody.expires_at !== "string" ||
-    !isStringRecord(responseBody.permissions)
-  ) {
-    throw new GitHubApiError(502, "invalid installation access token response");
-  }
+    path: `/app/installations/${installationId}/access_tokens`,
+    responseSchema: githubInstallationAccessTokenResponseSchema,
+  });
 
   return {
     expiresAt: responseBody.expires_at,
@@ -196,14 +165,6 @@ async function githubAppPrivateKeyPem(env: GitHubAppEnv): Promise<string> {
   }
 
   throw new GitHubAppConfigurationError();
-}
-
-function isStringRecord(value: unknown): value is Record<string, string> {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    return false;
-  }
-
-  return Object.values(value).every((entry) => typeof entry === "string");
 }
 
 async function privateKeyFingerprint(privateKeyPem: string): Promise<string> {
