@@ -4,7 +4,28 @@ updates:
     directory: /
     schedule:
       interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Australia/Sydney
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Australia/Sydney
+    open-pull-requests-limit: 10
+    groups:
+      cloudflare-workers-sdk:
+        patterns:
+          - "@cloudflare/vitest-pool-workers"
+          - "@cloudflare/workers-types"
+          - wrangler
+      vitest:
+        patterns:
+          - vitest
+          - "@vitest/*"
+      oxlint:
+        patterns:
+          - oxlint
+          - oxlint-tsgolint
