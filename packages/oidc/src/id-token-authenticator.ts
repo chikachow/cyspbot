@@ -818,7 +818,9 @@ function cacheEntry<Value>(
   const cacheable = !hasCacheControlDirective(cacheControl, "no-store");
   const freshnessSeconds = boundedFreshnessSeconds(cacheControl);
   const freshUntil = now + freshnessSeconds * 1000;
-  const staleAllowed = !hasCacheControlDirective(cacheControl, "must-revalidate");
+  const staleAllowed =
+    !hasCacheControlDirective(cacheControl, "must-revalidate") &&
+    !hasCacheControlDirective(cacheControl, "no-cache");
 
   return {
     cacheable,
