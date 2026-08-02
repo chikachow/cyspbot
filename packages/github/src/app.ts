@@ -45,6 +45,9 @@ export type GitHubAppEnv = GitHubApiEnv & {
 
 interface GitHubInstallationResponse {
   id: number;
+  account: {
+    login: string;
+  };
 }
 
 interface GitHubInstallationAccessTokenResponse {
@@ -58,18 +61,50 @@ export async function resolveInstallationForRepository(
   repository: string,
   dependencies: GitHubApiDependencies = defaultGitHubApiDependencies,
 ): Promise<ResolvedGitHubAppInstallation> {
-  const body = (await fetchGitHubApiJson(
+  const body = await fetchGitHubApiJson(
     env,
     `/repos/${repository}/installation`,
     await appAuthenticationHeaders(env),
     dependencies,
-  )) as GitHubInstallationResponse;
+  );
 
-  if (typeof body.id !== "number") {
+  if (
+    !isGitHubInstallationResponse(body) ||
+    !githubRepositoryOwnerMatches(repository, body.account.login)
+  ) {
     throw new GitHubApiError(502, "invalid installation response");
   }
 
   return { id: body.id };
+}
+
+function githubRepositoryOwnerMatches(repository: string, installationOwner: string): boolean {
+  const separator = repository.indexOf("/");
+
+  if (separator <= 0) {
+    return false;
+  }
+
+  const repositoryOwner = repository.slice(0, separator);
+
+  return repositoryOwner.toLowerCase() === installationOwner.toLowerCase();
+}
+
+function isGitHubInstallationResponse(value: unknown): value is GitHubInstallationResponse {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+
+  const response = value as Record<string, unknown>;
+  const account = response["account"];
+
+  return (
+    typeof response["id"] === "number" &&
+    typeof account === "object" &&
+    account !== null &&
+    !Array.isArray(account) &&
+    typeof (account as Record<string, unknown>)["login"] === "string"
+  );
 }
 
 export async function createInstallationAccessTokenForRepositoryName(

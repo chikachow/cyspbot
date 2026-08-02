@@ -27,14 +27,17 @@ export async function fetchGitHubTestDouble(
   }
 
   if (request.method === "GET" && apiPath === `/repos/${testRepository}/installation`) {
-    return Response.json({ id: testInstallationId });
+    return Response.json({ account: { login: "fixture-owner" }, id: testInstallationId });
   }
 
   if (
     request.method === "GET" &&
     apiPath === `/repos/${testWorkflowDispatchRepository}/installation`
   ) {
-    return Response.json({ id: testWorkflowDispatchInstallationId });
+    return Response.json({
+      account: { login: "fixture-target-owner" },
+      id: testWorkflowDispatchInstallationId,
+    });
   }
 
   if (request.method === "GET" && apiPath === `/repos/${testRepository}`) {

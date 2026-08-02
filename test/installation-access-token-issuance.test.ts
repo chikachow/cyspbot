@@ -73,6 +73,37 @@ describe("Installation Access Token Issuance", () => {
     expect(requestedPaths).not.toContain(`/repos/${testRepository}`);
   });
 
+  it("does not mint when installation resolution returns a different owner", async () => {
+    const requestedRequests: Array<{ method: string; path: string }> = [];
+
+    await expect(
+      issueInstallationAccessToken({
+        fetch: async (input, init) => {
+          const request = new Request(input, init);
+          const url = new URL(request.url);
+
+          requestedRequests.push({ method: request.method, path: url.pathname });
+
+          if (
+            request.method === "GET" &&
+            url.pathname === `/repos/${testRepository}/installation`
+          ) {
+            return Response.json({
+              account: { login: "transferred-owner" },
+              id: testInstallationId,
+            });
+          }
+
+          return new Response(null, { status: 500 });
+        },
+      }),
+    ).resolves.toEqual({ ok: false, reason: "upstream_failure" });
+
+    expect(requestedRequests).toEqual([
+      { method: "GET", path: `/repos/${testRepository}/installation` },
+    ]);
+  });
+
   it("forwards arbitrary Requested Permissions and admin exactly to GitHub", async () => {
     const requestedPermissions = { future_permission: "admin", issues: "read" } as const;
     let forwardedBody: unknown;
