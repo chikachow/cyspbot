@@ -1,4 +1,4 @@
-import { importPKCS8, SignJWT } from "jose";
+import { importPKCS8, SignJWT, type CryptoKey } from "jose";
 
 import {
   defaultGitHubApiDependencies,
