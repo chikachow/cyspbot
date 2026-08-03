@@ -294,16 +294,14 @@ describe("OIDC ID Token Authenticator", () => {
     );
   });
 
-  it("requires the token algorithm in both local registration and provider metadata", async () => {
+  it("rejects a subject token when provider metadata omits required RS256", async () => {
     const fetchOidcRemoteDocumentResponse = providerFetch({
       advertisedIdTokenSigningAlgorithms: ["ES256"],
     });
 
     await expect(
       testAuthenticator(fetchOidcRemoteDocumentResponse).authenticateIdToken(await signedIdToken()),
-    ).resolves.toEqual(
-      expectedFailure("provider_unavailable", "ERR_OIDC_METADATA_NO_COMPATIBLE_SIGNING_ALGORITHM"),
-    );
+    ).resolves.toEqual(expectedFailure("subject_token_rejected", "ERR_OIDC_METADATA_INVALID"));
 
     await expect(
       testAuthenticator(successfulProviderFetch).authenticateIdToken(
@@ -572,7 +570,8 @@ describe("OIDC ID Token Authenticator", () => {
         return Response.json(
           {
             id_token_signing_alg_values_supported: [
-              providerConfigurationRequests === 1 ? "RS256" : "RS512",
+              ...(providerConfigurationRequests === 1 ? [] : ["RS512"]),
+              "RS256",
             ],
             issuer,
             jwks_uri: jwksUri,
@@ -628,7 +627,8 @@ describe("OIDC ID Token Authenticator", () => {
         return Response.json(
           {
             id_token_signing_alg_values_supported: [
-              providerConfigurationRequests === 1 ? "RS256" : "RS512",
+              ...(providerConfigurationRequests === 1 ? [] : ["RS512"]),
+              "RS256",
             ],
             issuer,
             jwks_uri: jwksUri,
@@ -693,7 +693,8 @@ describe("OIDC ID Token Authenticator", () => {
         return Response.json(
           {
             id_token_signing_alg_values_supported: [
-              providerConfigurationRequests < 3 ? "RS256" : "RS512",
+              ...(providerConfigurationRequests < 3 ? [] : ["RS512"]),
+              "RS256",
             ],
             issuer,
             jwks_uri: jwksUri,
@@ -857,6 +858,7 @@ describe("OIDC ID Token Authenticator", () => {
       byteLimit: 64 * 1024,
       expectedPulls: 65,
       documentName: "Provider Configuration",
+      failureKind: "subject_token_rejected",
       testAuthenticator: (response: Response) =>
         testAuthenticator(providerFetch({ providerConfigurationResponse: () => response })),
     },
@@ -864,12 +866,13 @@ describe("OIDC ID Token Authenticator", () => {
       byteLimit: 256 * 1024,
       expectedPulls: 257,
       documentName: "JWK Set",
+      failureKind: "provider_unavailable",
       testAuthenticator: (response: Response) =>
         testAuthenticator(providerFetch({ jwksResponse: () => response })),
     },
   ])(
     "stops reading an oversized chunked $documentName response at its byte limit",
-    async ({ byteLimit, expectedPulls, testAuthenticator }) => {
+    async ({ byteLimit, expectedPulls, failureKind, testAuthenticator }) => {
       const streamedResponse = streamedJsonResponse({
         chunkCount: expectedPulls + 64,
         chunkSize: 1024,
@@ -881,9 +884,12 @@ describe("OIDC ID Token Authenticator", () => {
       ).resolves.toMatchObject({
         failure: {
           diagnostics: {
-            diagnosticCode: expect.stringMatching(/_RESPONSE_LIMIT_EXCEEDED$/u),
+            diagnosticCode:
+              failureKind === "subject_token_rejected"
+                ? "ERR_OIDC_METADATA_INVALID"
+                : expect.stringMatching(/_RESPONSE_LIMIT_EXCEEDED$/u),
           },
-          kind: "provider_unavailable",
+          kind: failureKind,
         },
         ok: false,
       });
@@ -961,18 +967,21 @@ describe("OIDC ID Token Authenticator", () => {
       () => Promise.reject(Object.assign(new Error("timed out"), { name: "TimeoutError" })),
       "ERR_OIDC_PROVIDER_CONFIGURATION_TIMEOUT",
       undefined,
+      "provider_unavailable",
     ],
     [
       "a network failure",
       () => Promise.reject(new Error("network unavailable")),
       "ERR_OIDC_PROVIDER_CONFIGURATION_FETCH_FAILED",
       undefined,
+      "provider_unavailable",
     ],
     [
       "a non-success status",
       () => Promise.resolve(new Response(null, { status: 429 })),
       "ERR_OIDC_PROVIDER_CONFIGURATION_HTTP_STATUS",
       429,
+      "provider_unavailable",
     ],
     [
       "an unexpected media type",
@@ -982,8 +991,9 @@ describe("OIDC ID Token Authenticator", () => {
             headers: { "content-type": "text/plain" },
           }),
         ),
-      "ERR_OIDC_PROVIDER_CONFIGURATION_CONTENT_TYPE_INVALID",
+      "ERR_OIDC_METADATA_INVALID",
       undefined,
+      "subject_token_rejected",
     ],
     [
       "an excessive declared length",
@@ -996,8 +1006,9 @@ describe("OIDC ID Token Authenticator", () => {
             },
           }),
         ),
-      "ERR_OIDC_PROVIDER_CONFIGURATION_RESPONSE_LIMIT_EXCEEDED",
+      "ERR_OIDC_METADATA_INVALID",
       undefined,
+      "subject_token_rejected",
     ],
     [
       "an excessive body",
@@ -1007,8 +1018,9 @@ describe("OIDC ID Token Authenticator", () => {
             headers: { "content-type": "application/json" },
           }),
         ),
-      "ERR_OIDC_PROVIDER_CONFIGURATION_RESPONSE_LIMIT_EXCEEDED",
+      "ERR_OIDC_METADATA_INVALID",
       undefined,
+      "subject_token_rejected",
     ],
     [
       "malformed JSON",
@@ -1018,19 +1030,24 @@ describe("OIDC ID Token Authenticator", () => {
             headers: { "content-type": "application/json" },
           }),
         ),
-      "ERR_OIDC_PROVIDER_CONFIGURATION_JSON_PARSE_FAILED",
+      "ERR_OIDC_METADATA_INVALID",
       undefined,
+      "subject_token_rejected",
     ],
   ] as const)(
-    "classifies a Provider Configuration response with %s as unavailable",
-    async (_description, fetchOidcRemoteDocumentResponse, diagnosticCode, providerHttpStatus) => {
+    "classifies a Provider Configuration response with %s",
+    async (
+      _description,
+      fetchOidcRemoteDocumentResponse,
+      diagnosticCode,
+      providerHttpStatus,
+      failureKind,
+    ) => {
       await expect(
         testAuthenticator(fetchOidcRemoteDocumentResponse).authenticateIdToken(
           await signedIdToken(),
         ),
-      ).resolves.toEqual(
-        expectedFailure("provider_unavailable", diagnosticCode, providerHttpStatus),
-      );
+      ).resolves.toEqual(expectedFailure(failureKind, diagnosticCode, providerHttpStatus));
     },
   );
 
@@ -1246,6 +1263,76 @@ describe("OIDC ID Token Authenticator", () => {
     await expect(authenticator.authenticateIdToken(subjectToken)).resolves.toEqual(
       expectedFailure("provider_unavailable", "ERR_OIDC_PROVIDER_CONFIGURATION_HTTP_STATUS", 503),
     );
+  });
+
+  it("rejects invalid refreshed Provider Metadata without using a stale cache entry", async () => {
+    let providerConfigurationRequests = 0;
+    const fetchOidcRemoteDocumentResponse = vi.fn(
+      (input: RequestInfo | URL, init?: RequestInit) => {
+        const request = new Request(input, init);
+
+        if (request.url === `${issuer}/.well-known/openid-configuration`) {
+          providerConfigurationRequests += 1;
+
+          if (providerConfigurationRequests > 1) {
+            return Promise.resolve(
+              Response.json({
+                id_token_signing_alg_values_supported: ["ES256"],
+                issuer,
+                jwks_uri: jwksUri,
+              }),
+            );
+          }
+        }
+
+        return providerFetch({ cacheControl: "max-age=0" })(request);
+      },
+    );
+    const authenticator = testAuthenticator(fetchOidcRemoteDocumentResponse);
+    const subjectToken = await signedIdToken();
+
+    expect((await authenticator.authenticateIdToken(subjectToken)).ok).toBe(true);
+    await expect(authenticator.authenticateIdToken(subjectToken)).resolves.toEqual(
+      expectedFailure("subject_token_rejected", "ERR_OIDC_METADATA_INVALID"),
+    );
+    const callsAfterInvalidMetadata = fetchOidcRemoteDocumentResponse.mock.calls.length;
+    await expect(authenticator.authenticateIdToken(subjectToken)).resolves.toEqual(
+      expectedFailure("subject_token_rejected", "ERR_OIDC_METADATA_INVALID"),
+    );
+    expect(fetchOidcRemoteDocumentResponse).toHaveBeenCalledTimes(callsAfterInvalidMetadata);
+  });
+
+  it("rejects malformed refreshed Provider Configuration without using a stale cache entry", async () => {
+    let providerConfigurationRequests = 0;
+    const fetchOidcRemoteDocumentResponse = vi.fn(
+      (input: RequestInfo | URL, init?: RequestInit) => {
+        const request = new Request(input, init);
+
+        if (request.url === `${issuer}/.well-known/openid-configuration`) {
+          providerConfigurationRequests += 1;
+
+          if (providerConfigurationRequests > 1) {
+            return Promise.resolve(
+              new Response("{", { headers: { "content-type": "application/json" } }),
+            );
+          }
+        }
+
+        return providerFetch({ cacheControl: "max-age=0" })(request);
+      },
+    );
+    const authenticator = testAuthenticator(fetchOidcRemoteDocumentResponse);
+    const subjectToken = await signedIdToken();
+
+    expect((await authenticator.authenticateIdToken(subjectToken)).ok).toBe(true);
+    await expect(authenticator.authenticateIdToken(subjectToken)).resolves.toEqual(
+      expectedFailure("subject_token_rejected", "ERR_OIDC_METADATA_INVALID"),
+    );
+    const callsAfterMalformedMetadata = fetchOidcRemoteDocumentResponse.mock.calls.length;
+    await expect(authenticator.authenticateIdToken(subjectToken)).resolves.toEqual(
+      expectedFailure("subject_token_rejected", "ERR_OIDC_METADATA_INVALID"),
+    );
+    expect(fetchOidcRemoteDocumentResponse).toHaveBeenCalledTimes(callsAfterMalformedMetadata);
   });
 
   it("runs the OIDC ID Token Profile only after central verification", async () => {

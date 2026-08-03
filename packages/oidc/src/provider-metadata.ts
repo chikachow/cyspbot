@@ -1,3 +1,5 @@
+import * as z from "zod";
+
 import type {
   OidcIdTokenSigningAlgorithm,
   OidcIssuerIdentifier,
@@ -25,41 +27,29 @@ export function parseOidcProviderMetadata(
   input: unknown,
   providerRegistration: OidcProviderRegistration,
 ): ValidatedOidcProviderMetadata {
-  if (!isObject(input)) {
-    throw new OidcProviderMetadataValidationError("ERR_OIDC_METADATA_INVALID");
+  const providerMetadata = consumedOidcProviderMetadataSchema.safeParse(input);
+
+  if (!providerMetadata.success) {
+    throw new OidcProviderMetadataValidationError();
   }
 
-  if (input["issuer"] !== providerRegistration.issuer) {
-    throw new OidcProviderMetadataValidationError("ERR_OIDC_METADATA_ISSUER_MISMATCH");
+  if (providerMetadata.data.issuer !== providerRegistration.issuer) {
+    throw new OidcProviderMetadataValidationError();
   }
 
-  const jwksUri = parseHttpsUrl(input["jwks_uri"]);
+  const jwksUri = parseHttpsUrl(providerMetadata.data.jwks_uri);
 
   if (jwksUri === null) {
-    throw new OidcProviderMetadataValidationError("ERR_OIDC_METADATA_JWKS_URI_INVALID");
-  }
-
-  const advertisedAlgorithms = input["id_token_signing_alg_values_supported"];
-
-  if (
-    !Array.isArray(advertisedAlgorithms) ||
-    advertisedAlgorithms.length === 0 ||
-    !advertisedAlgorithms.every(
-      (algorithm) => typeof algorithm === "string" && algorithm.length > 0,
-    )
-  ) {
-    throw new OidcProviderMetadataValidationError("ERR_OIDC_METADATA_SIGNING_ALGORITHMS_INVALID");
+    throw new OidcProviderMetadataValidationError();
   }
 
   const acceptedIdTokenSigningAlgorithms =
     providerRegistration.acceptedIdTokenSigningAlgorithms.filter((algorithm) =>
-      advertisedAlgorithms.includes(algorithm),
+      providerMetadata.data.id_token_signing_alg_values_supported.includes(algorithm),
     );
 
   if (acceptedIdTokenSigningAlgorithms.length === 0) {
-    throw new OidcProviderMetadataValidationError(
-      "ERR_OIDC_METADATA_NO_COMPATIBLE_SIGNING_ALGORITHM",
-    );
+    throw new OidcProviderMetadataValidationError();
   }
 
   return Object.freeze({
@@ -70,20 +60,15 @@ export function parseOidcProviderMetadata(
 }
 
 export class OidcProviderMetadataValidationError extends Error {
-  public readonly code: string;
+  public readonly code = "ERR_OIDC_METADATA_INVALID";
 
-  public constructor(code: string) {
+  public constructor() {
     super("invalid OpenID Provider Configuration");
-    this.code = code;
     this.name = "OidcProviderMetadataValidationError";
   }
 }
 
-function parseHttpsUrl(input: unknown): URL | null {
-  if (typeof input !== "string" || input.length === 0) {
-    return null;
-  }
-
+function parseHttpsUrl(input: string): URL | null {
   let url: URL;
 
   try {
@@ -101,6 +86,17 @@ function parseHttpsUrl(input: unknown): URL | null {
     : null;
 }
 
-function isObject(input: unknown): input is Record<string, unknown> {
-  return typeof input === "object" && input !== null && !Array.isArray(input);
-}
+/**
+ * The authenticator consumes only these Discovery metadata members. This is
+ * deliberately not complete OpenID Provider Configuration validation: endpoint
+ * and capability members unused by ID Token verification, including provider
+ * extensions, are accepted without validation.
+ */
+const consumedOidcProviderMetadataSchema = z.object({
+  id_token_signing_alg_values_supported: z
+    .array(z.string().min(1))
+    .min(1)
+    .refine((algorithms) => algorithms.includes("RS256")),
+  issuer: z.string().min(1),
+  jwks_uri: z.string().min(1),
+});

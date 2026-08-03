@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   deriveOidcProviderConfigurationUrl,
-  type OidcProviderMetadataValidationError,
+  OidcProviderMetadataValidationError,
   parseOidcProviderMetadata,
 } from "@cyspbot/oidc/provider-metadata";
 import {
@@ -39,9 +39,10 @@ describe("OIDC discovery URL derivation", () => {
 });
 
 describe("OpenID Provider Configuration validation", () => {
-  it("requires exact issuer equality and a compatible advertised algorithm", () => {
+  it("accepts extension members while retaining the consumed metadata", () => {
     const providerMetadata = parseOidcProviderMetadata(
       {
+        custom_provider_extension: { enabled: true },
         id_token_signing_alg_values_supported: ["RS256", "ES256"],
         issuer,
         jwks_uri: jwksUri,
@@ -56,27 +57,6 @@ describe("OpenID Provider Configuration validation", () => {
     });
     expect(Object.isFrozen(providerMetadata)).toBe(true);
     expect(Object.isFrozen(providerMetadata.acceptedIdTokenSigningAlgorithms)).toBe(true);
-
-    expect(() =>
-      parseOidcProviderMetadata(
-        {
-          id_token_signing_alg_values_supported: ["RS256"],
-          issuer: `${issuer}/`,
-          jwks_uri: jwksUri,
-        },
-        registration,
-      ),
-    ).toThrow();
-    expect(() =>
-      parseOidcProviderMetadata(
-        {
-          id_token_signing_alg_values_supported: ["ES256"],
-          issuer,
-          jwks_uri: jwksUri,
-        },
-        registration,
-      ),
-    ).toThrow();
   });
 
   it("retains the registration order in the accepted signing-algorithm intersection", () => {
@@ -98,40 +78,74 @@ describe("OpenID Provider Configuration validation", () => {
     ).toEqual(["ES256", "RS256"]);
   });
 
+  it("allows a registration to select ES256 from conformant provider metadata", () => {
+    const es256Registration = createOidcProviderRegistration({
+      acceptedIdTokenSigningAlgorithms: ["ES256"],
+      idTokenProfile: { validate: () => true },
+      issuer,
+    });
+
+    expect(
+      parseOidcProviderMetadata(
+        {
+          id_token_signing_alg_values_supported: ["RS256", "ES256"],
+          issuer,
+          jwks_uri: jwksUri,
+        },
+        es256Registration,
+      ).acceptedIdTokenSigningAlgorithms,
+    ).toEqual(["ES256"]);
+  });
+
   it.each([
-    [null, "ERR_OIDC_METADATA_INVALID"],
-    [[], "ERR_OIDC_METADATA_INVALID"],
+    [null],
+    [[]],
+    ["not an object"],
+    [
+      {
+        id_token_signing_alg_values_supported: ["RS256"],
+        jwks_uri: jwksUri,
+      },
+    ],
+    [
+      {
+        id_token_signing_alg_values_supported: ["RS256"],
+        issuer: 42,
+        jwks_uri: jwksUri,
+      },
+    ],
+    [
+      {
+        id_token_signing_alg_values_supported: ["RS256"],
+        issuer,
+      },
+    ],
+    [
+      {
+        id_token_signing_alg_values_supported: ["RS256"],
+        issuer,
+        jwks_uri: 42,
+      },
+    ],
     [
       {
         id_token_signing_alg_values_supported: ["RS256"],
         issuer,
         jwks_uri: "",
       },
-      "ERR_OIDC_METADATA_JWKS_URI_INVALID",
     ],
     [
       {
-        id_token_signing_alg_values_supported: ["RS256"],
         issuer,
-        jwks_uri: "not a URL",
+        jwks_uri: jwksUri,
       },
-      "ERR_OIDC_METADATA_JWKS_URI_INVALID",
     ],
     [
       {
-        id_token_signing_alg_values_supported: ["RS256"],
+        id_token_signing_alg_values_supported: "RS256",
         issuer,
-        jwks_uri: "http://keys.example/tenant/jwks",
+        jwks_uri: jwksUri,
       },
-      "ERR_OIDC_METADATA_JWKS_URI_INVALID",
-    ],
-    [
-      {
-        id_token_signing_alg_values_supported: ["RS256"],
-        issuer,
-        jwks_uri: "https://user@keys.example/tenant/jwks",
-      },
-      "ERR_OIDC_METADATA_JWKS_URI_INVALID",
     ],
     [
       {
@@ -139,7 +153,13 @@ describe("OpenID Provider Configuration validation", () => {
         issuer,
         jwks_uri: jwksUri,
       },
-      "ERR_OIDC_METADATA_SIGNING_ALGORITHMS_INVALID",
+    ],
+    [
+      {
+        id_token_signing_alg_values_supported: ["RS256", 42],
+        issuer,
+        jwks_uri: jwksUri,
+      },
     ],
     [
       {
@@ -147,21 +167,66 @@ describe("OpenID Provider Configuration validation", () => {
         issuer,
         jwks_uri: jwksUri,
       },
-      "ERR_OIDC_METADATA_SIGNING_ALGORITHMS_INVALID",
     ],
-  ] as const)("rejects malformed OpenID Provider Configuration with %s", (input, expectedCode) => {
-    expectMetadataError(input, expectedCode);
+    [
+      {
+        id_token_signing_alg_values_supported: ["ES256"],
+        issuer,
+        jwks_uri: jwksUri,
+      },
+    ],
+  ] as const)("rejects structurally invalid OpenID Provider Configuration", (input) => {
+    expectMetadataError(input);
+  });
+
+  it.each([
+    "not a URL",
+    "http://keys.example/tenant/jwks",
+    "https://user@keys.example/tenant/jwks",
+    `${jwksUri}#fragment`,
+  ])("rejects an invalid HTTPS JWK Set URI", (invalidJwksUri) => {
+    expectMetadataError({
+      id_token_signing_alg_values_supported: ["RS256"],
+      issuer,
+      jwks_uri: invalidJwksUri,
+    });
+  });
+
+  it("requires an exact registered issuer", () => {
+    expectMetadataError({
+      id_token_signing_alg_values_supported: ["RS256"],
+      issuer: `${issuer}/`,
+      jwks_uri: jwksUri,
+    });
+  });
+
+  it("requires an algorithm shared with the registration", () => {
+    const incompatibleRegistration = createOidcProviderRegistration({
+      acceptedIdTokenSigningAlgorithms: ["ES256"],
+      idTokenProfile: { validate: () => true },
+      issuer,
+    });
+
+    expectMetadataError(
+      {
+        id_token_signing_alg_values_supported: ["RS256"],
+        issuer,
+        jwks_uri: jwksUri,
+      },
+      incompatibleRegistration,
+    );
   });
 });
 
-function expectMetadataError(input: unknown, expectedCode: string): void {
+function expectMetadataError(input: unknown, providerRegistration = registration): void {
   try {
-    parseOidcProviderMetadata(input, registration);
+    parseOidcProviderMetadata(input, providerRegistration);
   } catch (error) {
-    expect(error as OidcProviderMetadataValidationError).toMatchObject({ code: expectedCode });
+    expect(error).toBeInstanceOf(OidcProviderMetadataValidationError);
+    expect(error).toMatchObject({ code: "ERR_OIDC_METADATA_INVALID" });
 
     return;
   }
 
-  throw new Error(`expected OpenID Provider Configuration validation to fail with ${expectedCode}`);
+  throw new Error("expected OpenID Provider Configuration validation to fail");
 }

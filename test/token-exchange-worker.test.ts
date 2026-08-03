@@ -646,8 +646,8 @@ describe("cyspbot-token-exchange", () => {
     });
   });
 
-  it("maps invalid oidc subject tokens to invalid token exchange requests", async () => {
-    const response = await fetchTokenExchangeWithRuntime(
+  it("maps metadata-rejected OIDC subject tokens to invalid token exchange requests", async () => {
+    const response = await fetchTokenExchangeWithDependencies(
       "https://example.test/token",
       {
         body: await tokenExchangeRequestBody(),
@@ -657,10 +657,22 @@ describe("cyspbot-token-exchange", () => {
         method: "POST",
       },
       {
-        authenticateIdToken: async () => ({
-          ok: false,
-          reason: "invalid_token",
-        }),
+        fetch: async (input, init) => {
+          const request = new Request(input, init);
+
+          if (
+            request.url ===
+            "https://token.actions.githubusercontent.com/.well-known/openid-configuration"
+          ) {
+            return Response.json({
+              id_token_signing_alg_values_supported: ["ES256"],
+              issuer: "https://token.actions.githubusercontent.com",
+              jwks_uri: "https://token.actions.githubusercontent.com/.well-known/jwks",
+            });
+          }
+
+          return fetchOidcRemoteDocumentResponseTestDouble(request);
+        },
       },
     );
 
