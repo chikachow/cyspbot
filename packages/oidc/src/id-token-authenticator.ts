@@ -10,6 +10,7 @@ import {
   type JSONWebKeySet,
   type JWTVerifyGetKey,
 } from "jose";
+import * as z from "zod";
 
 import {
   deriveOidcProviderConfigurationUrl,
@@ -35,6 +36,13 @@ const staleIfProviderUnavailableSeconds = 3600;
 const providerRequestTimeoutMilliseconds = 5000;
 const jwksRefreshCooldownMilliseconds = 10_000;
 const providerFailureBackoffMilliseconds = 10_000;
+const verifiedOidcIdTokenClaimsSchema = z.looseObject({
+  aud: z.string(),
+  exp: z.number(),
+  iat: z.number(),
+  iss: z.string().min(1),
+  sub: z.string().min(1),
+});
 const verificationJwkShapeByAlgorithm = {
   EdDSA: { crv: "Ed25519", kty: "OKP" },
   ES256: { crv: "P-256", kty: "EC" },
@@ -708,12 +716,14 @@ async function verifyIdToken(input: {
     requiredClaims: ["aud", "sub", "exp", "iat"],
   });
 
-  if (!isVerifiedOidcIdTokenClaims(payload, input.subjectTokenAudience)) {
+  const claims = parseVerifiedOidcIdTokenClaims(payload, input.subjectTokenAudience);
+
+  if (claims === null) {
     throw new OidcSubjectTokenError("ERR_JWT_CLAIM_VALIDATION_FAILED");
   }
 
   return {
-    claims: payload,
+    claims,
     issuer: input.providerRegistration.issuer,
     resolvedKeyId: typeof protectedHeader.kid === "string" ? protectedHeader.kid : null,
   };
@@ -980,20 +990,13 @@ function issuerClaimWithoutVerification(idToken: string): string | null {
   }
 }
 
-function isVerifiedOidcIdTokenClaims(
+function parseVerifiedOidcIdTokenClaims(
   input: Record<string, unknown>,
   subjectTokenAudience: string,
-): input is VerifiedOidcIdTokenClaims {
-  return (
-    input["iss"] !== undefined &&
-    typeof input["iss"] === "string" &&
-    input["iss"].length > 0 &&
-    input["aud"] === subjectTokenAudience &&
-    typeof input["sub"] === "string" &&
-    input["sub"].length > 0 &&
-    typeof input["exp"] === "number" &&
-    typeof input["iat"] === "number"
-  );
+): VerifiedOidcIdTokenClaims | null {
+  const parsed = verifiedOidcIdTokenClaimsSchema.safeParse(input);
+
+  return parsed.success && parsed.data.aud === subjectTokenAudience ? parsed.data : null;
 }
 
 function isJsonWebKeySet(input: unknown): input is JSONWebKeySet {
