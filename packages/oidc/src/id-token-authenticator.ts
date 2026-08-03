@@ -334,7 +334,11 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
       providerState.metadataFailure !== undefined &&
       now < providerState.metadataFailure.retryAfter
     ) {
-      if (providerState.metadata !== undefined && now < providerState.metadata.staleUntil) {
+      if (
+        providerState.metadataFailure.error instanceof OidcRemoteDocumentError &&
+        providerState.metadata !== undefined &&
+        now < providerState.metadata.staleUntil
+      ) {
         this.#observeStaleOidcRemoteDocument(
           providerRegistration.issuer,
           "provider_configuration",
@@ -359,7 +363,11 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
     try {
       return await providerState.metadataRefresh;
     } catch (error) {
-      if (providerState.metadata !== undefined && now < providerState.metadata.staleUntil) {
+      if (
+        error instanceof OidcRemoteDocumentError &&
+        providerState.metadata !== undefined &&
+        now < providerState.metadata.staleUntil
+      ) {
         this.#observeStaleOidcRemoteDocument(
           providerRegistration.issuer,
           "provider_configuration",
@@ -432,12 +440,23 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
     providerRegistration: OidcProviderRegistration,
   ): Promise<CacheEntry<ValidatedOidcProviderMetadata>> {
     const configurationUrl = deriveOidcProviderConfigurationUrl(providerRegistration.issuer);
-    const response = await fetchAndParseOidcRemoteDocument(
-      this.#dependencies.fetch,
-      configurationUrl,
-      providerConfigurationResponseByteLimit,
-      "PROVIDER_CONFIGURATION",
-    );
+    let response: { cacheControl: string | null; document: unknown };
+
+    try {
+      response = await fetchAndParseOidcRemoteDocument(
+        this.#dependencies.fetch,
+        configurationUrl,
+        providerConfigurationResponseByteLimit,
+        "PROVIDER_CONFIGURATION",
+      );
+    } catch (error) {
+      if (isInvalidProviderConfigurationRepresentation(error)) {
+        throw new OidcProviderMetadataValidationError();
+      }
+
+      throw error;
+    }
+
     const providerMetadata = parseOidcProviderMetadata(response.document, providerRegistration);
 
     return cacheEntry(providerMetadata, response.cacheControl, this.#dependencies.now().getTime());
@@ -785,6 +804,15 @@ function oidcRemoteDocumentTransportError(
   );
 }
 
+function isInvalidProviderConfigurationRepresentation(error: unknown): boolean {
+  return (
+    error instanceof OidcRemoteDocumentError &&
+    (error.code === "ERR_OIDC_PROVIDER_CONFIGURATION_CONTENT_TYPE_INVALID" ||
+      error.code === "ERR_OIDC_PROVIDER_CONFIGURATION_JSON_PARSE_FAILED" ||
+      error.code === "ERR_OIDC_PROVIDER_CONFIGURATION_RESPONSE_LIMIT_EXCEEDED")
+  );
+}
+
 class OidcRemoteDocumentError extends Error {
   public readonly code: string;
   public readonly providerHttpStatus: number | undefined;
@@ -883,7 +911,7 @@ function classifyAuthenticationError(error: unknown): OidcIdTokenAuthenticationF
   }
 
   if (error instanceof OidcProviderMetadataValidationError) {
-    return providerUnavailable(diagnosticCode);
+    return subjectTokenRejected(diagnosticCode);
   }
 
   return internalFailure(diagnosticCode);
