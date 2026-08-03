@@ -294,6 +294,77 @@ describe("OIDC ID Token Authenticator", () => {
     );
   });
 
+  it("retains arbitrary signed claims in the verified subject token", async () => {
+    const authenticator = testAuthenticator(successfulProviderFetch);
+
+    await expect(
+      authenticator.authenticateIdToken(
+        await signedIdToken({
+          claims: {
+            event_name: "workflow_dispatch",
+            ref: "refs/heads/main",
+            ref_type: "branch",
+            repository: "octo-org/example",
+            workflow_ref: "octo-org/example/.github/workflows/deploy.yml@refs/heads/main",
+          },
+        }),
+      ),
+    ).resolves.toMatchObject({
+      ok: true,
+      verifiedSubjectToken: {
+        claims: {
+          event_name: "workflow_dispatch",
+          ref: "refs/heads/main",
+          ref_type: "branch",
+          repository: "octo-org/example",
+          workflow_ref: "octo-org/example/.github/workflows/deploy.yml@refs/heads/main",
+        },
+      },
+    });
+  });
+
+  it("passes retained signed custom claims to the OIDC ID Token Profile", async () => {
+    const validate = vi.fn((claims) => claims["repository"] === "octo-org/example");
+    const profileRegistration = createOidcProviderRegistration({
+      acceptedIdTokenSigningAlgorithms: ["RS256"],
+      idTokenProfile: { validate },
+      issuer,
+    });
+    const authenticator = createOidcIdTokenAuthenticator(
+      {
+        providerRegistrations: [profileRegistration],
+        subjectTokenAudience: "cyspbot",
+      },
+      { fetch: successfulProviderFetch, now: () => new Date() },
+    );
+
+    await expect(
+      authenticator.authenticateIdToken(
+        await signedIdToken({ claims: { repository: "octo-org/example" } }),
+      ),
+    ).resolves.toMatchObject({ ok: true });
+    expect(validate).toHaveBeenCalledWith(
+      expect.objectContaining({ repository: "octo-org/example" }),
+    );
+  });
+
+  it.each([
+    ["an empty issuer", { iss: "" }, "ERR_JWT_INVALID"],
+    ["an empty subject", { sub: "" }, "ERR_JWT_CLAIM_VALIDATION_FAILED"],
+    ["a non-string subject", { sub: 1 }, "ERR_JWT_CLAIM_VALIDATION_FAILED"],
+    ["a missing issued-at time", { iat: undefined }, "ERR_JWT_CLAIM_VALIDATION_FAILED"],
+    ["a non-numeric expiration time", { exp: "not-a-number" }, "ERR_JWT_CLAIM_VALIDATION_FAILED"],
+  ])(
+    "preserves the rejection classification for %s",
+    async (_description, claims, diagnosticCode) => {
+      await expect(
+        testAuthenticator(successfulProviderFetch).authenticateIdToken(
+          await signedIdToken({ claims }),
+        ),
+      ).resolves.toEqual(expectedFailure("subject_token_rejected", diagnosticCode));
+    },
+  );
+
   it("rejects a subject token when provider metadata omits required RS256", async () => {
     const fetchOidcRemoteDocumentResponse = providerFetch({
       advertisedIdTokenSigningAlgorithms: ["ES256"],
@@ -1574,6 +1645,7 @@ async function signedIdToken(
   options: {
     algorithm?: string;
     audience?: string | string[];
+    claims?: Record<string, unknown>;
     kid?: string;
     tokenIssuer?: string;
   } = {},
@@ -1581,12 +1653,14 @@ async function signedIdToken(
   const now = Math.floor(Date.now() / 1000);
   const privateKey = await importPKCS8(testPrivateKeyPem, options.algorithm ?? "RS256");
 
-  return new SignJWT({})
+  return new SignJWT({
+    aud: options.audience ?? "cyspbot",
+    exp: now + 300,
+    iat: now - 10,
+    iss: options.tokenIssuer ?? issuer,
+    sub: "subject",
+    ...options.claims,
+  })
     .setProtectedHeader({ alg: options.algorithm ?? "RS256", kid: options.kid ?? "test-key-1" })
-    .setIssuer(options.tokenIssuer ?? issuer)
-    .setAudience(options.audience ?? "cyspbot")
-    .setSubject("subject")
-    .setIssuedAt(now - 10)
-    .setExpirationTime(now + 300)
     .sign(privateKey);
 }
