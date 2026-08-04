@@ -1,14 +1,73 @@
-import { describe, expect, it } from "vitest";
+import { decodeJwt } from "jose";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   createInstallationAccessTokenForRepositoryName,
   resolveInstallationForRepository,
 } from "../packages/github/src/app.ts";
+import { GitHubApiTransportError } from "../packages/github/src/http.ts";
 import { testRepository } from "./support/constants.ts";
 import { githubInstallationResponse } from "./support/github-api.ts";
 import { testPrivateKeyPem } from "./support/rsa-test-key-pair.ts";
 
 describe("GitHub App authentication", () => {
+  it("uses the default GitHub App fetch and clock", async () => {
+    const now = new Date("2026-06-29T12:34:00.000Z");
+    const nowSeconds = Math.floor(now.getTime() / 1000);
+    const githubApp = {
+      GITHUB_APP_ID: "2419473",
+      GITHUB_APP_PRIVATE_KEY: testPrivateKeyPem,
+    };
+    const fetchGitHub = vi.fn<typeof fetch>(async (input, init) => {
+      const request = new Request(input, init);
+      const authorization = new Headers(init?.headers).get("authorization");
+
+      if (authorization === null) {
+        throw new Error("expected GitHub App authorization header");
+      }
+
+      expect(decodeJwt(authorization.slice("Bearer ".length))).toMatchObject({
+        exp: nowSeconds + 9 * 60,
+        iat: nowSeconds - 60,
+        iss: "2419473",
+      });
+
+      return request.method === "POST"
+        ? Response.json(
+            {
+              expires_at: "2030-01-01T00:00:00Z",
+              permissions: { contents: "read" },
+              token: "ghs_default_dependencies_token",
+            },
+            { status: 201 },
+          )
+        : githubInstallationResponse("fixture-owner", 12345);
+    });
+
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+    vi.stubGlobal("fetch", fetchGitHub);
+
+    try {
+      await expect(resolveInstallationForRepository(githubApp, testRepository)).resolves.toEqual({
+        id: 12345,
+      });
+      await expect(
+        createInstallationAccessTokenForRepositoryName(githubApp, 12345, "fixture-repository", {
+          contents: "read",
+        }),
+      ).resolves.toEqual({
+        expiresAt: "2030-01-01T00:00:00Z",
+        permissions: { contents: "read" },
+        token: "ghs_default_dependencies_token",
+      });
+      expect(fetchGitHub).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
+  });
+
   it("reads the app private key from Cloudflare Secrets Store when bound", async () => {
     const secretStoreBinding = {
       get: async () => testPrivateKeyPem,
@@ -36,12 +95,25 @@ describe("GitHub App authentication", () => {
           expect(headers.get("x-github-api-version")).toBe("2022-11-28");
           expect(headers.get("authorization")).toMatch(/^Bearer /u);
 
+          const authorization = headers.get("authorization");
+
+          if (authorization === null) {
+            throw new Error("expected GitHub App authorization header");
+          }
+
+          expect(decodeJwt(authorization.slice("Bearer ".length))).toMatchObject({
+            exp: 1_782_736_980,
+            iat: 1_782_736_380,
+            iss: "2419473",
+          });
+
           return Response.json({
             account: { login: "fixture-owner" },
             id: 12345,
             node_id: "MDQ6VXNlcjE=",
           });
         },
+        now: () => new Date("2026-06-29T12:34:00.000Z"),
       },
     );
 
@@ -134,6 +206,38 @@ describe("GitHub App authentication", () => {
       message: invalidGitHubApiResponseMessage(`/repos/${testRepository}/installation`),
       status: 502,
     });
+  });
+
+  it("rejects an oversized successful installation response as invalid", async () => {
+    await expect(
+      resolveTestInstallation(
+        testRepository,
+        Response.json({
+          account: { login: "fixture-owner" },
+          id: 12345,
+          padding: "x".repeat(128 * 1024),
+        }),
+      ),
+    ).rejects.toMatchObject({
+      message: invalidGitHubApiResponseMessage(`/repos/${testRepository}/installation`),
+      status: 502,
+      upstreamStatus: 200,
+    });
+  });
+
+  it("classifies an unreadable successful installation response as a transport failure", async () => {
+    await expect(
+      resolveTestInstallation(
+        testRepository,
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.error(new Error("response stream failed"));
+            },
+          }),
+        ),
+      ),
+    ).rejects.toBeInstanceOf(GitHubApiTransportError);
   });
 
   it("maps a valid access-token response and ignores unknown fields", async () => {
@@ -231,7 +335,10 @@ function resolveTestInstallation(repository: string, response: Response) {
       GITHUB_APP_PRIVATE_KEY: testPrivateKeyPem,
     },
     repository,
-    { fetch: async () => response },
+    {
+      fetch: async () => response,
+      now: () => new Date("2026-05-24T00:00:00.000Z"),
+    },
   );
 }
 
@@ -244,7 +351,10 @@ function createTestInstallationAccessToken(response: Response) {
     12345,
     "fixture-repository",
     { contents: "read" },
-    { fetch: async () => response },
+    {
+      fetch: async () => response,
+      now: () => new Date("2026-05-24T00:00:00.000Z"),
+    },
   );
 }
 

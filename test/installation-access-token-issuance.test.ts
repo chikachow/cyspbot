@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { VerifiedSubjectToken } from "@cyspbot/token-exchange/authentication";
 
 import { issueInstallationAccessTokenForContext } from "../workers/cyspbot-token-exchange/src/policy/installation-access-token-issuance.ts";
-import { testRepository, testInstallationId } from "./support/constants.ts";
+import { testNow, testRepository, testInstallationId } from "./support/constants.ts";
 import { fetchGitHubTestDouble, githubInstallationResponse } from "./support/github-api.ts";
 import { createVerifiedSubjectToken } from "./support/oidc.ts";
 import { testTokenIssuancePolicy } from "./support/token-issuance-policy.ts";
@@ -143,6 +143,7 @@ describe("Installation Access Token Issuance", () => {
 
             return fetchGitHubTestDouble(input, init);
           },
+          now: () => testNow,
         },
       ),
     ).resolves.toMatchObject({ ok: true, token: "ghs_arbitrary_permissions" });
@@ -311,7 +312,7 @@ describe("Installation Access Token Issuance", () => {
         },
         { verifiedSubjectToken, verificationEvidence },
         tokenRequest,
-        { fetch: fetchGitHub },
+        { fetch: fetchGitHub, now: () => testNow },
       ),
     ).resolves.toEqual({ ok: false, reason: "internal_failure" });
 
@@ -538,7 +539,7 @@ describe("Installation Access Token Issuance", () => {
           verificationEvidence,
         },
         tokenRequest,
-        { fetch: fetchGitHub },
+        { fetch: fetchGitHub, now: () => testNow },
       ),
     ).resolves.toEqual({ ok: false, reason: "subject_token_unacceptable" });
 
@@ -599,12 +600,12 @@ function expectLogsNotToContainGitHubAppCredentials(logCalls: unknown): void {
 }
 
 function issueInstallationAccessToken(
-  dependencies: Parameters<typeof issueInstallationAccessTokenForContext>[3],
+  dependencies: Omit<Parameters<typeof issueInstallationAccessTokenForContext>[3], "now">,
 ) {
   return issueInstallationAccessTokenForContext(
     application,
     { verifiedSubjectToken, verificationEvidence },
     tokenRequest,
-    dependencies,
+    { ...dependencies, now: () => testNow },
   );
 }

@@ -4,6 +4,9 @@ import * as z from "zod";
 export const githubAcceptHeader = "application/vnd.github+json";
 export const githubApiVersion = "2022-11-28";
 const maxGitHubErrorBodyBytes = 16 * 1024;
+// Installation resolution and token responses are small, fixed-shape documents.
+// Keep a shared cap so a successful upstream response cannot allocate unbounded memory.
+const maxGitHubSuccessfulBodyBytes = 64 * 1024;
 const githubErrorResponseSchema = z.object({ message: z.string() });
 
 export interface GitHubApiEnv {
@@ -86,13 +89,19 @@ export async function fetchGitHubApiJson<Schema extends z.ZodType>(
     );
   }
 
-  let responseText: string;
+  let bodyRead: Awaited<ReturnType<typeof readBodyUpTo>>;
 
   try {
-    responseText = await response.text();
+    bodyRead = await readBodyUpTo(response.body, maxGitHubSuccessfulBodyBytes);
   } catch {
     throw new GitHubApiTransportError(`GitHub API request failed: ${path}`);
   }
+
+  if (!bodyRead.ok) {
+    throw invalidGitHubApiResponse(path, response.status);
+  }
+
+  const responseText = new TextDecoder().decode(bodyRead.bytes);
 
   let responseBody: unknown;
 

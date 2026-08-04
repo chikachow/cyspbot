@@ -3,11 +3,8 @@ import {
   GitHubAppConfigurationError,
   resolveInstallationForRepository,
 } from "@cyspbot/github/app";
-import {
-  GitHubApiError,
-  GitHubApiTransportError,
-  type GitHubApiDependencies,
-} from "@cyspbot/github/http";
+import { GitHubApiError, GitHubApiTransportError } from "@cyspbot/github/http";
+import type { GitHubAppDependencies } from "@cyspbot/github/app";
 import type { AuthenticatedContext } from "../authentication.ts";
 import type { InstallationAccessTokenRequest } from "../installation-access-token-request.ts";
 import type { TokenExchangeApplication } from "../token-exchange-application.ts";
@@ -33,7 +30,7 @@ export async function issueInstallationAccessTokenForContext(
   application: TokenExchangeApplication,
   authenticationContext: AuthenticatedContext,
   installationAccessTokenRequest: InstallationAccessTokenRequest,
-  dependencies: GitHubApiDependencies,
+  dependencies: GitHubAppDependencies,
 ): Promise<InstallationAccessTokenIssuanceResult> {
   const { verifiedSubjectToken } = authenticationContext;
   const policyPermitted = tokenIssuancePolicyPermits(
