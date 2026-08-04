@@ -1,209 +1,111 @@
 import { githubActionsOidcProviderRegistration } from "@cyspbot/oidc-provider-github-actions";
 import {
   createGitHubRepositoryResource,
-  installationAccessTokenPermissionLevelCovers,
   type GitHubInstallationPermissions,
   type InstallationAccessTokenRequest,
 } from "@cyspbot/token-exchange/installation-access-token-request";
 import type { VerifiedSubjectToken } from "@cyspbot/token-exchange/authentication";
 import { createVerifiedSubjectToken } from "./oidc.ts";
 
-export interface ConfiguredTokenIssuancePolicyScenario {
-  readonly events: readonly string[];
-  readonly name: string;
+type GitHubActionsWorkflowFileName = `${string}.${"yml" | "yaml"}`;
+type GitHubRepositoryFullName = `${string}/${string}`;
+
+interface GitHubActionsMainBranchWorkflowExpectationOptions {
+  readonly eventNames: readonly string[];
   readonly permissions: GitHubInstallationPermissions;
-  readonly ref: string;
-  readonly repository: string;
-  readonly resourceOwner: string;
-  readonly resourceRepository: string;
-  readonly workflowRef: string;
+  readonly resourceRepositoryFullName: GitHubRepositoryFullName;
+  readonly workflowFileName: GitHubActionsWorkflowFileName;
+  readonly workflowRepositoryFullName: GitHubRepositoryFullName;
 }
 
-export const configuredTokenIssuancePolicyScenarios: readonly ConfiguredTokenIssuancePolicyScenario[] =
+interface DeploymentRepositoryUpdateExpectationsOptions {
+  readonly deploymentRepositoryFullName: GitHubRepositoryFullName;
+  readonly updateTriggerWorkflowFileName: GitHubActionsWorkflowFileName;
+  readonly updateTriggerRepositoryFullName: GitHubRepositoryFullName;
+  readonly updateWorkflowFileName: GitHubActionsWorkflowFileName;
+}
+
+export interface ConfiguredPermitStatementExpectation {
+  readonly eventNames: readonly string[];
+  readonly permissions: GitHubInstallationPermissions;
+  readonly resourceRepositoryFullName: GitHubRepositoryFullName;
+  readonly workflowRef: string;
+  readonly workflowRepositoryFullName: string;
+}
+
+const mainBranchGitRef = "refs/heads/main";
+const pullRequestAuthoringPermissions = {
+  contents: "write",
+  pull_requests: "write",
+} as const;
+
+export const configuredPermitStatementExpectations: readonly ConfiguredPermitStatementExpectation[] =
   [
-    {
-      events: ["schedule", "workflow_dispatch"],
-      name: "cyspbot pnpm-up",
-      permissions: { contents: "write", pull_requests: "write" },
-      ref: "refs/heads/main",
-      repository: "chikachow/cyspbot",
-      resourceOwner: "chikachow",
-      resourceRepository: "cyspbot",
-      workflowRef: "chikachow/cyspbot/.github/workflows/pnpm-up.yml@refs/heads/main",
-    },
-    {
-      events: ["workflow_run", "workflow_dispatch"],
-      name: "cyspbot deployment update trigger",
-      permissions: { actions: "write" },
-      ref: "refs/heads/main",
-      repository: "chikachow/cyspbot",
-      resourceOwner: "chikachow",
-      resourceRepository: "cyspbot-deploy",
-      workflowRef:
-        "chikachow/cyspbot/.github/workflows/run-cyspbot-deploy-update.yml@refs/heads/main",
-    },
-    {
-      events: ["workflow_dispatch"],
-      name: "cyspbot-deploy update",
-      permissions: { contents: "write", pull_requests: "write" },
-      ref: "refs/heads/main",
-      repository: "chikachow/cyspbot-deploy",
-      resourceOwner: "chikachow",
-      resourceRepository: "cyspbot-deploy",
-      workflowRef: "chikachow/cyspbot-deploy/.github/workflows/update-cyspbot.yml@refs/heads/main",
-    },
-    {
-      events: ["schedule", "workflow_dispatch"],
-      name: "cloudflare-workload-identity pnpm-up",
-      permissions: { contents: "write", pull_requests: "write" },
-      ref: "refs/heads/main",
-      repository: "chikachow/cloudflare-workload-identity",
-      resourceOwner: "chikachow",
-      resourceRepository: "cloudflare-workload-identity",
-      workflowRef:
-        "chikachow/cloudflare-workload-identity/.github/workflows/pnpm-up.yml@refs/heads/main",
-    },
-    {
-      events: ["workflow_run", "workflow_dispatch"],
-      name: "cloudflare-workload-identity deployment update trigger",
-      permissions: { actions: "write" },
-      ref: "refs/heads/main",
-      repository: "chikachow/cloudflare-workload-identity",
-      resourceOwner: "chikachow",
-      resourceRepository: "cloudflare-workload-identity-deploy",
-      workflowRef:
-        "chikachow/cloudflare-workload-identity/.github/workflows/run-cloudflare-workload-identity-deploy-update.yml@refs/heads/main",
-    },
-    {
-      events: ["workflow_dispatch"],
-      name: "cloudflare-workload-identity-deploy update",
-      permissions: { contents: "write", pull_requests: "write" },
-      ref: "refs/heads/main",
-      repository: "chikachow/cloudflare-workload-identity-deploy",
-      resourceOwner: "chikachow",
-      resourceRepository: "cloudflare-workload-identity-deploy",
-      workflowRef:
-        "chikachow/cloudflare-workload-identity-deploy/.github/workflows/update-cloudflare-workload-identity.yml@refs/heads/main",
-    },
-    {
-      events: ["schedule", "workflow_dispatch"],
-      name: "cloudflare-workload-identity-deploy pnpm-up",
-      permissions: { contents: "write", pull_requests: "write" },
-      ref: "refs/heads/main",
-      repository: "chikachow/cloudflare-workload-identity-deploy",
-      resourceOwner: "chikachow",
-      resourceRepository: "cloudflare-workload-identity-deploy",
-      workflowRef:
-        "chikachow/cloudflare-workload-identity-deploy/.github/workflows/pnpm-up.yml@refs/heads/main",
-    },
-    {
-      events: ["schedule", "workflow_dispatch"],
-      name: "app-token-action pnpm-up",
-      permissions: { contents: "write", pull_requests: "write" },
-      ref: "refs/heads/main",
-      repository: "chikachow/cyspbot-app-token-action",
-      resourceOwner: "chikachow",
-      resourceRepository: "cyspbot-app-token-action",
-      workflowRef:
-        "chikachow/cyspbot-app-token-action/.github/workflows/pnpm-up.yml@refs/heads/main",
-    },
-    {
-      events: ["schedule", "workflow_dispatch"],
-      name: "graphql-schema-registry pnpm-up",
-      permissions: { contents: "write", pull_requests: "write" },
-      ref: "refs/heads/main",
-      repository: "cysp/graphql-schema-registry",
-      resourceOwner: "cysp",
-      resourceRepository: "graphql-schema-registry",
-      workflowRef: "cysp/graphql-schema-registry/.github/workflows/pnpm-up.yml@refs/heads/main",
-    },
-    {
-      events: ["schedule", "workflow_dispatch"],
-      name: "terraform-provider-braze dependency update",
-      permissions: { contents: "write", pull_requests: "write" },
-      ref: "refs/heads/main",
-      repository: "cysp/terraform-provider-braze",
-      resourceOwner: "cysp",
-      resourceRepository: "terraform-provider-braze",
-      workflowRef:
-        "cysp/terraform-provider-braze/.github/workflows/update-indirect-dependencies.yml@refs/heads/main",
-    },
-    {
-      events: ["schedule", "workflow_dispatch"],
-      name: "terraform-provider-censusworkspace dependency update",
-      permissions: { contents: "write", pull_requests: "write" },
-      ref: "refs/heads/main",
-      repository: "cysp/terraform-provider-censusworkspace",
-      resourceOwner: "cysp",
-      resourceRepository: "terraform-provider-censusworkspace",
-      workflowRef:
-        "cysp/terraform-provider-censusworkspace/.github/workflows/update-indirect-dependencies.yml@refs/heads/main",
-    },
-    {
-      events: ["schedule", "workflow_dispatch"],
-      name: "terraform-provider-contentful dependency update",
-      permissions: { contents: "write", pull_requests: "write" },
-      ref: "refs/heads/main",
-      repository: "cysp/terraform-provider-contentful",
-      resourceOwner: "cysp",
-      resourceRepository: "terraform-provider-contentful",
-      workflowRef:
-        "cysp/terraform-provider-contentful/.github/workflows/update-indirect-dependencies.yml@refs/heads/main",
-    },
-    {
-      events: ["schedule", "workflow_dispatch"],
-      name: "terraform-provider-typesense dependency update",
-      permissions: { contents: "write", pull_requests: "write" },
-      ref: "refs/heads/main",
-      repository: "cysp/terraform-provider-typesense",
-      resourceOwner: "cysp",
-      resourceRepository: "terraform-provider-typesense",
-      workflowRef:
-        "cysp/terraform-provider-typesense/.github/workflows/update-indirect-dependencies.yml@refs/heads/main",
-    },
+    dependencyUpdateExpectation("chikachow/cyspbot", "pnpm-up.yml"),
+    ...deploymentRepositoryUpdateExpectations({
+      deploymentRepositoryFullName: "chikachow/cyspbot-deploy",
+      updateTriggerWorkflowFileName: "run-cyspbot-deploy-update.yml",
+      updateTriggerRepositoryFullName: "chikachow/cyspbot",
+      updateWorkflowFileName: "update-cyspbot.yml",
+    }),
+    dependencyUpdateExpectation("chikachow/cloudflare-workload-identity", "pnpm-up.yml"),
+    ...deploymentRepositoryUpdateExpectations({
+      deploymentRepositoryFullName: "chikachow/cloudflare-workload-identity-deploy",
+      updateTriggerWorkflowFileName: "run-cloudflare-workload-identity-deploy-update.yml",
+      updateTriggerRepositoryFullName: "chikachow/cloudflare-workload-identity",
+      updateWorkflowFileName: "update-cloudflare-workload-identity.yml",
+    }),
+    dependencyUpdateExpectation("chikachow/cloudflare-workload-identity-deploy", "pnpm-up.yml"),
+    dependencyUpdateExpectation("chikachow/cyspbot-app-token-action", "pnpm-up.yml"),
+    dependencyUpdateExpectation("cysp/graphql-schema-registry", "pnpm-up.yml"),
+    dependencyUpdateExpectation(
+      "cysp/terraform-provider-braze",
+      "update-indirect-dependencies.yml",
+    ),
+    dependencyUpdateExpectation(
+      "cysp/terraform-provider-censusworkspace",
+      "update-indirect-dependencies.yml",
+    ),
+    dependencyUpdateExpectation(
+      "cysp/terraform-provider-contentful",
+      "update-indirect-dependencies.yml",
+    ),
+    dependencyUpdateExpectation(
+      "cysp/terraform-provider-typesense",
+      "update-indirect-dependencies.yml",
+    ),
   ];
 
-const permissionLevels = [undefined, "read", "write"] as const;
-
-export const allNonEmptyGitHubInstallationPermissionMaps = permissionLevels
-  .flatMap((actions) =>
-    permissionLevels.flatMap((contents) =>
-      permissionLevels.map((pullRequests) => ({
-        ...(actions === undefined ? {} : { actions }),
-        ...(contents === undefined ? {} : { contents }),
-        ...(pullRequests === undefined ? {} : { pull_requests: pullRequests }),
-      })),
-    ),
-  )
-  .filter((permissions) => Object.keys(permissions).length > 0);
-
-export function configuredSubjectToken(
-  scenario: ConfiguredTokenIssuancePolicyScenario,
+export function subjectTokenForExpectation(
+  expectation: ConfiguredPermitStatementExpectation,
   claims: Record<string, unknown> = {},
   options: { readonly issuer?: string } = {},
 ): VerifiedSubjectToken {
   return createVerifiedSubjectToken(
     {
-      event_name: scenario.events[0],
-      ref: scenario.ref,
+      event_name: expectation.eventNames[0],
+      ref: "refs/heads/main",
       ref_type: "branch",
-      repository: scenario.repository,
+      repository: expectation.workflowRepositoryFullName,
       repository_id: "123456789",
       repository_owner_id: "555555",
-      sub: `repo:${scenario.repository}:ref:${scenario.ref}`,
-      workflow_ref: scenario.workflowRef,
+      sub: `repo:${expectation.workflowRepositoryFullName}:ref:refs/heads/main`,
+      workflow_ref: expectation.workflowRef,
       ...claims,
     },
     { issuer: options.issuer ?? githubActionsOidcProviderRegistration.issuer },
   );
 }
 
-export function configuredRequest(
-  scenario: ConfiguredTokenIssuancePolicyScenario,
+export function requestForExpectation(
+  expectation: ConfiguredPermitStatementExpectation,
   permissions: GitHubInstallationPermissions,
-  resourceOwner = scenario.resourceOwner,
-  resourceRepository = scenario.resourceRepository,
+  resourceRepositoryFullName: string = expectation.resourceRepositoryFullName,
 ): InstallationAccessTokenRequest {
+  const [resourceOwner, resourceRepository] = splitGitHubRepositoryFullName(
+    resourceRepositoryFullName,
+  );
+
   return {
     permissions,
     resource: createGitHubRepositoryResource({
@@ -214,16 +116,56 @@ export function configuredRequest(
   };
 }
 
-export function configuredPermissionsCover(
-  configured: GitHubInstallationPermissions,
-  requested: GitHubInstallationPermissions,
-): boolean {
-  return (Object.keys(requested) as (keyof GitHubInstallationPermissions)[]).every((name) => {
-    const requestedLevel = requested[name];
-
-    return (
-      requestedLevel !== undefined &&
-      installationAccessTokenPermissionLevelCovers(configured[name], requestedLevel)
-    );
+function dependencyUpdateExpectation(
+  repositoryFullName: GitHubRepositoryFullName,
+  workflowFileName: GitHubActionsWorkflowFileName,
+): ConfiguredPermitStatementExpectation {
+  return githubActionsMainBranchWorkflowExpectation({
+    eventNames: ["schedule", "workflow_dispatch"],
+    permissions: pullRequestAuthoringPermissions,
+    resourceRepositoryFullName: repositoryFullName,
+    workflowFileName,
+    workflowRepositoryFullName: repositoryFullName,
   });
+}
+
+function deploymentRepositoryUpdateExpectations(
+  options: DeploymentRepositoryUpdateExpectationsOptions,
+): readonly ConfiguredPermitStatementExpectation[] {
+  return [
+    githubActionsMainBranchWorkflowExpectation({
+      eventNames: ["workflow_run", "workflow_dispatch"],
+      permissions: { actions: "write" },
+      resourceRepositoryFullName: options.deploymentRepositoryFullName,
+      workflowFileName: options.updateTriggerWorkflowFileName,
+      workflowRepositoryFullName: options.updateTriggerRepositoryFullName,
+    }),
+    githubActionsMainBranchWorkflowExpectation({
+      eventNames: ["workflow_dispatch"],
+      permissions: pullRequestAuthoringPermissions,
+      resourceRepositoryFullName: options.deploymentRepositoryFullName,
+      workflowFileName: options.updateWorkflowFileName,
+      workflowRepositoryFullName: options.deploymentRepositoryFullName,
+    }),
+  ];
+}
+
+function githubActionsMainBranchWorkflowExpectation(
+  options: GitHubActionsMainBranchWorkflowExpectationOptions,
+): ConfiguredPermitStatementExpectation {
+  const workflowRef = `${options.workflowRepositoryFullName}/.github/workflows/${options.workflowFileName}@${mainBranchGitRef}`;
+
+  return {
+    eventNames: options.eventNames,
+    permissions: options.permissions,
+    resourceRepositoryFullName: options.resourceRepositoryFullName,
+    workflowRef,
+    workflowRepositoryFullName: options.workflowRepositoryFullName,
+  };
+}
+
+function splitGitHubRepositoryFullName(
+  fullName: string,
+): readonly [owner: string, repository: string] {
+  return fullName.split("/", 2) as [owner: string, repository: string];
 }

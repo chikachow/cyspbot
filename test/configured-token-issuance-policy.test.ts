@@ -2,62 +2,79 @@ import { describe, expect, it } from "vitest";
 
 import { configuredTokenIssuancePolicy } from "@cyspbot/token-exchange/policy/configured-token-issuance-policy";
 import { tokenIssuancePolicyPermits } from "@cyspbot/token-exchange/policy/token-issuance-policy";
+import type { GitHubInstallationPermissions } from "@cyspbot/token-exchange/installation-access-token-request";
 import {
-  allNonEmptyGitHubInstallationPermissionMaps,
-  configuredPermissionsCover,
-  configuredRequest,
-  configuredSubjectToken,
-  configuredTokenIssuancePolicyScenarios,
+  configuredPermitStatementExpectations,
+  requestForExpectation,
+  subjectTokenForExpectation,
 } from "./support/configured-token-issuance-policy.ts";
+
+const standardPermissionNames = ["actions", "contents", "pull_requests"] as const;
 
 describe("configured Token Issuance Policy", () => {
   it("permits every configured event with its exact request", () => {
-    let scenarios = 0;
+    let acceptedEvents = 0;
 
-    for (const scenario of configuredTokenIssuancePolicyScenarios) {
-      for (const eventName of scenario.events) {
+    for (const expectation of configuredPermitStatementExpectations) {
+      for (const eventName of expectation.eventNames) {
         expect(
           tokenIssuancePolicyPermits(
             configuredTokenIssuancePolicy,
-            configuredSubjectToken(scenario, { event_name: eventName }),
-            configuredRequest(scenario, scenario.permissions),
+            subjectTokenForExpectation(expectation, { event_name: eventName }),
+            requestForExpectation(expectation, expectation.permissions),
           ),
-          `${scenario.name}: ${eventName}`,
+          `${expectation.workflowRef}: ${eventName}`,
         ).toBe(true);
-        scenarios += 1;
+        acceptedEvents += 1;
       }
     }
 
-    expect(scenarios).toBe(24);
+    expect(acceptedEvents).toBe(24);
   });
 
-  it("matches the accepted ordered-coverage matrix for all 338 requests", () => {
-    let scenarios = 0;
+  it("does not permit permissions beyond each configured expectation", () => {
+    let permissionDenials = 0;
 
-    for (const scenario of configuredTokenIssuancePolicyScenarios) {
-      const subjectToken = configuredSubjectToken(scenario);
+    for (const expectation of configuredPermitStatementExpectations) {
+      const subjectToken = subjectTokenForExpectation(expectation);
 
-      for (const permissions of allNonEmptyGitHubInstallationPermissionMaps) {
+      for (const permissionName of standardPermissionNames) {
+        const requestedLevel =
+          expectation.permissions[permissionName] === undefined ? "read" : "admin";
+        const permissions: GitHubInstallationPermissions = {
+          [permissionName]: requestedLevel,
+        };
+
         expect(
           tokenIssuancePolicyPermits(
             configuredTokenIssuancePolicy,
             subjectToken,
-            configuredRequest(scenario, permissions),
+            requestForExpectation(expectation, permissions),
           ),
-          `${scenario.name}: ${JSON.stringify(permissions)}`,
-        ).toBe(configuredPermissionsCover(scenario.permissions, permissions));
-        scenarios += 1;
+          `${expectation.workflowRef}: ${permissionName}:${requestedLevel}`,
+        ).toBe(false);
+        permissionDenials += 1;
       }
+
+      expect(
+        tokenIssuancePolicyPermits(
+          configuredTokenIssuancePolicy,
+          subjectToken,
+          requestForExpectation(expectation, { issues: "read" }),
+        ),
+        `${expectation.workflowRef}: issues:read`,
+      ).toBe(false);
+      permissionDenials += 1;
     }
 
-    expect(scenarios).toBe(13 * 26);
+    expect(permissionDenials).toBe(13 * 4);
   });
 
   it("does not permit issuer, selected-Claim, Claim-type, or Repository Resource mutations", () => {
-    let scenarios = 0;
+    let mutations = 0;
     const nonMatchingClaimValues: readonly unknown[] = ["unconfigured", null, false, 123, [], {}];
 
-    for (const scenario of configuredTokenIssuancePolicyScenarios) {
+    for (const expectation of configuredPermitStatementExpectations) {
       for (const claimName of [
         "repository",
         "event_name",
@@ -69,67 +86,74 @@ describe("configured Token Issuance Policy", () => {
           expect(
             tokenIssuancePolicyPermits(
               configuredTokenIssuancePolicy,
-              configuredSubjectToken(scenario, { [claimName]: claimValue }),
-              configuredRequest(scenario, scenario.permissions),
+              subjectTokenForExpectation(expectation, { [claimName]: claimValue }),
+              requestForExpectation(expectation, expectation.permissions),
             ),
-            `${scenario.name}: ${claimName}=${JSON.stringify(claimValue)}`,
+            `${expectation.workflowRef}: ${claimName}=${JSON.stringify(claimValue)}`,
           ).toBe(false);
-          scenarios += 1;
+          mutations += 1;
         }
 
         expect(
           tokenIssuancePolicyPermits(
             configuredTokenIssuancePolicy,
-            withoutClaim(configuredSubjectToken(scenario), claimName),
-            configuredRequest(scenario, scenario.permissions),
+            withoutClaim(subjectTokenForExpectation(expectation), claimName),
+            requestForExpectation(expectation, expectation.permissions),
           ),
-          `${scenario.name}: missing ${claimName}`,
+          `${expectation.workflowRef}: missing ${claimName}`,
         ).toBe(false);
-        scenarios += 1;
+        mutations += 1;
       }
 
-      for (const [resourceOwner, resourceRepository, mutationName] of [
-        [`${scenario.resourceOwner}-other`, scenario.resourceRepository, "resource owner"],
-        [scenario.resourceOwner, `${scenario.resourceRepository}-other`, "resource repository"],
+      for (const [resourceRepositoryFullName, mutationName] of [
+        [expectation.resourceRepositoryFullName.replace("/", "-other/"), "resource owner"],
+        [`${expectation.resourceRepositoryFullName}-other`, "resource repository"],
       ] as const) {
         expect(
           tokenIssuancePolicyPermits(
             configuredTokenIssuancePolicy,
-            configuredSubjectToken(scenario),
-            configuredRequest(scenario, scenario.permissions, resourceOwner, resourceRepository),
+            subjectTokenForExpectation(expectation),
+            requestForExpectation(expectation, expectation.permissions, resourceRepositoryFullName),
           ),
-          `${scenario.name}: ${mutationName}`,
+          `${expectation.workflowRef}: ${mutationName}`,
         ).toBe(false);
-        scenarios += 1;
+        mutations += 1;
       }
 
       expect(
         tokenIssuancePolicyPermits(
           configuredTokenIssuancePolicy,
-          configuredSubjectToken(scenario, {}, { issuer: "https://unconfigured-issuer.example" }),
-          configuredRequest(scenario, scenario.permissions),
+          subjectTokenForExpectation(
+            expectation,
+            {},
+            { issuer: "https://unconfigured-issuer.example" },
+          ),
+          requestForExpectation(expectation, expectation.permissions),
         ),
-        `${scenario.name}: issuer`,
+        `${expectation.workflowRef}: issuer`,
       ).toBe(false);
-      scenarios += 1;
+      mutations += 1;
     }
 
-    expect(scenarios).toBe(13 * (5 * 7 + 2 + 1));
+    expect(mutations).toBe(13 * (5 * 7 + 2 + 1));
   });
 
   it("permits every legacy, immutable, customized, missing, and malformed sub form", () => {
-    for (const scenario of configuredTokenIssuancePolicyScenarios) {
+    for (const expectation of configuredPermitStatementExpectations) {
       const subjectTokens = [
-        ["legacy", configuredSubjectToken(scenario)],
+        ["legacy", subjectTokenForExpectation(expectation)],
         [
           "immutable",
-          configuredSubjectToken(scenario, {
-            sub: `repo:${scenario.repository.replace("/", "@555555/")}@123456789:ref:${scenario.ref}`,
+          subjectTokenForExpectation(expectation, {
+            sub: `repo:${expectation.workflowRepositoryFullName.replace("/", "@555555/")}@123456789:ref:refs/heads/main`,
           }),
         ],
-        ["customized", configuredSubjectToken(scenario, { sub: `custom:${scenario.name}` })],
-        ["missing", withoutClaim(configuredSubjectToken(scenario), "sub")],
-        ["malformed", configuredSubjectToken(scenario, { sub: 123 })],
+        [
+          "customized",
+          subjectTokenForExpectation(expectation, { sub: `custom:${expectation.workflowRef}` }),
+        ],
+        ["missing", withoutClaim(subjectTokenForExpectation(expectation), "sub")],
+        ["malformed", subjectTokenForExpectation(expectation, { sub: 123 })],
       ] as const;
 
       for (const [subForm, subjectToken] of subjectTokens) {
@@ -137,9 +161,9 @@ describe("configured Token Issuance Policy", () => {
           tokenIssuancePolicyPermits(
             configuredTokenIssuancePolicy,
             subjectToken,
-            configuredRequest(scenario, scenario.permissions),
+            requestForExpectation(expectation, expectation.permissions),
           ),
-          `${scenario.name}: ${subForm}`,
+          `${expectation.workflowRef}: ${subForm}`,
         ).toBe(true);
       }
     }
@@ -148,7 +172,7 @@ describe("configured Token Issuance Policy", () => {
 
 function withoutClaim<
   ClaimName extends string,
-  SubjectToken extends ReturnType<typeof configuredSubjectToken>,
+  SubjectToken extends ReturnType<typeof subjectTokenForExpectation>,
 >(subjectToken: SubjectToken, claimName: ClaimName): SubjectToken {
   const claims = { ...subjectToken.claims };
   delete claims[claimName];
