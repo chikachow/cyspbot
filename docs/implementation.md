@@ -249,7 +249,7 @@ Each Worker package owns its Env type generation, runtime type generation, type-
 
 The small `env.generated.d.ts` files are checked in because the combined test project consumes both generated environment interfaces without including either Worker's runtime types. Each Worker type-check generates its ignored `runtime.generated.d.ts` from that Worker's Wrangler compatibility date and flags immediately before invoking TypeScript. Runtime types are reproducible build artifacts rather than reviewable source.
 
-The public GitHub Actions `ci` workflow runs the same classes of checks as separate reusable jobs and gates on an aggregate `ci` job.
+The public GitHub Actions `ci` workflow installs dependencies once in its `quality` job for formatting, generated Env types, linting, type-checking, Knip, and deploy dry runs; its separate `test` job installs once for coverage and Codecov upload. Only `test` receives `id-token: write`. The aggregate `ci` job remains the stable gate.
 
 `test/support/token-exchange-oidc-node-fixture.ts` is the intentional Node-only test seam
 between this source repository and the separate deployment repository. It owns one
