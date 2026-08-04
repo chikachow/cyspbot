@@ -147,6 +147,42 @@ GitHub Actions Clients present a [GitHub Actions OIDC token](https://docs.github
 
 Google service account Clients present a [service account ID Token](https://cloud.google.com/docs/authentication/token-types#service_account_id_tokens) issued by the Google Cloud IAM authorization server with Issuer Identifier `https://accounts.google.com`. The shared verifier requires a non-empty string Subject (`sub`), and the Google service-account OIDC ID Token Profile requires the Authorized Party (`azp`) to equal that Subject. Google documents both claims as the service account unique ID for this token type; cyspbot treats that identifier as an opaque string. Optional `email` and `email_verified` claims do not affect authentication.
 
+Clients can acquire a suitable service account ID Token through these Google
+Cloud paths, setting the requested token audience to `cyspbot` in each case:
+
+- **Direct IAM Credentials API request.** Call
+  [`projects.serviceAccounts.generateIdToken`](https://cloud.google.com/iam/docs/reference/credentials/rest/v1/projects.serviceAccounts/generateIdToken)
+  for the target service account with request field `audience` set to
+  `cyspbot`. The caller needs
+  `iam.serviceAccounts.getOpenIdToken` on that account. When only ID Token
+  generation is required, the least-privilege predefined role is
+  [Service Account OpenID Connect Identity Token Creator](https://cloud.google.com/iam/docs/service-account-permissions#service_account_openid_connect_identity_token_creator_role)
+  (`roles/iam.serviceAccountOpenIdTokenCreator`).
+- **Delegated IAM Credentials API request.** Supply an ordered
+  [delegation chain](https://cloud.google.com/iam/docs/create-short-lived-credentials-delegated).
+  The caller needs Service Account Token Creator
+  (`roles/iam.serviceAccountTokenCreator`) on the first delegate, each delegate
+  needs that role on the next service account, and the last delegate needs it
+  on the target service account. The resulting ID Token represents the target
+  service account, not the caller or delegates. The narrower OpenID Connect
+  Identity Token Creator role is insufficient on delegation edges because it
+  does not grant implicit delegation.
+- **Attached service account metadata request.** On a supported Google Cloud
+  resource, request an ID Token for the attached service account from the
+  [metadata server](https://cloud.google.com/docs/authentication/get-id-token#metadata-server).
+  Set the metadata identity endpoint's `audience` query parameter to `cyspbot`.
+  The workload does not need `iam.serviceAccounts.getOpenIdToken` for this
+  runtime request. The identity that provisions or updates the resource still
+  needs the resource's normal create or update permissions plus
+  `iam.serviceAccounts.actAs` on the attached service account; [Service Account
+  User](https://cloud.google.com/iam/docs/service-account-permissions#service_account_user_role)
+  (`roles/iam.serviceAccountUser`) supplies `actAs`. Prefer this acquisition
+  path when the workload already runs as the intended service account.
+
+The acquisition audience becomes the ID Token `aud` Claim. It is distinct from
+the unsupported RFC 8693 `audience` form parameter in the subsequent request to
+cyspbot.
+
 Google Clients must provide an explicit repository `resource`; omission or `resource=` receives `invalid_target`. Authentication produces a Verified Subject Token but does not create a Permit Statement. The production Token Issuance Policy contains no Google Permit Statement.
 
 The Fly provider package can construct a reviewed, exact organization-specific registration with an explicit `null` OIDC ID Token Profile, so central verification alone authenticates its Subject Token Claims. The production application does not register Fly and has no dynamic Fly trust binding. A Fly token is therefore rejected as an unregistered issuer unless a future checked-in application composition explicitly adds both the registration and any independent Permit Statements.

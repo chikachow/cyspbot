@@ -14,7 +14,7 @@ cyspbot accepts Client-presented OpenID Connect ID Tokens from configured issuer
 - the Verified Subject Token is derived only from Subject Token Claims in an ID Token accepted through an exact OIDC Provider Registration and, when non-null, its OIDC ID Token Profile
 - the ID Token audience must be the exact single string `cyspbot`; the unsupported token-exchange `audience` parameter grants nothing
 - OIDC Provider Registrations and Permit Statements are independent, checked-in trust decisions; registration authenticates tokens but never authorizes Installation Access Token Issuance
-- the exact production registration and Permit Statement inventory is maintained in the [service contract](docs/service-contract.md) and [implementation reference](docs/implementation.md)
+- the [service contract](docs/service-contract.md) solely owns the exact production registration and Permit Statement inventory and all externally observable behaviour; the [implementation reference](docs/implementation.md) describes only module and runtime mechanics
 - Clients must supply exactly one effective canonical Repository Resource; value-less occurrences are omitted, and Subject Token Claims never select the target
 - Clients may name structurally valid GitHub permissions, but every Requested Permission must be covered by checked-in Permit Statements
 - checked-in Token Issuance Policy Permit Statements must compose Effective Permissions that cover the Requested Permissions for the Verified Subject Token and Repository Resource before a token is issued

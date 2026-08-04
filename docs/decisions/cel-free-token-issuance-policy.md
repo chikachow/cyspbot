@@ -6,9 +6,8 @@ Decision status: Accepted.
 
 Decision scope: This record defines authorization-model capabilities, not the
 current production Permit Statement inventory. Conditional examples describe
-what a reviewed application composition can express. The service contract and
-implementation reference record which capabilities production currently
-configures.
+what a reviewed application composition can express. The service contract
+records which capabilities production currently configures.
 
 ## Context
 

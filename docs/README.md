@@ -1,11 +1,12 @@
 # cyspbot Documentation
 
-This directory documents the current cyspbot implementation and public service contract.
+This directory indexes cyspbot documentation. Each document owns a distinct
+kind of fact so that a change has one authoritative home.
 
 ## Documents
 
-- [Service contract](service-contract.md) is reference material for the public API, security boundaries, and externally observable behaviour.
-- [Implementation](implementation.md) explains the workspace packages, Worker entrypoints, request flows, bindings, and verification commands.
+- [Service contract](service-contract.md) is the sole authority for the public API, security boundaries, externally observable behaviour, and current configured trust and authorization inventory.
+- [Implementation](implementation.md) explains workspace packages, Worker entrypoints, request flows, runtime bindings, and verification commands; it does not define client-visible behaviour.
 - [Deployment](deployment.md) explains the source repository boundary and confirms deployment is handled outside this codebase.
 - [OIDC ID Token authentication decision](decisions/oidc-id-token-authentication.md) records the durable trust, discovery, and configuration-ownership rationale behind the implementation.
 - [CEL-free Token Issuance Policy decision](decisions/cel-free-token-issuance-policy.md) records the closed authorization language, extensible permission names, permission-level composition, and trust in Subject Token Claims.
@@ -19,25 +20,6 @@ This directory documents the current cyspbot implementation and public service c
 Decision records may describe capabilities that the source supports without
 asserting that production currently configures those capabilities. Capability
 statements use conditional language and identify themselves as capabilities.
-The service contract and implementation reference own the current production
-registration and Token Issuance Policy inventory. A capability is not a
-configured policy merely because an accepted decision documents it.
-
-## Unsupported Behaviour
-
-Current implementation:
-
-- OAuth token exchange at `POST /token`
-- signed webhook acknowledgement at `POST /github/webhooks`
-- deployable Cloudflare Worker packages under `workers/*`
-
-cyspbot does not implement:
-
-- Client-selected arbitrary repositories
-- GitHub permission requests that bypass checked-in Permit Statement coverage
-- Client-defined GitHub permission profiles or aliases
-- multi-audience subject tokens or multi-resource token requests
-- actor-token delegation or client-authenticated token exchange
-- dynamic issuer discovery from untrusted tokens
-- raw webhook payload archival or replay
-- product-specific webhook event processing
+The service contract owns the current production registration and Token
+Issuance Policy inventory. A capability is not a configured policy merely
+because an accepted decision documents it.

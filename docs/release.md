@@ -14,8 +14,8 @@ Run this checklist before making the repository public or tagging a release.
 ## Documentation
 
 - `README.md` describes the current source repository and deployment boundary.
-- `docs/service-contract.md` matches implemented behaviour.
-- `docs/implementation.md` matches the workspace packages, Worker entrypoints, bindings, and verification commands.
+- `docs/service-contract.md` matches externally observable behaviour and the current production registration and Permit Statement inventory.
+- `docs/implementation.md` matches module and runtime mechanics, including workspace packages, Worker entrypoints, bindings, and verification commands, without redefining the service contract.
 - `docs/deployment.md` describes only the source repository boundary, including the sole Node-only test fixture seam intentionally consumed by the separate deployment repository, and does not publish deployment details.
 - Checked-in OIDC Provider Registrations match the intended production trust set; any authentication-only registration is intentional and documented.
 - Checked-in Token Issuance Policy Permit Statements match the intended production authorization set, and every referenced issuer has a Provider Registration.

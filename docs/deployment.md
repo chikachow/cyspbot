@@ -41,7 +41,9 @@ Local `pnpm run dev` uses Wrangler's multi-worker mode for separated Worker conf
 
 The token-exchange Worker has no dynamic issuer or authorization-policy binding. Production OIDC Provider Registrations and Permit Statements are immutable checked-in values. Changing either set requires a reviewed source change and deployment. Configuring a provider registration makes authentication possible but creates no Permit Statement; Token Issuance Policy remains an independent control.
 
-The [service contract](service-contract.md) and [implementation reference](implementation.md) own the exact production registration and Permit Statement inventory; this deployment guide records only the stable source/deployment ownership boundary.
+The [service contract](service-contract.md) owns the exact production
+registration and Permit Statement inventory; this deployment guide records
+only the stable source/deployment ownership boundary.
 
 ## Token Exchange Protocol Rollouts
 
