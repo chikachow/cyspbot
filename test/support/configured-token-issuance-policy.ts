@@ -54,6 +54,50 @@ export const configuredTokenIssuancePolicyScenarios: readonly ConfiguredTokenIss
     },
     {
       events: ["schedule", "workflow_dispatch"],
+      name: "cloudflare-workload-identity pnpm-up",
+      permissions: { contents: "write", pull_requests: "write" },
+      ref: "refs/heads/main",
+      repository: "chikachow/cloudflare-workload-identity",
+      resourceOwner: "chikachow",
+      resourceRepository: "cloudflare-workload-identity",
+      workflowRef:
+        "chikachow/cloudflare-workload-identity/.github/workflows/pnpm-up.yml@refs/heads/main",
+    },
+    {
+      events: ["workflow_run", "workflow_dispatch"],
+      name: "cloudflare-workload-identity deployment update trigger",
+      permissions: { actions: "write" },
+      ref: "refs/heads/main",
+      repository: "chikachow/cloudflare-workload-identity",
+      resourceOwner: "chikachow",
+      resourceRepository: "cloudflare-workload-identity-deploy",
+      workflowRef:
+        "chikachow/cloudflare-workload-identity/.github/workflows/run-cloudflare-workload-identity-deploy-update.yml@refs/heads/main",
+    },
+    {
+      events: ["workflow_dispatch"],
+      name: "cloudflare-workload-identity-deploy update",
+      permissions: { contents: "write", pull_requests: "write" },
+      ref: "refs/heads/main",
+      repository: "chikachow/cloudflare-workload-identity-deploy",
+      resourceOwner: "chikachow",
+      resourceRepository: "cloudflare-workload-identity-deploy",
+      workflowRef:
+        "chikachow/cloudflare-workload-identity-deploy/.github/workflows/update-cloudflare-workload-identity.yml@refs/heads/main",
+    },
+    {
+      events: ["schedule", "workflow_dispatch"],
+      name: "cloudflare-workload-identity-deploy pnpm-up",
+      permissions: { contents: "write", pull_requests: "write" },
+      ref: "refs/heads/main",
+      repository: "chikachow/cloudflare-workload-identity-deploy",
+      resourceOwner: "chikachow",
+      resourceRepository: "cloudflare-workload-identity-deploy",
+      workflowRef:
+        "chikachow/cloudflare-workload-identity-deploy/.github/workflows/pnpm-up.yml@refs/heads/main",
+    },
+    {
+      events: ["schedule", "workflow_dispatch"],
       name: "app-token-action pnpm-up",
       permissions: { contents: "write", pull_requests: "write" },
       ref: "refs/heads/main",
