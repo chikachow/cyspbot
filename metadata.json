@@ -6,8 +6,12 @@
   "checkpoints_count": 1,
   "files_touched": [
     "README.md",
+    "SECURITY.md",
     "docs/README.md",
-    "docs/deployment.md"
+    "docs/deployment.md",
+    "docs/implementation.md",
+    "docs/release.md",
+    "docs/service-contract.md"
   ],
   "sessions": [
     {
@@ -17,5 +21,12 @@
       "content_hash": "/0/content_hash.txt",
       "prompt": ""
     }
-  ]
+  ],
+  "token_usage": {
+    "input_tokens": 27269,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1008640,
+    "output_tokens": 3325,
+    "api_call_count": 29
+  }
 }

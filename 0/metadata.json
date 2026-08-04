@@ -3,32 +3,43 @@
   "checkpoint_id": "01KZ6FZP5J8B076R0FWTRAGSB1",
   "session_id": "019fccec-a876-75e1-bcf9-5c460287d2f1",
   "strategy": "manual-commit",
-  "created_at": "2026-08-04T13:53:04.830463Z",
+  "created_at": "2026-08-04T14:09:15.200524Z",
   "branch": "codex/clarify-doc-ownership",
   "checkpoints_count": 1,
   "files_touched": [
     "README.md",
+    "SECURITY.md",
     "docs/README.md",
-    "docs/deployment.md"
+    "docs/deployment.md",
+    "docs/implementation.md",
+    "docs/release.md",
+    "docs/service-contract.md"
   ],
   "agent": "Codex",
   "model": "gpt-5.6-sol",
   "turn_id": "905ec8f790df",
-  "checkpoint_transcript_start": 595,
-  "transcript_lines_at_start": 595,
-  "compact_transcript_start": 95,
+  "checkpoint_transcript_start": 676,
+  "transcript_lines_at_start": 676,
+  "compact_transcript_start": 110,
+  "token_usage": {
+    "input_tokens": 27269,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1008640,
+    "output_tokens": 3325,
+    "api_call_count": 29
+  },
   "session_metrics": {
     "turn_count": 1
   },
   "initial_attribution": {
-    "calculated_at": "2026-08-04T13:53:04.782189Z",
-    "agent_lines": 55,
-    "agent_removed": 194,
+    "calculated_at": "2026-08-04T14:09:15.152739Z",
+    "agent_lines": 140,
+    "agent_removed": 297,
     "human_added": 0,
     "human_modified": 0,
     "human_removed": 0,
-    "total_committed": 55,
-    "total_lines_changed": 249,
+    "total_committed": 140,
+    "total_lines_changed": 437,
     "agent_percentage": 100,
     "metric_version": 2
   }
