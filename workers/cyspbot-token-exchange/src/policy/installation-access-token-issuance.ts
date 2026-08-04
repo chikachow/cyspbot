@@ -4,10 +4,10 @@ import {
   resolveInstallationForRepository,
 } from "@cyspbot/github/app";
 import { GitHubApiError, GitHubApiTransportError } from "@cyspbot/github/http";
-import type { GitHubAppDependencies } from "@cyspbot/github/app";
+import type { GitHubAppDependencies, GitHubAppEnv } from "@cyspbot/github/app";
 import type { AuthenticatedContext } from "../authentication.ts";
 import type { InstallationAccessTokenRequest } from "../installation-access-token-request.ts";
-import type { TokenExchangeApplication } from "../token-exchange-application.ts";
+import type { TokenIssuancePolicy } from "./token-issuance-policy.ts";
 import {
   tokenIssuancePolicyPermits,
   tokenIssuancePolicySupportsRequestedPermissions,
@@ -27,27 +27,28 @@ export type InstallationAccessTokenIssuanceResult =
   | { ok: false; reason: InstallationAccessTokenIssuanceFailureReason };
 
 export async function issueInstallationAccessTokenForContext(
-  application: TokenExchangeApplication,
+  githubApp: GitHubAppEnv,
+  tokenIssuancePolicy: TokenIssuancePolicy,
   authenticationContext: AuthenticatedContext,
   installationAccessTokenRequest: InstallationAccessTokenRequest,
   dependencies: GitHubAppDependencies,
 ): Promise<InstallationAccessTokenIssuanceResult> {
   const { verifiedSubjectToken } = authenticationContext;
   const policyPermitted = tokenIssuancePolicyPermits(
-    application.tokenIssuancePolicy,
+    tokenIssuancePolicy,
     verifiedSubjectToken,
     installationAccessTokenRequest,
   );
 
   if (!policyPermitted) {
     const targetSupported = tokenIssuancePolicySupportsTarget(
-      application.tokenIssuancePolicy,
+      tokenIssuancePolicy,
       installationAccessTokenRequest,
     );
     const requestedPermissionsSupported =
       targetSupported &&
       tokenIssuancePolicySupportsRequestedPermissions(
-        application.tokenIssuancePolicy,
+        tokenIssuancePolicy,
         installationAccessTokenRequest,
       );
 
@@ -85,13 +86,13 @@ export async function issueInstallationAccessTokenForContext(
   try {
     const requestedResourceName = `${installationAccessTokenRequest.resource.owner}/${installationAccessTokenRequest.resource.repository}`;
     const targetInstallation = await resolveInstallationForRepository(
-      application.githubApp,
+      githubApp,
       requestedResourceName,
       dependencies,
     );
     targetInstallationId = targetInstallation.id;
     const installationAccessToken = await createInstallationAccessTokenForRepositoryName(
-      application.githubApp,
+      githubApp,
       targetInstallation.id,
       installationAccessTokenRequest.resource.repository,
       { ...installationAccessTokenRequest.permissions },

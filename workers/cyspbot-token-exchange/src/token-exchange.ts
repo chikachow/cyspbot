@@ -1,7 +1,8 @@
 import { jsonResponse } from "@cyspbot/http/problem-details";
 import { readRequestBodyUpTo } from "@cyspbot/http/request-body";
 import { normalizeInstallationAccessTokenRequest } from "./installation-access-token-request.ts";
-import type { TokenExchangeRequestRuntime } from "./dependencies.ts";
+import type { InstallationAccessTokenExchangeResult } from "./installation-access-token-exchange.ts";
+import type { InstallationAccessTokenRequest } from "./installation-access-token-request.ts";
 import type { InstallationAccessTokenIssuanceFailureReason } from "./policy/installation-access-token-issuance.ts";
 
 const maxTokenExchangeBodyBytes = 64 * 1024;
@@ -24,9 +25,19 @@ export function tokenExchangeMethodNotAllowedResponse(): Response {
   return oauthErrorResponse(400, "invalid_request");
 }
 
+interface TokenExchangeEndpointRuntime {
+  exchange(input: {
+    readonly request: Request;
+    readonly subjectToken: string;
+    readonly tokenRequest: InstallationAccessTokenRequest;
+  }): Promise<InstallationAccessTokenExchangeResult>;
+  now(): Date;
+  rateLimit(key: string): Promise<boolean>;
+}
+
 export async function handleTokenExchangeRequest(
   request: Request,
-  runtime: TokenExchangeRequestRuntime,
+  runtime: TokenExchangeEndpointRuntime,
 ): Promise<Response> {
   const rateLimit = await runtime.rateLimit(tokenExchangeRateLimitKey(request));
 
@@ -87,26 +98,20 @@ export async function handleTokenExchangeRequest(
     return oauthErrorResponse(400, tokenRequest.error);
   }
 
-  const authentication = await runtime.authenticateIdToken({
+  const result = await runtime.exchange({
     request,
     subjectToken,
+    tokenRequest: tokenRequest.tokenRequest,
   });
 
-  if (!authentication.ok) {
-    const failure = oauthErrorForAuthenticationFailure(authentication.reason);
-
-    return oauthErrorResponse(failure.status, failure.error, authentication.responseHeaders);
-  }
-
-  const result = await runtime.issueInstallationAccessToken(
-    authentication.context,
-    tokenRequest.tokenRequest,
-  );
-
   if (!result.ok) {
-    const failure = oauthErrorForIssuanceFailure(result.reason);
+    const failure = oauthErrorForTokenExchangeFailure(result);
 
-    return oauthErrorResponse(failure.status, failure.error);
+    return oauthErrorResponse(
+      failure.status,
+      failure.error,
+      result.stage === "authentication" ? { "www-authenticate": "Bearer" } : undefined,
+    );
   }
 
   return oauthTokenResponse({
@@ -270,9 +275,15 @@ function oauthErrorResponse(status: number, error: string, headers?: HeadersInit
   );
 }
 
-function oauthErrorForAuthenticationFailure(
-  reason: "invalid_token" | "oidc_internal_failure" | "oidc_provider_failure",
+function oauthErrorForTokenExchangeFailure(
+  failure: Extract<InstallationAccessTokenExchangeResult, { ok: false }>,
 ): { error: string; status: number } {
+  if (failure.stage !== "authentication") {
+    return oauthErrorForIssuanceFailure(failure.reason);
+  }
+
+  const { reason } = failure;
+
   switch (reason) {
     case "invalid_token":
       return { error: "invalid_request", status: 400 };

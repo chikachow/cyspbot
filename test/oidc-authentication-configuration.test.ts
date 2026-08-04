@@ -4,15 +4,15 @@ import { createFlyOidcProviderRegistration } from "../packages/oidc-provider-fly
 import {
   createGitHubRepositoryResource,
   type InstallationAccessTokenRequest,
-} from "@cyspbot/token-exchange/installation-access-token-request";
-import { createTokenExchangeOidcIdTokenAuthenticator } from "@cyspbot/token-exchange/oidc-authentication";
+} from "../workers/cyspbot-token-exchange/src/installation-access-token-request.ts";
+import { createTokenExchangeOidcIdTokenAuthenticator } from "../workers/cyspbot-token-exchange/src/oidc-authentication.ts";
 import {
   claimEquals,
   compileTokenIssuancePolicy,
   githubRepositoryResourceConstraint,
   oidcSubjectTokenConstraint,
   tokenIssuancePolicyPermits,
-} from "@cyspbot/token-exchange/policy/token-issuance-policy";
+} from "../workers/cyspbot-token-exchange/src/policy/token-issuance-policy.ts";
 import { fetchOidcRemoteDocumentResponseTestDouble } from "./support/oidc.ts";
 import { createOidcToken } from "./support/oidc-token.ts";
 import { testPrivateKeyPem } from "./support/rsa-test-key-pair.ts";

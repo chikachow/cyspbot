@@ -4,7 +4,7 @@ import type {
   OidcIdTokenAuthenticationResult,
   OidcIdTokenAuthenticator,
 } from "@cyspbot/oidc/id-token-authenticator";
-import { authenticateOidcIdToken } from "@cyspbot/token-exchange/authentication";
+import { authenticateOidcIdToken } from "../workers/cyspbot-token-exchange/src/authentication.ts";
 
 type AuthenticationFailure = Extract<OidcIdTokenAuthenticationResult, { ok: false }>;
 

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { configuredTokenIssuancePolicy } from "@cyspbot/token-exchange/policy/configured-token-issuance-policy";
-import { tokenIssuancePolicyPermits } from "@cyspbot/token-exchange/policy/token-issuance-policy";
-import type { GitHubInstallationPermissions } from "@cyspbot/token-exchange/installation-access-token-request";
+import { configuredTokenIssuancePolicy } from "../workers/cyspbot-token-exchange/src/policy/configured-token-issuance-policy.ts";
+import { tokenIssuancePolicyPermits } from "../workers/cyspbot-token-exchange/src/policy/token-issuance-policy.ts";
+import type { GitHubInstallationPermissions } from "../workers/cyspbot-token-exchange/src/installation-access-token-request.ts";
 import {
   configuredPermitStatementExpectations,
   requestForExpectation,

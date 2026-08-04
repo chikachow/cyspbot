@@ -12,7 +12,7 @@ export interface AuthenticatedContext {
   readonly verifiedSubjectToken: VerifiedSubjectToken;
 }
 
-type AuthenticateRequestFailureReason =
+export type OidcAuthenticationFailureReason =
   | "invalid_token"
   | "oidc_internal_failure"
   | "oidc_provider_failure";
@@ -21,8 +21,7 @@ interface AuthenticateRequestFailure {
   diagnosticCode?: string;
   ok: false;
   providerHttpStatus?: number;
-  reason: AuthenticateRequestFailureReason;
-  responseHeaders?: HeadersInit;
+  reason: OidcAuthenticationFailureReason;
 }
 
 interface AuthenticateRequestSuccess {
@@ -50,9 +49,6 @@ export async function authenticateOidcIdToken(
       ...diagnostics,
       ok: false,
       reason,
-      responseHeaders: {
-        "www-authenticate": "Bearer",
-      },
     };
   }
 
@@ -67,7 +63,7 @@ export async function authenticateOidcIdToken(
 
 function logAuthenticationFailure(
   request: Request,
-  reason: AuthenticateRequestFailureReason,
+  reason: OidcAuthenticationFailureReason,
   diagnostics: Pick<AuthenticateRequestFailure, "diagnosticCode" | "providerHttpStatus">,
 ): void {
   const url = new URL(request.url);
@@ -96,7 +92,7 @@ function authenticationFailureDiagnostics(
 
 function authenticationFailureReason(
   failure: OidcIdTokenAuthenticationFailure,
-): AuthenticateRequestFailureReason {
+): OidcAuthenticationFailureReason {
   if (failure.kind === "provider_unavailable") {
     return "oidc_provider_failure";
   }

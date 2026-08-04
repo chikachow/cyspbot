@@ -1,13 +1,10 @@
 import { createGitHubWebhookReceiverWorker } from "@cyspbot/github-webhook-receiver/worker";
-import { createTokenExchangeWorker } from "@cyspbot/token-exchange/worker";
-import type { GitHubWebhookReceiverDependencies } from "@cyspbot/github-webhook-receiver/github-webhooks/acceptance";
 import {
-  createTokenExchangeRequestRuntimeFactory,
-  defaultTokenExchangeWorkerDependencies,
-  type TokenExchangeRequestRuntime,
+  createTokenExchangeWorker,
   type TokenExchangeWorkerDependencies,
-} from "@cyspbot/token-exchange/dependencies";
-import { handleTokenExchangeRequest } from "@cyspbot/token-exchange/token-exchange";
+} from "@cyspbot/token-exchange";
+import type { GitHubWebhookReceiverDependencies } from "@cyspbot/github-webhook-receiver/github-webhooks/acceptance";
+import { configuredOidcProviderRegistrations } from "../../workers/cyspbot-token-exchange/src/configured-oidc-provider-registrations.ts";
 
 import { testNow } from "./constants.ts";
 import { fetchGitHubTestDouble } from "./github-api.ts";
@@ -25,17 +22,17 @@ export { testEnv };
 type TestDependencies = GitHubWebhookReceiverDependencies & TokenExchangeWorkerDependencies;
 type TestEnv = GitHubWebhookReceiverEnv & TokenExchangeEnv;
 
-const baseTestDependencies = {
-  ...defaultTokenExchangeWorkerDependencies,
+export const testTokenExchangeWorkerDependencies = {
   fetch: fetchTokenExchangeExternalTestDouble,
   now: () => testNow,
+  oidcProviderRegistrations: configuredOidcProviderRegistrations,
   tokenIssuancePolicy: testTokenIssuancePolicy,
 } satisfies TestDependencies;
 
-const tokenExchangeApp = createTokenExchangeWorker(baseTestDependencies);
-const createTestTokenExchangeRequestRuntime =
-  createTokenExchangeRequestRuntimeFactory(baseTestDependencies);
-const githubWebhookReceiverApp = createGitHubWebhookReceiverWorker(baseTestDependencies);
+const tokenExchangeApp = createTokenExchangeWorker(testTokenExchangeWorkerDependencies);
+const githubWebhookReceiverApp = createGitHubWebhookReceiverWorker(
+  testTokenExchangeWorkerDependencies,
+);
 
 export function fetchTokenExchange(
   input: RequestInfo | URL,
@@ -59,23 +56,12 @@ export function fetchTokenExchangeWithDependencies(
 ): Promise<Response> {
   return fetchWorkerWithApp(
     createTokenExchangeWorker({
-      ...baseTestDependencies,
+      ...testTokenExchangeWorkerDependencies,
       ...dependencies,
     }),
     input,
     init,
   );
-}
-
-export function fetchTokenExchangeWithRuntime(
-  input: RequestInfo | URL,
-  init: RequestInit | undefined,
-  runtime: Partial<TokenExchangeRequestRuntime>,
-): Promise<Response> {
-  return handleTokenExchangeRequest(new Request(input, init), {
-    ...createTestTokenExchangeRequestRuntime(testEnv),
-    ...runtime,
-  });
 }
 
 export function fetchGitHubWebhookReceiver(

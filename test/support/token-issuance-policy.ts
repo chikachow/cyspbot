@@ -5,7 +5,7 @@ import {
   compileTokenIssuancePolicy,
   githubRepositoryResourceConstraint,
   oidcSubjectTokenConstraint,
-} from "@cyspbot/token-exchange/policy/token-issuance-policy";
+} from "../../workers/cyspbot-token-exchange/src/policy/token-issuance-policy.ts";
 import { createVerifiedSubjectToken } from "./oidc.ts";
 
 import {

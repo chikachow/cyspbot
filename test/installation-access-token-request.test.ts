@@ -9,7 +9,7 @@ import {
   parseGitHubRepositoryResource,
   unionGitHubInstallationPermissions,
   type GitHubInstallationPermissionLevel,
-} from "@cyspbot/token-exchange/installation-access-token-request";
+} from "../workers/cyspbot-token-exchange/src/installation-access-token-request.ts";
 import {
   fixtureSourceResource,
   fixtureTargetResource,
