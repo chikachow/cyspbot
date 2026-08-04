@@ -4,11 +4,11 @@ import {
   authorizationHeaders,
   fetchTokenExchange,
   fetchTokenExchangeWithDependencies,
-  fetchTokenExchangeWithRuntime,
   fetchTokenExchangeWithEnv,
   githubInstallationAccessTokenType,
   testEnv,
   tokenExchangeRequestBody,
+  testTokenExchangeWorkerDependencies,
 } from "./support/worker.ts";
 import { fetchGitHubTestDouble } from "./support/github-api.ts";
 import { fetchOidcRemoteDocumentResponseTestDouble } from "./support/oidc.ts";
@@ -17,141 +17,14 @@ import {
   testSubjectConstraintMatchingVerifiedSubjectToken,
   testTokenIssuancePolicy,
 } from "./support/token-issuance-policy.ts";
-import { createTokenExchangeWorker } from "@cyspbot/token-exchange/worker";
-import { defaultTokenExchangeWorkerDependencies } from "@cyspbot/token-exchange/dependencies";
+import { createTokenExchangeWorker } from "@cyspbot/token-exchange";
 import {
   compileTokenIssuancePolicy,
   githubRepositoryResourceConstraint,
   oidcSubjectTokenConstraint,
-} from "@cyspbot/token-exchange/policy/token-issuance-policy";
+} from "../workers/cyspbot-token-exchange/src/policy/token-issuance-policy.ts";
 
 describe("cyspbot-token-exchange", () => {
-  it("short-circuits through the request runtime when rate limited", async () => {
-    const authenticateIdToken = vi.fn();
-    const issueInstallationAccessToken = vi.fn();
-
-    const response = await fetchTokenExchangeWithRuntime(
-      "https://example.test/token",
-      {
-        body: "not a form body",
-        headers: { "content-type": "application/x-www-form-urlencoded" },
-        method: "POST",
-      },
-      {
-        authenticateIdToken,
-        issueInstallationAccessToken,
-        rateLimit: async () => false,
-      },
-    );
-
-    expect(response.status).toBe(429);
-    expect(authenticateIdToken).not.toHaveBeenCalled();
-    expect(issueInstallationAccessToken).not.toHaveBeenCalled();
-  });
-
-  it("delegates authenticated context and normalized token request through the runtime", async () => {
-    const context = {
-      verificationEvidence: { resolvedKeyId: "test-key-1" },
-      verifiedSubjectToken: testSubjectConstraintMatchingVerifiedSubjectToken,
-    };
-    const authenticateIdToken = vi.fn(async () => ({ context, ok: true }) as const);
-    const issueInstallationAccessToken = vi.fn(async () => ({
-      expiresAt: "2026-05-24T00:01:00.000Z",
-      ok: true as const,
-      token: "runtime-test-token",
-    }));
-
-    const response = await fetchTokenExchangeWithRuntime(
-      "https://example.test/token",
-      {
-        body: await tokenExchangeRequestBody(),
-        headers: { "content-type": "application/x-www-form-urlencoded" },
-        method: "POST",
-      },
-      {
-        authenticateIdToken,
-        issueInstallationAccessToken,
-        now: () => new Date("2026-05-24T00:00:00.000Z"),
-      },
-    );
-
-    expect(authenticateIdToken).toHaveBeenCalledWith({
-      request: expect.any(Request),
-      subjectToken: expect.any(String),
-    });
-    expect(issueInstallationAccessToken).toHaveBeenCalledWith(
-      context,
-      expect.objectContaining({
-        permissions: { contents: "write", pull_requests: "write" },
-        resource: {
-          href: "https://api.github.com/repos/fixture-owner/fixture-source-repository",
-          owner: "fixture-owner",
-          repository: "fixture-source-repository",
-        },
-        scope: "contents:write pull_requests:write",
-      }),
-    );
-    await expect(response.json()).resolves.toMatchObject({
-      access_token: "runtime-test-token",
-      expires_in: 60,
-    });
-  });
-
-  it.each([
-    {
-      error: "invalid_request",
-      issuanceReason: "subject_token_unacceptable",
-      responseStatus: 400,
-    },
-    {
-      error: "invalid_target",
-      issuanceReason: "target_unsupported",
-      responseStatus: 400,
-    },
-    {
-      error: "invalid_scope",
-      issuanceReason: "requested_permissions_unsupported",
-      responseStatus: 400,
-    },
-    { error: "server_error", issuanceReason: "internal_failure", responseStatus: 500 },
-    { error: "server_error", issuanceReason: "upstream_failure", responseStatus: 502 },
-    {
-      error: "temporarily_unavailable",
-      issuanceReason: "upstream_unavailable",
-      responseStatus: 503,
-    },
-  ] as const)(
-    "maps $issuanceReason to cyspbot Token Endpoint $responseStatus $error",
-    async ({ error, issuanceReason, responseStatus }) => {
-      const response = await fetchTokenExchangeWithRuntime(
-        "https://example.test/token",
-        {
-          body: await tokenExchangeRequestBody(),
-          headers: { "content-type": "application/x-www-form-urlencoded" },
-          method: "POST",
-        },
-        {
-          authenticateIdToken: async () => ({
-            context: {
-              verificationEvidence: { resolvedKeyId: "test-key-1" },
-              verifiedSubjectToken: testSubjectConstraintMatchingVerifiedSubjectToken,
-            },
-            ok: true,
-          }),
-          issueInstallationAccessToken: async () => ({
-            ok: false,
-            reason: issuanceReason,
-          }),
-        },
-      );
-
-      expect(response.status).toBe(responseStatus);
-      expect(response.headers.get("cache-control")).toBe("no-store");
-      expect(response.headers.get("pragma")).toBe("no-cache");
-      await expect(response.json()).resolves.toEqual({ error });
-    },
-  );
-
   it("maps GitHub permission validation after policy approval to 500 server_error", async () => {
     const response = await fetchTokenExchangeWithDependencies(
       "https://example.test/token",
@@ -177,6 +50,85 @@ describe("cyspbot-token-exchange", () => {
 
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toEqual({ error: "server_error" });
+  });
+
+  it("maps rejected OIDC subject tokens to invalid_request with a Bearer challenge", async () => {
+    const body = new URLSearchParams(await tokenExchangeRequestBody());
+    body.set("subject_token", "not-a-jwt");
+
+    const response = await fetchTokenExchange("https://example.test/token", {
+      body,
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get("www-authenticate")).toBe("Bearer");
+    await expect(response.json()).resolves.toEqual({ error: "invalid_request" });
+  });
+
+  it("maps unavailable OIDC providers before GitHub issuance", async () => {
+    const githubRequests: string[] = [];
+    const response = await fetchTokenExchangeWithDependencies(
+      "https://example.test/token",
+      {
+        body: await tokenExchangeRequestBody(),
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        method: "POST",
+      },
+      {
+        fetch: async (input, init) => {
+          const request = new Request(input, init);
+
+          if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
+            return new Response("provider unavailable", { status: 503 });
+          }
+
+          githubRequests.push(request.url);
+          return fetchGitHubTestDouble(input, init);
+        },
+      },
+    );
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("www-authenticate")).toBe("Bearer");
+    await expect(response.json()).resolves.toEqual({ error: "temporarily_unavailable" });
+    expect(githubRequests).toEqual([]);
+  });
+
+  it("maps internal OIDC failures to server_error with a Bearer challenge", async () => {
+    const fetchExternal = vi.fn(testTokenExchangeWorkerDependencies.fetch);
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    try {
+      const response = await fetchTokenExchangeWithDependencies(
+        "https://example.test/token",
+        {
+          body: await tokenExchangeRequestBody(),
+          headers: { "content-type": "application/x-www-form-urlencoded" },
+          method: "POST",
+        },
+        {
+          fetch: fetchExternal,
+          now: () => {
+            throw new Error("test clock failure");
+          },
+        },
+      );
+
+      expect(response.status).toBe(500);
+      expect(response.headers.get("www-authenticate")).toBe("Bearer");
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      expect(response.headers.get("pragma")).toBe("no-cache");
+      await expect(response.json()).resolves.toEqual({ error: "server_error" });
+      expect(fetchExternal).not.toHaveBeenCalled();
+      expect(consoleWarn).toHaveBeenCalledWith(
+        "OIDC authentication failed",
+        expect.objectContaining({ reason: "oidc_internal_failure" }),
+      );
+    } finally {
+      consoleWarn.mockRestore();
+    }
   });
 
   it("does not expose the removed claims endpoint", async () => {
@@ -287,7 +239,7 @@ describe("cyspbot-token-exchange", () => {
         : fetchGitHubTestDouble(input, init);
     });
     const app = createTokenExchangeWorker({
-      ...defaultTokenExchangeWorkerDependencies,
+      ...testTokenExchangeWorkerDependencies,
       fetch: sharedFetch,
       now: () => testNow,
       tokenIssuancePolicy: testTokenIssuancePolicy,
@@ -701,84 +653,6 @@ describe("cyspbot-token-exchange", () => {
     });
   });
 
-  it("preserves authentication failure response headers", async () => {
-    const response = await fetchTokenExchangeWithRuntime(
-      "https://example.test/token",
-      {
-        body: await tokenExchangeRequestBody(),
-        headers: {
-          "content-type": "application/x-www-form-urlencoded",
-        },
-        method: "POST",
-      },
-      {
-        authenticateIdToken: async () => ({
-          ok: false,
-          reason: "invalid_token",
-          responseHeaders: {
-            "www-authenticate": "Bearer",
-          },
-        }),
-      },
-    );
-
-    expect(response.status).toBe(400);
-    expect(response.headers.get("www-authenticate")).toBe("Bearer");
-    expect(response.headers.get("cache-control")).toBe("no-store");
-    expect(response.headers.get("pragma")).toBe("no-cache");
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_request",
-    });
-  });
-
-  it("maps oidc provider failures to temporarily unavailable", async () => {
-    const response = await fetchTokenExchangeWithRuntime(
-      "https://example.test/token",
-      {
-        body: await tokenExchangeRequestBody(),
-        headers: {
-          "content-type": "application/x-www-form-urlencoded",
-        },
-        method: "POST",
-      },
-      {
-        authenticateIdToken: async () => ({
-          ok: false,
-          reason: "oidc_provider_failure",
-        }),
-      },
-    );
-
-    expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toEqual({
-      error: "temporarily_unavailable",
-    });
-  });
-
-  it("maps internal OIDC authentication failures to server errors", async () => {
-    const response = await fetchTokenExchangeWithRuntime(
-      "https://example.test/token",
-      {
-        body: await tokenExchangeRequestBody(),
-        headers: {
-          "content-type": "application/x-www-form-urlencoded",
-        },
-        method: "POST",
-      },
-      {
-        authenticateIdToken: async () => ({
-          ok: false,
-          reason: "oidc_internal_failure",
-        }),
-      },
-    );
-
-    expect(response.status).toBe(500);
-    await expect(response.json()).resolves.toEqual({
-      error: "server_error",
-    });
-  });
-
   it("rejects token exchange requests with non-empty audience parameters", async () => {
     const response = await fetchTokenExchange("https://example.test/token", {
       body: await tokenExchangeRequestBody({
@@ -1054,39 +928,6 @@ describe("cyspbot-token-exchange", () => {
   });
 
   it.each([
-    ["omitted", null],
-    ["empty", ""],
-  ])("rejects an %s target resource before authentication", async (_caseName, resource) => {
-    const authenticateIdToken = vi.fn();
-    const issueInstallationAccessToken = vi.fn();
-    const response = await fetchTokenExchangeWithRuntime(
-      "https://example.test/token",
-      {
-        body: await tokenExchangeRequestBody({
-          form: {
-            resource,
-          },
-        }),
-        headers: {
-          "content-type": "application/x-www-form-urlencoded",
-        },
-        method: "POST",
-      },
-      {
-        authenticateIdToken,
-        issueInstallationAccessToken,
-      },
-    );
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_target",
-    });
-    expect(authenticateIdToken).not.toHaveBeenCalled();
-    expect(issueInstallationAccessToken).not.toHaveBeenCalled();
-  });
-
-  it.each([
     ["whitespace-only scope", { scope: "  " }, "invalid_scope"],
     ["padded scope", { scope: " actions:write " }, "invalid_scope"],
     ["repeated-space scope", { scope: "contents:write  pull_requests:write" }, "invalid_scope"],
@@ -1132,28 +973,34 @@ describe("cyspbot-token-exchange", () => {
   });
 
   it("rate limits token exchange requests before parsing the request body", async () => {
-    const response = await fetchTokenExchangeWithEnv(
-      "https://example.test/token",
-      {
+    const fetchExternal = vi.fn<typeof fetch>();
+    const worker = createTokenExchangeWorker({
+      ...testTokenExchangeWorkerDependencies,
+      fetch: fetchExternal,
+    });
+    const response = await worker.fetch?.(
+      new Request("https://example.test/token", {
         body: "not a form body",
         headers: {
           "content-type": "application/x-www-form-urlencoded",
         },
         method: "POST",
-      },
+      }) as Parameters<NonNullable<typeof worker.fetch>>[0],
       {
         ...testEnv,
         TOKEN_EXCHANGE_RATE_LIMIT: {
           limit: async () => ({ success: false }),
         },
       },
+      {} as ExecutionContext,
     );
 
-    expect(response.status).toBe(429);
-    expect(response.headers.get("cache-control")).toBe("no-store");
-    await expect(response.json()).resolves.toEqual({
+    expect(response?.status).toBe(429);
+    expect(response?.headers.get("cache-control")).toBe("no-store");
+    await expect(response?.json()).resolves.toEqual({
       error: "temporarily_unavailable",
     });
+    expect(fetchExternal).not.toHaveBeenCalled();
   });
 
   it("rejects oversized token exchange request bodies", async () => {

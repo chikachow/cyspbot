@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { createTokenExchangeWorker } from "@cyspbot/token-exchange/worker";
-import { defaultTokenExchangeWorkerDependencies } from "@cyspbot/token-exchange/dependencies";
+import { createTokenExchangeWorker } from "@cyspbot/token-exchange";
+import { configuredOidcProviderRegistrations } from "../workers/cyspbot-token-exchange/src/configured-oidc-provider-registrations.ts";
+import { configuredTokenIssuancePolicy } from "../workers/cyspbot-token-exchange/src/policy/configured-token-issuance-policy.ts";
 import { githubInstallationAccessTokenType, testNow } from "./support/constants.ts";
 import {
   fetchOidcRemoteDocumentResponseTestDouble,
@@ -110,9 +111,10 @@ function createProductionTokenExchangeFixture() {
     });
   };
   const worker = createTokenExchangeWorker({
-    ...defaultTokenExchangeWorkerDependencies,
     fetch: fetchExternal,
     now: () => testNow,
+    oidcProviderRegistrations: configuredOidcProviderRegistrations,
+    tokenIssuancePolicy: configuredTokenIssuancePolicy,
   });
 
   return {

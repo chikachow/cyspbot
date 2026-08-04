@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { VerifiedSubjectToken } from "@cyspbot/token-exchange/authentication";
+import type { VerifiedSubjectToken } from "../workers/cyspbot-token-exchange/src/authentication.ts";
 
 import { issueInstallationAccessTokenForContext } from "../workers/cyspbot-token-exchange/src/policy/installation-access-token-issuance.ts";
 import { testNow, testRepository, testInstallationId } from "./support/constants.ts";
@@ -11,7 +11,7 @@ import {
   compileTokenIssuancePolicy,
   githubRepositoryResourceConstraint,
   oidcSubjectTokenConstraint,
-} from "@cyspbot/token-exchange/policy/token-issuance-policy";
+} from "../workers/cyspbot-token-exchange/src/policy/token-issuance-policy.ts";
 
 const application = {
   githubApp: testEnv,
@@ -117,7 +117,8 @@ describe("Installation Access Token Issuance", () => {
 
     await expect(
       issueInstallationAccessTokenForContext(
-        { ...application, tokenIssuancePolicy: policy },
+        application.githubApp,
+        policy,
         { verifiedSubjectToken, verificationEvidence },
         {
           ...tokenRequest,
@@ -306,10 +307,8 @@ describe("Installation Access Token Issuance", () => {
 
     await expect(
       issueInstallationAccessTokenForContext(
-        {
-          ...application,
-          githubApp: { ...application.githubApp, GITHUB_APP_PRIVATE_KEY: privateKey },
-        },
+        { ...application.githubApp, GITHUB_APP_PRIVATE_KEY: privateKey },
+        application.tokenIssuancePolicy,
         { verifiedSubjectToken, verificationEvidence },
         tokenRequest,
         { fetch: fetchGitHub, now: () => testNow },
@@ -527,7 +526,8 @@ describe("Installation Access Token Issuance", () => {
 
     await expect(
       issueInstallationAccessTokenForContext(
-        application,
+        application.githubApp,
+        application.tokenIssuancePolicy,
         {
           verifiedSubjectToken: {
             ...verifiedSubjectToken,
@@ -600,10 +600,11 @@ function expectLogsNotToContainGitHubAppCredentials(logCalls: unknown): void {
 }
 
 function issueInstallationAccessToken(
-  dependencies: Omit<Parameters<typeof issueInstallationAccessTokenForContext>[3], "now">,
+  dependencies: Omit<Parameters<typeof issueInstallationAccessTokenForContext>[4], "now">,
 ) {
   return issueInstallationAccessTokenForContext(
-    application,
+    application.githubApp,
+    application.tokenIssuancePolicy,
     { verifiedSubjectToken, verificationEvidence },
     tokenRequest,
     { ...dependencies, now: () => testNow },

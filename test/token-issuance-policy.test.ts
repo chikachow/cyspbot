@@ -10,7 +10,7 @@ import {
   unionGitHubInstallationPermissions,
   type GitHubInstallationPermissions,
   type InstallationAccessTokenRequest,
-} from "@cyspbot/token-exchange/installation-access-token-request";
+} from "../workers/cyspbot-token-exchange/src/installation-access-token-request.ts";
 import {
   claimEquals,
   claimOneOf,
@@ -22,8 +22,8 @@ import {
   tokenIssuancePolicySupportsRequestedPermissions,
   tokenIssuancePolicySupportsTarget,
   type PermitStatementDefinition,
-} from "@cyspbot/token-exchange/policy/token-issuance-policy";
-import type { VerifiedSubjectToken } from "@cyspbot/token-exchange/authentication";
+} from "../workers/cyspbot-token-exchange/src/policy/token-issuance-policy.ts";
+import type { VerifiedSubjectToken } from "../workers/cyspbot-token-exchange/src/authentication.ts";
 import { createVerifiedSubjectToken } from "./support/oidc.ts";
 
 const parsedIssuer = parseOidcIssuerIdentifier("https://issuer.example");

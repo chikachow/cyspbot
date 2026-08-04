@@ -1,5 +1,5 @@
 import { parseOidcIssuerIdentifier } from "@cyspbot/oidc/provider-registration";
-import type { VerifiedSubjectToken } from "@cyspbot/token-exchange/authentication";
+import type { VerifiedSubjectToken } from "../../workers/cyspbot-token-exchange/src/authentication.ts";
 import {
   createOidcToken,
   createTokenExchangeRequestBody,

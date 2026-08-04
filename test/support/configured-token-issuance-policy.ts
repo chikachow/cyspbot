@@ -3,8 +3,8 @@ import {
   createGitHubRepositoryResource,
   type GitHubInstallationPermissions,
   type InstallationAccessTokenRequest,
-} from "@cyspbot/token-exchange/installation-access-token-request";
-import type { VerifiedSubjectToken } from "@cyspbot/token-exchange/authentication";
+} from "../../workers/cyspbot-token-exchange/src/installation-access-token-request.ts";
+import type { VerifiedSubjectToken } from "../../workers/cyspbot-token-exchange/src/authentication.ts";
 import { createVerifiedSubjectToken } from "./oidc.ts";
 
 type GitHubActionsWorkflowFileName = `${string}.${"yml" | "yaml"}`;

@@ -4,17 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./authentication": "./src/authentication.ts",
-    "./configured-oidc-provider-registrations": "./src/configured-oidc-provider-registrations.ts",
-    "./dependencies": "./src/dependencies.ts",
-    "./installation-access-token-request": "./src/installation-access-token-request.ts",
-    "./oidc-authentication": "./src/oidc-authentication.ts",
-    "./policy/configured-token-issuance-policy": "./src/policy/configured-token-issuance-policy.ts",
-    "./policy/token-issuance-policy": "./src/policy/token-issuance-policy.ts",
-    "./token-exchange-application": "./src/token-exchange-application.ts",
-    "./token-exchange": "./src/token-exchange.ts",
-    "./worker": "./src/worker.ts"
+    ".": "./src/index.ts"
   },
   "scripts": {
     "check": "node --run env-types:check && node --run typecheck && node --run deploy:dry-run",

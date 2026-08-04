@@ -4,7 +4,7 @@ import {
   configuredOidcProviderRegistrations,
   githubActionsOidcProviderRegistration,
   googleServiceAccountOidcProviderRegistration,
-} from "@cyspbot/token-exchange/configured-oidc-provider-registrations";
+} from "../workers/cyspbot-token-exchange/src/configured-oidc-provider-registrations.ts";
 
 describe("configured OIDC Provider Registrations", () => {
   it("contains exactly the checked-in GitHub Actions and Google registrations", () => {

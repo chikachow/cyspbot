@@ -1,5 +1,5 @@
-import { createTokenExchangeWorker } from "./worker.ts";
+export { createTokenExchangeWorker, type TokenExchangeWorkerDependencies } from "./worker.ts";
 
-export { createTokenExchangeWorker };
+import { createTokenExchangeWorker } from "./worker.ts";
 
 export default createTokenExchangeWorker();
