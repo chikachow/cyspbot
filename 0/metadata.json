@@ -1,0 +1,63 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "01KZ6GMDZPDT0SGFQMDY6F9ZV7",
+  "session_id": "019fccec-a876-75e1-bcf9-5c460287d2f1",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-04T13:50:27.531876Z",
+  "branch": "codex/deepen-token-exchange",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "docs/implementation.md",
+    "test/configured-oidc-provider-registrations.test.ts",
+    "test/configured-token-issuance-policy.test.ts",
+    "test/installation-access-token-issuance.test.ts",
+    "test/installation-access-token-request.test.ts",
+    "test/oidc-authentication-configuration.test.ts",
+    "test/oidc-authentication.test.ts",
+    "test/production-token-exchange-composition.test.ts",
+    "test/support/configured-token-issuance-policy.ts",
+    "test/support/installation-access-token-request.ts",
+    "test/support/oidc.ts",
+    "test/support/token-issuance-policy.ts",
+    "test/support/worker.ts",
+    "test/token-exchange-worker.test.ts",
+    "test/token-issuance-policy.test.ts",
+    "workers/cyspbot-token-exchange/package.json",
+    "workers/cyspbot-token-exchange/src/authentication.ts",
+    "workers/cyspbot-token-exchange/src/dependencies.ts",
+    "workers/cyspbot-token-exchange/src/index.ts",
+    "workers/cyspbot-token-exchange/src/installation-access-token-exchange.ts",
+    "workers/cyspbot-token-exchange/src/policy/installation-access-token-issuance.ts",
+    "workers/cyspbot-token-exchange/src/token-exchange-application.ts",
+    "workers/cyspbot-token-exchange/src/token-exchange.ts",
+    "workers/cyspbot-token-exchange/src/worker.ts"
+  ],
+  "agent": "Codex",
+  "model": "gpt-5.6-sol",
+  "turn_id": "905ec8f790df",
+  "checkpoint_transcript_start": 500,
+  "transcript_lines_at_start": 500,
+  "compact_transcript_start": 82,
+  "token_usage": {
+    "input_tokens": 11561,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2523136,
+    "output_tokens": 1744,
+    "api_call_count": 12
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-04T13:50:27.491228Z",
+    "agent_lines": 301,
+    "agent_removed": 418,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 301,
+    "total_lines_changed": 719,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}

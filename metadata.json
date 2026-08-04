@@ -1,0 +1,49 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "01KZ6GMDZPDT0SGFQMDY6F9ZV7",
+  "strategy": "manual-commit",
+  "branch": "codex/deepen-token-exchange",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "docs/implementation.md",
+    "test/configured-oidc-provider-registrations.test.ts",
+    "test/configured-token-issuance-policy.test.ts",
+    "test/installation-access-token-issuance.test.ts",
+    "test/installation-access-token-request.test.ts",
+    "test/oidc-authentication-configuration.test.ts",
+    "test/oidc-authentication.test.ts",
+    "test/production-token-exchange-composition.test.ts",
+    "test/support/configured-token-issuance-policy.ts",
+    "test/support/installation-access-token-request.ts",
+    "test/support/oidc.ts",
+    "test/support/token-issuance-policy.ts",
+    "test/support/worker.ts",
+    "test/token-exchange-worker.test.ts",
+    "test/token-issuance-policy.test.ts",
+    "workers/cyspbot-token-exchange/package.json",
+    "workers/cyspbot-token-exchange/src/authentication.ts",
+    "workers/cyspbot-token-exchange/src/dependencies.ts",
+    "workers/cyspbot-token-exchange/src/index.ts",
+    "workers/cyspbot-token-exchange/src/installation-access-token-exchange.ts",
+    "workers/cyspbot-token-exchange/src/policy/installation-access-token-issuance.ts",
+    "workers/cyspbot-token-exchange/src/token-exchange-application.ts",
+    "workers/cyspbot-token-exchange/src/token-exchange.ts",
+    "workers/cyspbot-token-exchange/src/worker.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 11561,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2523136,
+    "output_tokens": 1744,
+    "api_call_count": 12
+  }
+}
