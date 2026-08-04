@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "01KZ6GR1YPET7M5BT2HPQSQXCP",
+  "strategy": "manual-commit",
+  "branch": "codex/allow-cloudflare-workload-identity-promotion",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "test/configured-token-issuance-policy.test.ts",
+    "test/support/configured-token-issuance-policy.ts",
+    "workers/cyspbot-token-exchange/src/policy/configured-token-issuance-policy.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 4085,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 859136,
+    "output_tokens": 990,
+    "api_call_count": 6
+  }
+}

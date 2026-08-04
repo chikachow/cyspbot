@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "01KZ6GR1YPET7M5BT2HPQSQXCP",
+  "session_id": "019fccec-a876-75e1-bcf9-5c460287d2f1",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-04T13:52:26.442612Z",
+  "branch": "codex/allow-cloudflare-workload-identity-promotion",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "test/configured-token-issuance-policy.test.ts",
+    "test/support/configured-token-issuance-policy.ts",
+    "workers/cyspbot-token-exchange/src/policy/configured-token-issuance-policy.ts"
+  ],
+  "agent": "Codex",
+  "model": "gpt-5.6-sol",
+  "turn_id": "905ec8f790df",
+  "checkpoint_transcript_start": 560,
+  "transcript_lines_at_start": 560,
+  "compact_transcript_start": 93,
+  "token_usage": {
+    "input_tokens": 4085,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 859136,
+    "output_tokens": 990,
+    "api_call_count": 6
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-04T13:52:26.393854Z",
+    "agent_lines": 52,
+    "agent_removed": 8,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 52,
+    "total_lines_changed": 60,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}
