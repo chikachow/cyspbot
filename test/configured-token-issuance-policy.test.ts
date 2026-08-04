@@ -28,10 +28,10 @@ describe("configured Token Issuance Policy", () => {
       }
     }
 
-    expect(scenarios).toBe(17);
+    expect(scenarios).toBe(24);
   });
 
-  it("matches the accepted ordered-coverage matrix for all 234 requests", () => {
+  it("matches the accepted ordered-coverage matrix for all 338 requests", () => {
     let scenarios = 0;
 
     for (const scenario of configuredTokenIssuancePolicyScenarios) {
@@ -50,7 +50,7 @@ describe("configured Token Issuance Policy", () => {
       }
     }
 
-    expect(scenarios).toBe(9 * 26);
+    expect(scenarios).toBe(13 * 26);
   });
 
   it("does not permit issuer, selected-Claim, Claim-type, or Repository Resource mutations", () => {
@@ -114,7 +114,7 @@ describe("configured Token Issuance Policy", () => {
       scenarios += 1;
     }
 
-    expect(scenarios).toBe(9 * (5 * 7 + 2 + 1));
+    expect(scenarios).toBe(13 * (5 * 7 + 2 + 1));
   });
 
   it("permits every legacy, immutable, customized, missing, and malformed sub form", () => {
