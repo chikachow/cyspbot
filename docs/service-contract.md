@@ -109,24 +109,29 @@ Request, authentication, policy, and service-level failures map as follows:
 After Token Issuance Policy permits a request, issuance failures have this
 complete observable mapping:
 
-| Issuance condition                            | HTTP status | Error code                |
-| --------------------------------------------- | ----------- | ------------------------- |
-| missing or invalid service-owned private key  | `500`       | `server_error`            |
-| request rejected with `400`                   | `500`       | `server_error`            |
-| service-owned credentials rejected with `401` | `500`       | `server_error`            |
-| validation rejected with `422`                | `500`       | `server_error`            |
-| non-rate-limit `403`                          | `502`       | `server_error`            |
-| `404`                                         | `502`       | `server_error`            |
-| rate-limit `403` or `429`                     | `503`       | `temporarily_unavailable` |
-| `503`                                         | `503`       | `temporarily_unavailable` |
-| transport failure                             | `503`       | `temporarily_unavailable` |
-| malformed or invalid successful response      | `502`       | `server_error`            |
-| other GitHub `5xx`                            | `502`       | `server_error`            |
-| otherwise unclassified issuance failure       | `500`       | `server_error`            |
+| Issuance condition                                          | HTTP status | Error code                |
+| ----------------------------------------------------------- | ----------- | ------------------------- |
+| missing or invalid service-owned private key                | `500`       | `server_error`            |
+| request rejected with `400`                                 | `500`       | `server_error`            |
+| service-owned credentials rejected with `401`               | `500`       | `server_error`            |
+| validation rejected with `422`                              | `500`       | `server_error`            |
+| non-rate-limit `403`                                        | `502`       | `server_error`            |
+| `404`                                                       | `502`       | `server_error`            |
+| rate-limit `403` or `429`                                   | `503`       | `temporarily_unavailable` |
+| `503`                                                       | `503`       | `temporarily_unavailable` |
+| transport failure                                           | `503`       | `temporarily_unavailable` |
+| malformed, schema-invalid, or oversized successful response | `502`       | `server_error`            |
+| other GitHub `5xx`                                          | `502`       | `server_error`            |
+| otherwise unclassified issuance failure                     | `500`       | `server_error`            |
 
 The [GitHub API Failure Classification
 decision](decisions/github-api-failure-classification.md) records the rationale,
 rate-limit evidence, and sanitization boundary behind this normative mapping.
+
+For the small installation-resolution and installation-token documents cyspbot
+consumes, a successful GitHub response body is limited to `64 KiB`. A larger
+upstream document is an invalid successful representation and follows the
+`502` mapping above; it is not derived from a Token Exchange Client parameter.
 
 OpenID Provider Configuration or JWK Set unavailability means cyspbot cannot obtain validated OpenID Provider Metadata or a usable JWK Set: network failures, timeouts, non-200 responses, unexpected media types, oversized responses, malformed JSON or shape, an issuer mismatch, an invalid `jwks_uri`, incompatible advertised algorithms, an empty or wholly incompatible JWK Set, or ambiguous provider key material. Bounded last-known-good OpenID Provider Metadata or a JWK Set may be used according to documented cache controls. Responses marked [`Cache-Control: no-cache`](https://www.rfc-editor.org/rfc/rfc9111#section-5.2.2.4) require successful revalidation before reuse and are never used as stale fallback after a failed revalidation. ID Tokens whose protected header names a `kid` absent from an otherwise usable JWK Set are invalid subject tokens and return `400 {"error":"invalid_request"}` because the protected header is part of the Client-presented token.
 

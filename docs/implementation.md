@@ -117,11 +117,12 @@ The issuance boundary does not infer an invalid OAuth target from an ambiguous
 GitHub status. Missing or invalid local GitHub App private-key material and
 GitHub 401 are treated as service-owned failures. GitHub 422 validation after
 policy approval is also a service/configuration failure, rather than
-`invalid_scope`. GitHub 403 and 404, and malformed or schema-invalid successful
-GitHub responses, are conservatively upstream failures; transport failures,
+`invalid_scope`. GitHub 403 and 404, and malformed, schema-invalid, or oversized
+successful GitHub responses, are conservatively upstream failures; transport failures,
 GitHub 503 responses, and 403 or 429 rate-limit responses are upstream
 unavailability. Successful response bodies are validated against the schema
-required by each GitHub operation. Only policy's resource-support query produces
+required by each GitHub operation and limited to `64 KiB`; an oversized body is
+therefore an invalid upstream representation. Only policy's resource-support query produces
 `target_unsupported`. The durable rationale and complete response mapping are
 recorded in the [GitHub API Failure Classification decision](decisions/github-api-failure-classification.md).
 
