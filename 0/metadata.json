@@ -3,54 +3,44 @@
   "checkpoint_id": "01KZ6FZF72EEZSEVD4DB7DQ5D7",
   "session_id": "019fccec-a876-75e1-bcf9-5c460287d2f1",
   "strategy": "manual-commit",
-  "created_at": "2026-08-04T13:39:00.599441Z",
+  "created_at": "2026-08-04T13:57:43.871389Z",
   "branch": "codex/harden-github-http",
   "checkpoints_count": 1,
   "files_touched": [
+    "docs/implementation.md",
+    "docs/service-contract.md",
     "packages/github/src/app.ts",
     "packages/github/src/http.ts",
-    "test/github-app.test.ts"
+    "test/github-app.test.ts",
+    "test/installation-access-token-issuance.test.ts",
+    "workers/cyspbot-token-exchange/src/policy/installation-access-token-issuance.ts"
   ],
   "agent": "Codex",
   "model": "gpt-5.6-sol",
   "turn_id": "905ec8f790df",
-  "compact_transcript_start": 0,
+  "checkpoint_transcript_start": 595,
+  "transcript_lines_at_start": 595,
+  "compact_transcript_start": 95,
   "token_usage": {
-    "input_tokens": 209691,
+    "input_tokens": 13696,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 7983360,
-    "output_tokens": 26663,
-    "api_call_count": 60
+    "cache_read_tokens": 415232,
+    "output_tokens": 1089,
+    "api_call_count": 16
   },
   "session_metrics": {
     "turn_count": 1
   },
   "initial_attribution": {
-    "calculated_at": "2026-08-04T13:39:00.56262Z",
-    "agent_lines": 78,
-    "agent_removed": 12,
+    "calculated_at": "2026-08-04T13:57:43.823841Z",
+    "agent_lines": 120,
+    "agent_removed": 42,
     "human_added": 0,
     "human_modified": 0,
     "human_removed": 0,
-    "total_committed": 78,
-    "total_lines_changed": 90,
+    "total_committed": 120,
+    "total_lines_changed": 162,
     "agent_percentage": 100,
     "metric_version": 2
-  },
-  "prompt_attributions": [
-    {
-      "checkpoint_number": 1,
-      "user_lines_added": 751,
-      "user_lines_removed": 0,
-      "agent_lines_added": 0,
-      "agent_lines_removed": 0,
-      "user_added_per_file": {
-        ".codex/config.toml": 3,
-        ".codex/hooks.json": 52,
-        "docs/research/fly-issuer-single-organization-design.md": 424,
-        "docs/research/oidc-issuer-refactoring-extraction.md": 83,
-        "docs/research/typescript-7-migration.md": 189
-      }
-    }
-  ]
+  }
 }
