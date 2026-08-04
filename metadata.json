@@ -1,0 +1,50 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "01KZ6GEKM55G00YSAK83ZBD0PJ",
+  "strategy": "manual-commit",
+  "branch": "codex/consolidate-oidc-providers",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "docs/implementation.md",
+    "package.json",
+    "packages/oidc-provider-fly/package.json",
+    "packages/oidc-provider-fly/src/provider-registration.ts",
+    "packages/oidc-provider-fly/test/provider-registration.test.ts",
+    "packages/oidc-provider-github-actions/package.json",
+    "packages/oidc-provider-github-actions/src/provider-registration.ts",
+    "packages/oidc-provider-github-actions/test/provider-registration.test.ts",
+    "packages/oidc-provider-google-service-account/package.json",
+    "packages/oidc-provider-google-service-account/src/provider-registration.ts",
+    "packages/oidc-provider-google-service-account/test/provider-registration.test.ts",
+    "packages/oidc-providers/package.json",
+    "packages/oidc-providers/src/fly.ts",
+    "packages/oidc-providers/src/github-actions.ts",
+    "packages/oidc-providers/src/google-service-account.ts",
+    "packages/oidc-providers/src/index.ts",
+    "packages/oidc-providers/test/fly.test.ts",
+    "packages/oidc-providers/test/github-actions.test.ts",
+    "packages/oidc-providers/test/google-service-account.test.ts",
+    "pnpm-lock.yaml",
+    "test/oidc-authentication-configuration.test.ts",
+    "test/support/configured-token-issuance-policy.ts",
+    "test/support/token-issuance-policy.ts",
+    "workers/cyspbot-token-exchange/package.json",
+    "workers/cyspbot-token-exchange/src/configured-oidc-provider-registrations.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 35892,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 4787200,
+    "output_tokens": 3110,
+    "api_call_count": 25
+  }
+}
