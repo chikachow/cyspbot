@@ -5,184 +5,129 @@ import {
   compileTokenIssuancePolicy,
   githubRepositoryResourceConstraint,
   oidcSubjectTokenConstraint,
-  type ClaimPredicateDefinition,
   type PermitStatementDefinition,
 } from "./token-issuance-policy.ts";
 
-export const configuredTokenIssuancePolicy = compileTokenIssuancePolicy([
-  githubActionsPermitStatement({
-    eventNames: ["schedule", "workflow_dispatch"],
-    permissions: { contents: "write", pull_requests: "write" },
-    ref: "refs/heads/main",
-    refType: "branch",
-    repository: "chikachow/cyspbot",
-    resourceOwner: "chikachow",
-    resourceRepository: "cyspbot",
-    workflowRef: "chikachow/cyspbot/.github/workflows/pnpm-up.yml@refs/heads/main",
-  }),
-  githubActionsPermitStatement({
-    eventNames: ["workflow_run", "workflow_dispatch"],
-    permissions: { actions: "write" },
-    ref: "refs/heads/main",
-    refType: "branch",
-    repository: "chikachow/cyspbot",
-    resourceOwner: "chikachow",
-    resourceRepository: "cyspbot-deploy",
-    workflowRef:
-      "chikachow/cyspbot/.github/workflows/run-cyspbot-deploy-update.yml@refs/heads/main",
-  }),
-  githubActionsPermitStatement({
-    eventNames: ["workflow_dispatch"],
-    permissions: { contents: "write", pull_requests: "write" },
-    ref: "refs/heads/main",
-    refType: "branch",
-    repository: "chikachow/cyspbot-deploy",
-    resourceOwner: "chikachow",
-    resourceRepository: "cyspbot-deploy",
-    workflowRef: "chikachow/cyspbot-deploy/.github/workflows/update-cyspbot.yml@refs/heads/main",
-  }),
-  githubActionsPermitStatement({
-    eventNames: ["schedule", "workflow_dispatch"],
-    permissions: { contents: "write", pull_requests: "write" },
-    ref: "refs/heads/main",
-    refType: "branch",
-    repository: "chikachow/cloudflare-workload-identity",
-    resourceOwner: "chikachow",
-    resourceRepository: "cloudflare-workload-identity",
-    workflowRef:
-      "chikachow/cloudflare-workload-identity/.github/workflows/pnpm-up.yml@refs/heads/main",
-  }),
-  githubActionsPermitStatement({
-    eventNames: ["workflow_run", "workflow_dispatch"],
-    permissions: { actions: "write" },
-    ref: "refs/heads/main",
-    refType: "branch",
-    repository: "chikachow/cloudflare-workload-identity",
-    resourceOwner: "chikachow",
-    resourceRepository: "cloudflare-workload-identity-deploy",
-    workflowRef:
-      "chikachow/cloudflare-workload-identity/.github/workflows/run-cloudflare-workload-identity-deploy-update.yml@refs/heads/main",
-  }),
-  githubActionsPermitStatement({
-    eventNames: ["workflow_dispatch"],
-    permissions: { contents: "write", pull_requests: "write" },
-    ref: "refs/heads/main",
-    refType: "branch",
-    repository: "chikachow/cloudflare-workload-identity-deploy",
-    resourceOwner: "chikachow",
-    resourceRepository: "cloudflare-workload-identity-deploy",
-    workflowRef:
-      "chikachow/cloudflare-workload-identity-deploy/.github/workflows/update-cloudflare-workload-identity.yml@refs/heads/main",
-  }),
-  githubActionsPermitStatement({
-    eventNames: ["schedule", "workflow_dispatch"],
-    permissions: { contents: "write", pull_requests: "write" },
-    ref: "refs/heads/main",
-    refType: "branch",
-    repository: "chikachow/cloudflare-workload-identity-deploy",
-    resourceOwner: "chikachow",
-    resourceRepository: "cloudflare-workload-identity-deploy",
-    workflowRef:
-      "chikachow/cloudflare-workload-identity-deploy/.github/workflows/pnpm-up.yml@refs/heads/main",
-  }),
-  githubActionsPermitStatement({
-    eventNames: ["schedule", "workflow_dispatch"],
-    permissions: { contents: "write", pull_requests: "write" },
-    ref: "refs/heads/main",
-    refType: "branch",
-    repository: "chikachow/cyspbot-app-token-action",
-    resourceOwner: "chikachow",
-    resourceRepository: "cyspbot-app-token-action",
-    workflowRef: "chikachow/cyspbot-app-token-action/.github/workflows/pnpm-up.yml@refs/heads/main",
-  }),
-  githubActionsPermitStatement({
-    eventNames: ["schedule", "workflow_dispatch"],
-    permissions: { contents: "write", pull_requests: "write" },
-    ref: "refs/heads/main",
-    refType: "branch",
-    repository: "cysp/graphql-schema-registry",
-    resourceOwner: "cysp",
-    resourceRepository: "graphql-schema-registry",
-    workflowRef: "cysp/graphql-schema-registry/.github/workflows/pnpm-up.yml@refs/heads/main",
-  }),
-  githubActionsPermitStatement({
-    eventNames: ["schedule", "workflow_dispatch"],
-    permissions: { contents: "write", pull_requests: "write" },
-    ref: "refs/heads/main",
-    refType: "branch",
-    repository: "cysp/terraform-provider-braze",
-    resourceOwner: "cysp",
-    resourceRepository: "terraform-provider-braze",
-    workflowRef:
-      "cysp/terraform-provider-braze/.github/workflows/update-indirect-dependencies.yml@refs/heads/main",
-  }),
-  githubActionsPermitStatement({
-    eventNames: ["schedule", "workflow_dispatch"],
-    permissions: { contents: "write", pull_requests: "write" },
-    ref: "refs/heads/main",
-    refType: "branch",
-    repository: "cysp/terraform-provider-censusworkspace",
-    resourceOwner: "cysp",
-    resourceRepository: "terraform-provider-censusworkspace",
-    workflowRef:
-      "cysp/terraform-provider-censusworkspace/.github/workflows/update-indirect-dependencies.yml@refs/heads/main",
-  }),
-  githubActionsPermitStatement({
-    eventNames: ["schedule", "workflow_dispatch"],
-    permissions: { contents: "write", pull_requests: "write" },
-    ref: "refs/heads/main",
-    refType: "branch",
-    repository: "cysp/terraform-provider-contentful",
-    resourceOwner: "cysp",
-    resourceRepository: "terraform-provider-contentful",
-    workflowRef:
-      "cysp/terraform-provider-contentful/.github/workflows/update-indirect-dependencies.yml@refs/heads/main",
-  }),
-  githubActionsPermitStatement({
-    eventNames: ["schedule", "workflow_dispatch"],
-    permissions: { contents: "write", pull_requests: "write" },
-    ref: "refs/heads/main",
-    refType: "branch",
-    repository: "cysp/terraform-provider-typesense",
-    resourceOwner: "cysp",
-    resourceRepository: "terraform-provider-typesense",
-    workflowRef:
-      "cysp/terraform-provider-typesense/.github/workflows/update-indirect-dependencies.yml@refs/heads/main",
-  }),
-]);
+type GitHubActionsWorkflowFileName = `${string}.${"yml" | "yaml"}`;
+type GitHubRepositoryFullName = `${string}/${string}`;
 
-function githubActionsPermitStatement(options: {
+interface DeploymentRepositoryUpdatePermitStatementsOptions {
+  readonly deploymentRepositoryFullName: GitHubRepositoryFullName;
+  readonly updateTriggerWorkflowFileName: GitHubActionsWorkflowFileName;
+  readonly updateTriggerRepositoryFullName: GitHubRepositoryFullName;
+  readonly updateWorkflowFileName: GitHubActionsWorkflowFileName;
+}
+
+interface GitHubActionsMainBranchWorkflowPermitStatementOptions {
   readonly eventNames: readonly string[];
   readonly permissions: PermitStatementDefinition["permissions"];
-  readonly ref: string;
-  readonly refType: string;
-  readonly repository: string;
-  readonly resourceOwner: string;
-  readonly resourceRepository: string;
-  readonly workflowRef: string;
-}): PermitStatementDefinition {
+  readonly resourceRepositoryFullName: GitHubRepositoryFullName;
+  readonly workflowFileName: GitHubActionsWorkflowFileName;
+  readonly workflowRepositoryFullName: GitHubRepositoryFullName;
+}
+
+const mainBranchGitRef = "refs/heads/main";
+const pullRequestAuthoringPermissions = {
+  contents: "write",
+  pull_requests: "write",
+} as const;
+
+export const configuredTokenIssuancePolicy = compileTokenIssuancePolicy([
+  dependencyUpdatePermitStatement("chikachow/cyspbot", "pnpm-up.yml"),
+  ...deploymentRepositoryUpdatePermitStatements({
+    deploymentRepositoryFullName: "chikachow/cyspbot-deploy",
+    updateTriggerWorkflowFileName: "run-cyspbot-deploy-update.yml",
+    updateTriggerRepositoryFullName: "chikachow/cyspbot",
+    updateWorkflowFileName: "update-cyspbot.yml",
+  }),
+  dependencyUpdatePermitStatement("chikachow/cloudflare-workload-identity", "pnpm-up.yml"),
+  ...deploymentRepositoryUpdatePermitStatements({
+    deploymentRepositoryFullName: "chikachow/cloudflare-workload-identity-deploy",
+    updateTriggerWorkflowFileName: "run-cloudflare-workload-identity-deploy-update.yml",
+    updateTriggerRepositoryFullName: "chikachow/cloudflare-workload-identity",
+    updateWorkflowFileName: "update-cloudflare-workload-identity.yml",
+  }),
+  dependencyUpdatePermitStatement("chikachow/cloudflare-workload-identity-deploy", "pnpm-up.yml"),
+  dependencyUpdatePermitStatement("chikachow/cyspbot-app-token-action", "pnpm-up.yml"),
+  dependencyUpdatePermitStatement("cysp/graphql-schema-registry", "pnpm-up.yml"),
+  dependencyUpdatePermitStatement(
+    "cysp/terraform-provider-braze",
+    "update-indirect-dependencies.yml",
+  ),
+  dependencyUpdatePermitStatement(
+    "cysp/terraform-provider-censusworkspace",
+    "update-indirect-dependencies.yml",
+  ),
+  dependencyUpdatePermitStatement(
+    "cysp/terraform-provider-contentful",
+    "update-indirect-dependencies.yml",
+  ),
+  dependencyUpdatePermitStatement(
+    "cysp/terraform-provider-typesense",
+    "update-indirect-dependencies.yml",
+  ),
+]);
+
+function dependencyUpdatePermitStatement(
+  repositoryFullName: GitHubRepositoryFullName,
+  workflowFileName: GitHubActionsWorkflowFileName,
+): PermitStatementDefinition {
+  return githubActionsMainBranchWorkflowPermitStatement({
+    eventNames: ["schedule", "workflow_dispatch"],
+    permissions: pullRequestAuthoringPermissions,
+    resourceRepositoryFullName: repositoryFullName,
+    workflowFileName,
+    workflowRepositoryFullName: repositoryFullName,
+  });
+}
+
+function deploymentRepositoryUpdatePermitStatements(
+  options: DeploymentRepositoryUpdatePermitStatementsOptions,
+): readonly PermitStatementDefinition[] {
+  return [
+    githubActionsMainBranchWorkflowPermitStatement({
+      eventNames: ["workflow_run", "workflow_dispatch"],
+      permissions: { actions: "write" },
+      resourceRepositoryFullName: options.deploymentRepositoryFullName,
+      workflowFileName: options.updateTriggerWorkflowFileName,
+      workflowRepositoryFullName: options.updateTriggerRepositoryFullName,
+    }),
+    githubActionsMainBranchWorkflowPermitStatement({
+      eventNames: ["workflow_dispatch"],
+      permissions: pullRequestAuthoringPermissions,
+      resourceRepositoryFullName: options.deploymentRepositoryFullName,
+      workflowFileName: options.updateWorkflowFileName,
+      workflowRepositoryFullName: options.deploymentRepositoryFullName,
+    }),
+  ];
+}
+
+function githubActionsMainBranchWorkflowPermitStatement(
+  options: GitHubActionsMainBranchWorkflowPermitStatementOptions,
+): PermitStatementDefinition {
+  const [resourceOwner, resourceRepository] = splitGitHubRepositoryFullName(
+    options.resourceRepositoryFullName,
+  );
+
   return {
     permissions: options.permissions,
-    resource: githubRepositoryResourceConstraint(options.resourceOwner, options.resourceRepository),
+    resource: githubRepositoryResourceConstraint(resourceOwner, resourceRepository),
     subjectToken: oidcSubjectTokenConstraint(
       githubActionsOidcProviderRegistration.issuer,
-      ...githubActionsWorkflowClaimPredicates(options),
+      claimEquals("repository", options.workflowRepositoryFullName),
+      claimOneOf("event_name", options.eventNames),
+      claimEquals("ref_type", "branch"),
+      claimEquals("ref", mainBranchGitRef),
+      claimEquals(
+        "workflow_ref",
+        `${options.workflowRepositoryFullName}/.github/workflows/${options.workflowFileName}@${mainBranchGitRef}`,
+      ),
     ),
   };
 }
 
-function githubActionsWorkflowClaimPredicates(options: {
-  readonly eventNames: readonly string[];
-  readonly ref: string;
-  readonly refType: string;
-  readonly repository: string;
-  readonly workflowRef: string;
-}): readonly ClaimPredicateDefinition[] {
-  return Object.freeze([
-    claimEquals("repository", options.repository),
-    claimOneOf("event_name", options.eventNames),
-    claimEquals("ref_type", options.refType),
-    claimEquals("ref", options.ref),
-    claimEquals("workflow_ref", options.workflowRef),
-  ]);
+function splitGitHubRepositoryFullName(
+  fullName: GitHubRepositoryFullName,
+): readonly [owner: string, repository: string] {
+  return fullName.split("/", 2) as [owner: string, repository: string];
 }
