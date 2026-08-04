@@ -3,7 +3,7 @@
   "checkpoint_id": "01KZ6FZF72EEZSEVD4DB7DQ5D7",
   "session_id": "019fccec-a876-75e1-bcf9-5c460287d2f1",
   "strategy": "manual-commit",
-  "created_at": "2026-08-04T13:57:43.871389Z",
+  "created_at": "2026-08-04T14:22:48.55645Z",
   "branch": "codex/harden-github-http",
   "checkpoints_count": 1,
   "files_touched": [
@@ -18,28 +18,28 @@
   "agent": "Codex",
   "model": "gpt-5.6-sol",
   "turn_id": "905ec8f790df",
-  "checkpoint_transcript_start": 595,
-  "transcript_lines_at_start": 595,
-  "compact_transcript_start": 95,
+  "checkpoint_transcript_start": 873,
+  "transcript_lines_at_start": 873,
+  "compact_transcript_start": 142,
   "token_usage": {
-    "input_tokens": 13696,
+    "input_tokens": 67598,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 415232,
-    "output_tokens": 1089,
-    "api_call_count": 16
+    "cache_read_tokens": 2205184,
+    "output_tokens": 6991,
+    "api_call_count": 34
   },
   "session_metrics": {
     "turn_count": 1
   },
   "initial_attribution": {
-    "calculated_at": "2026-08-04T13:57:43.823841Z",
-    "agent_lines": 120,
-    "agent_removed": 42,
+    "calculated_at": "2026-08-04T14:22:48.498942Z",
+    "agent_lines": 255,
+    "agent_removed": 108,
     "human_added": 0,
     "human_modified": 0,
     "human_removed": 0,
-    "total_committed": 120,
-    "total_lines_changed": 162,
+    "total_committed": 255,
+    "total_lines_changed": 363,
     "agent_percentage": 100,
     "metric_version": 2
   }
