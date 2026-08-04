@@ -1,0 +1,13 @@
+deeply explore this codebase
+identify the highest leverage improvements or simplifications
+
+---
+
+spawn sub-agents to implement these independent improvments using gpt-5.6-terra high
+create separate pull requests if possible, otherwise create stacked pull requests
+self-review and critically debate implementation decisions before publishing
+
+---
+
+I’ve merged most of these. Rebase and reevaluate the remaining open pr https://github.com/chikachow/cyspbot/pull/154
+Critically rereview its intent and implementation in the context of the updated codebase
