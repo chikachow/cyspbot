@@ -29,7 +29,6 @@
     "@cyspbot/github": "workspace:*",
     "@cyspbot/http": "workspace:*",
     "@cyspbot/oidc": "workspace:*",
-    "@cyspbot/oidc-provider-github-actions": "workspace:*",
-    "@cyspbot/oidc-provider-google-service-account": "workspace:*"
+    "@cyspbot/oidc-providers": "workspace:*"
   }
 }

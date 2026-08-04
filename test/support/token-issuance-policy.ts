@@ -1,4 +1,4 @@
-import { githubActionsOidcProviderRegistration } from "@cyspbot/oidc-provider-github-actions";
+import { githubActionsOidcProviderRegistration } from "@cyspbot/oidc-providers";
 import {
   claimEquals,
   claimOneOf,

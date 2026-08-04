@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { VerifiedOidcIdTokenClaims } from "@cyspbot/oidc/verified-id-token";
 
-import { googleServiceAccountOidcProviderRegistration } from "../src/provider-registration.ts";
+import { googleServiceAccountOidcProviderRegistration } from "../src/google-service-account.ts";
 
 describe("Google service-account OIDC Provider Registration", () => {
   it("registers the exact issuer and its provider-specific algorithm allowlist", () => {

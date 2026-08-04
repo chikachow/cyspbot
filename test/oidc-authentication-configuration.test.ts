@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createFlyOidcProviderRegistration } from "../packages/oidc-provider-fly/src/provider-registration.ts";
+import { createFlyOidcProviderRegistration } from "@cyspbot/oidc-providers";
 import {
   createGitHubRepositoryResource,
   type InstallationAccessTokenRequest,

@@ -30,9 +30,9 @@ importers:
       '@cyspbot/oidc':
         specifier: workspace:*
         version: link:packages/oidc
-      '@cyspbot/oidc-provider-github-actions':
+      '@cyspbot/oidc-providers':
         specifier: workspace:*
-        version: link:packages/oidc-provider-github-actions
+        version: link:packages/oidc-providers
       '@cyspbot/token-exchange':
         specifier: workspace:*
         version: link:workers/cyspbot-token-exchange
@@ -93,19 +93,7 @@ importers:
         specifier: 4.4.3
         version: 4.4.3
 
-  packages/oidc-provider-fly:
-    dependencies:
-      '@cyspbot/oidc':
-        specifier: workspace:*
-        version: link:../oidc
-
-  packages/oidc-provider-github-actions:
-    dependencies:
-      '@cyspbot/oidc':
-        specifier: workspace:*
-        version: link:../oidc
-
-  packages/oidc-provider-google-service-account:
+  packages/oidc-providers:
     dependencies:
       '@cyspbot/oidc':
         specifier: workspace:*
@@ -131,12 +119,9 @@ importers:
       '@cyspbot/oidc':
         specifier: workspace:*
         version: link:../../packages/oidc
-      '@cyspbot/oidc-provider-github-actions':
+      '@cyspbot/oidc-providers':
         specifier: workspace:*
-        version: link:../../packages/oidc-provider-github-actions
-      '@cyspbot/oidc-provider-google-service-account':
-        specifier: workspace:*
-        version: link:../../packages/oidc-provider-google-service-account
+        version: link:../../packages/oidc-providers
 
 packages:
 

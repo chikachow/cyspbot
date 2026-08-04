@@ -1,5 +1,7 @@
-import { githubActionsOidcProviderRegistration } from "@cyspbot/oidc-provider-github-actions";
-import { googleServiceAccountOidcProviderRegistration } from "@cyspbot/oidc-provider-google-service-account";
+import {
+  githubActionsOidcProviderRegistration,
+  googleServiceAccountOidcProviderRegistration,
+} from "@cyspbot/oidc-providers";
 
 export { githubActionsOidcProviderRegistration, googleServiceAccountOidcProviderRegistration };
 

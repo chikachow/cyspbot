@@ -17,9 +17,7 @@ Shared packages:
 - `packages/http` owns framework-free JSON responses, problem details, and bounded byte-stream and request-body reading.
 - `packages/github` owns GitHub App JWT signing, GitHub REST calls, installation lookup, installation access token creation, and secret binding resolution.
 - `packages/oidc` owns OIDC Provider Registration validation, standards-derived OpenID Provider Configuration discovery, bounded OpenID Provider Metadata and JWK Set caches, and ID Token authentication.
-- `packages/oidc-provider-fly` owns Fly organization-specific OIDC Provider Registration construction with an explicit null OIDC ID Token Profile.
-- `packages/oidc-provider-github-actions` owns the GitHub Actions OIDC Provider Registration and OIDC ID Token Profile.
-- `packages/oidc-provider-google-service-account` owns the Google service-account OIDC Provider Registration and OIDC ID Token Profile.
+- `packages/oidc-providers` owns distinct Fly, GitHub Actions, and Google service-account OIDC Provider Registration modules. Fly constructs organization-specific registrations with an explicit null OIDC ID Token Profile; GitHub Actions and Google provide their respective checked-in registrations and OIDC ID Token Profiles.
 
 The root `wrangler.jsonc` points at `test/support/root-test-harness.ts`. It is a local/test binding harness, not a deployable product Worker.
 
