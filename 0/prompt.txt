@@ -1,0 +1,56 @@
+I’m coming to the opinion that I want to split the GitHub app installation token token-exchange functionality out of this “cyspbot” service, so that I can use it for other apps
+
+---
+
+Definitely more workloads.
+I’m wondering about multiple apps though as well
+
+---
+
+Propose service and repository name for this extracted functionality
+
+---
+
+What url should I use to expose this token broker functions?
+
+---
+
+Should I include “worker” or similar in the repository name for this extracted service implementation?
+
+---
+
+I don’t love the “tokens” subdomain, it looks too authoritative
+
+---
+
+That’s a good suggestion 
+Tot intent up a bit, what do you think about GitHub.chikachow.org/cyspbot/token? Be critical 
+Or even using the existing url?
+
+---
+
+With the current deployment approach here, is it possible to carve out the “/token” route in cyspbot.chikachow.org to serve that route from this extracted worker?
+
+---
+
+What if I in future want to change this cyspbot deployment to use a workers custom domain?
+
+---
+
+Okay, roll this all up into a concise, coherent guidance and checklist of tasks
+
+---
+
+focus on the extraction work:
+- spawn a session in ../chikachow-infrastructure using a new worktree to create the public repository for github-app-token-broker using existing precedent
+  - raise a pull request for atlantis to apply
+- clone this newly created repository into ~/src/github-app-token-broker
+- spawn a new session in ~/src/github-app-token-broker to:
+  - copy the git history from ~/src/cyspbot into this new git repository
+    - this is almost like forking on github, but without github treating teh new repository as a fork since i want their histories to diverge
+  - remove cyspbot naming and unrelated cyspbot functionality, converting the codebase to github-app-token-broker
+- back in cyspbot, spawn a new session to raise a pr removing the token exchange functionality
+
+---
+
+i think the new broker repository should deploy via its own new deployment pipeline
