@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@cyspbot/http": "workspace:*",
-    "jose": "6.2.5",
+    "jose": "6.2.8",
     "zod": "4.4.3"
   }
 }
