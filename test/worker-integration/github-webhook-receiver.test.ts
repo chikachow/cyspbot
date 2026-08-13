@@ -30,8 +30,8 @@ describe("GitHub webhook receiver Worker entrypoint", () => {
     });
   });
 
-  it("does not serve the token exchange route", async () => {
-    const response = await exports.default.fetch("https://example.test/token");
+  it("does not serve unrelated routes", async () => {
+    const response = await exports.default.fetch("https://example.test/health");
 
     expect(response.status).toBe(404);
     await response.body?.cancel();
