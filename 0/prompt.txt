@@ -1,0 +1,19 @@
+Introduce a worker named cyspbot that is mounted as a workers domain at cyspbot.chikachow.org and renders an absolutely minimal html page, with something cheeky like “beep, boop” indicating that it’s a bot. It should render this only for the root, rendering empty 404 responses for all other routes
+The existing workers routes should take precedence to carve out their routes and respond to requests
+
+---
+
+Raise pull requests
+
+---
+
+The root worker should probably only render its root page for get requests right?
+Is there a suitable tiny web framework ?
+
+---
+
+I’m quite probably going to add more pages to this worker
+
+---
+
+Let’s go hono
