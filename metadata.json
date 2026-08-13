@@ -1,0 +1,43 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "01KZXHKRXABDWJ635W3QXW8W5V",
+  "strategy": "manual-commit",
+  "branch": "codex/add-cyspbot-root-worker",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "CONTEXT.md",
+    "README.md",
+    "docs/deployment.md",
+    "docs/implementation.md",
+    "docs/release.md",
+    "docs/service-contract.md",
+    "package.json",
+    "pnpm-lock.yaml",
+    "test/cyspbot-worker.test.ts",
+    "test/worker-entrypoints.test.ts",
+    "test/worker-integration/cyspbot.test.ts",
+    "vitest.config.ts",
+    "workers/cyspbot/package.json",
+    "workers/cyspbot/src/env.generated.d.ts",
+    "workers/cyspbot/src/index.ts",
+    "workers/cyspbot/src/worker.ts",
+    "workers/cyspbot/tsconfig.json",
+    "workers/cyspbot/wrangler.jsonc"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 112715,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2669568,
+    "output_tokens": 16714,
+    "api_call_count": 40
+  }
+}
