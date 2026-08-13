@@ -1,0 +1,94 @@
+We need to implement both sides of this, spawn a worker in github-app-token-broker to implement the other side, in a worktree
+
+---
+
+Debate and iterate on the optimal rpc interface between yourselves
+
+---
+
+<subagent_notification>
+{"agent_path":"019ffb63-6532-7850-b2f1-b1e6aed9bab0","status":{"completed":"## Chosen contract\n\n```ts\nrequestGithubAppInstallationToken(\n  input: {\n    readonly subjectToken: string;\n    readonly resource: string;\n    readonly scope: string;\n  },\n): Promise<\n  | {\n      readonly ok: true;\n      readonly accessToken: string;\n      readonly expiresAt: string;\n    }\n  | {\n      readonly ok: false;\n      readonly error:\n        | \"invalid_request\"\n        | \"invalid_target\"\n        | \"invalid_scope\"\n        | \"server_error\"\n        | \"temporarily_unavailable\";\n    }\n>\n```\n\nThe broker must normalize `resource` and `scope`, authenticate the supplied OIDC subject token, evaluate the existing compiled Token Issuance Policy, and only then mint the repository-scoped GitHub App token.\n\nThe RPC must not accept an app selector, installation ID, private key, policy selector, audience override, or caller-controlled permissions object.\n\n## Placement\n\n- Public broker source owns the serializable types and shared typed operation, alongside the in-progress `packages/token-exchange` extraction.\n- Deployment repo `src/worker.ts` owns the default `WorkerEntrypoint`, because it owns production policy and OIDC composition.\n- `fetch(request: Request)` delegates to the existing HTTP handler, preserving `POST /token`, status codes, headers, and public compatibility.\n- `cyspbot` invokes only `requestGithubAppInstallationToken`; its binding should be generated as a typed `Service`, not the current `Fetcher`.\n\n## Rationale\n\nA raw `fetch()` binding preserves behavior but is not a typed RPC. A low-level exchange mirror unnecessarily exposes OAuth protocol fields and creates a shallow interface.\n\nThe selected method is the smallest useful deep seam while retaining the existing subject-token authorization. An unrestricted method would create a confused deputy: possession of the service binding would become sufficient to mint tokens for caller-selected repositories and scopes.\n\nThe current inspection is sufficient to conclude the interface design, although implementation remains incomplete because the broker checkout has an in-progress token-exchange extraction with deleted old imports and untracked replacement files. No files were edited.\n\n"}}
+</subagent_notification>
+
+---
+
+<environment_context>
+  <current_date>2026-08-14</current_date>
+  <timezone>Australia/Sydney</timezone>
+  <filesystem><workspace_roots><root>/Users/cysp/src/cyspbot</root></workspace_roots><permission_profile type="disabled"><file_system type="unrestricted" /></permission_profile></filesystem>
+  <subagents>
+    - 019ffb63-6532-7850-b2f1-b1e6aed9bab0: Copernicus
+    - 019ffb64-0bcb-7600-9d6c-7f88b1ccceeb: Erdos
+  </subagents>
+</environment_context>
+
+---
+
+Oh right, there’s another piece of the puzzle in that we need to request our own oidc token from the https://github.com/chikachow/cloudflare-workload-identity deployment
+
+---
+
+With that, do we still need an rpc interface for GitHub-app-token-broker or can we use oauth over http?
+
+---
+
+<subagent_notification>
+{"agent_path":"019ffb64-0bcb-7600-9d6c-7f88b1ccceeb","status":{"completed":"Implemented in the dedicated worktree; no commits or pushes.\n\nChosen design: `requestGithubAppInstallationToken(input)` with raw OIDC `subjectToken`, canonical `resource`, and explicit `scope`. The broker verifies the token and applies existing policy before issuance. Caller-supplied claims, app selectors, installation IDs, permissions objects, and audience overrides are rejected.\n\nThe factory returns a genuine `WorkerEntrypoint` subclass, while HTTP fetch compatibility remains unchanged. This follows Cloudflare’s service-binding RPC model.[Cloudflare RPC documentation](https://developers.cloudflare.com/workers/runtime-apis/bindings/service-bindings/rpc/)\n\nChanged files:\n\n- [rpc.ts](/Users/cysp/.codex/worktrees/github-app-token-broker-rpc-20260813/workers/github-app-token-broker/src/rpc.ts)\n- [worker.ts](/Users/cysp/.codex/worktrees/github-app-token-broker-rpc-20260813/workers/github-app-token-broker/src/worker.ts)\n- [index.ts](/Users/cysp/.codex/worktrees/github-app-token-broker-rpc-20260813/workers/github-app-token-broker/src/index.ts)\n- [token-exchange-rpc.test.ts](/Users/cysp/.codex/worktrees/github-app-token-broker-rpc-20260813/test/token-exchange-rpc.test.ts)\n\nContract errors are stable: `invalid_request`, `invalid_target`, `invalid_scope`, `server_error`, or `temporarily_unavailable`.\n\nValidation passed:\n\n- Formatter and lint\n- Package and Worker TypeScript checks\n- Focused tests: 99 passed\n- Full suite: 448 passed across 20 files\n- Wrangler deploy dry-run\n- `git diff --check`\n\nThe unrelated source, cyspbot, and deployment checkouts were only inspected and not modified.\n\n"}}
+</subagent_notification>
+
+---
+
+Thoroughly debate the implementation details of this change, in particular any identifiers that have been introduced and any configuration changes. List these with justifications or alternatives
+
+---
+
+Spawn one or more workers at Luna high to implement this plan faithfully. Use this thread to coordinate and steer all workers, guiding them to correctly and fully implement the plan. Do not deviate from the plan without asking me
+
+---
+
+<subagent_notification>
+{"agent_path":"019ffd17-bc5f-7a90-a01a-1f845b92a397","status":{"completed":"Implemented only in [config/workers/cyspbot.wrangler.jsonc](/Users/cysp/.codex/worktrees/cyspbot-deploy-workload-identity-20260814/config/workers/cyspbot.wrangler.jsonc).\n\n- Added bindings to `github-app-token-broker` and `workload-identity-issuer#WorkloadIdentityIssuer`.\n- Preserved subject `urn:chikachow:workload:cyspbot` and audience `https://cyspbot.chikachow.org`.\n- Removed both production `remote: true` flags. Wrangler documents these as local-development settings. ([Wrangler configuration](https://developers.cloudflare.com/workers/wrangler/configuration/))\n- `oxfmt --check`: `All matched files use the correct format.`\n- `pnpm run check`: exit `0`.\n- `pnpm run deploy:dry-run`: exit `0`; rendered:\n\n```text\nenv.GITHUB_APP_TOKEN_BROKER (github-app-token-broker) Worker\nenv.WORKLOAD_IDENTITY_ISSUER (workload-identity-issuer#WorkloadIdentityIssuer) Worker\n```\n\n`git diff --check` passed. No commit or push performed. The target worktree has only the one config file modified.\n\nThe public source repository was checked read-only and already contains unrelated uncommitted changes, including its own Worker config; I did not alter them. Removing those source-side identity props would require separate scope.\n\n"}}
+</subagent_notification>
+
+---
+
+<subagent_notification>
+{"agent_path":"019ffd17-bbbd-7a61-b085-8b80ae62e186","status":{"completed":"Implemented broker-side CWI support only.\n\n- Registered `https://workload-identity.chikachow.org` with RS256 and `idTokenProfile: null`.\n- Added one exact Permit Statement:\n  - Subject: `urn:chikachow:workload:cyspbot`\n  - Resource: `https://api.github.com/repos/chikachow/cyspbot`\n  - Scope: `contents:read`\n- Added independent allow/deny tests.\n- Preserved the existing `/token` endpoint, routes, clients, and audience.\n- No blocker; the resource/scope were explicitly established by the current cyspbot client test. No broader grant was added.\n\nChanged files:\n\n[README.md](/Users/cysp/src/github-app-token-broker-deploy/README.md)  \n[src/oidc-provider-registrations.ts](/Users/cysp/src/github-app-token-broker-deploy/src/oidc-provider-registrations.ts)  \n[src/token-issuance-policy.ts](/Users/cysp/src/github-app-token-broker-deploy/src/token-issuance-policy.ts)  \n[test/cloudflare-workload-identity-composition.test.ts](/Users/cysp/src/github-app-token-broker-deploy/test/cloudflare-workload-identity-composition.test.ts)  \n[test/composition.test.ts](/Users/cysp/src/github-app-token-broker-deploy/test/composition.test.ts)  \n[test/token-issuance-policy.test.ts](/Users/cysp/src/github-app-token-broker-deploy/test/token-issuance-policy.test.ts)\n\nChecks passed:\n\n- Root `check`: 29 tests passed.\n- Source `source:check`: 444 tests passed.\n- Lint, TypeScript, formatting, syntax, source-pin validation, script tests: passed.\n- Strict deployment dry-run: passed; audience remained `https://cyspbot.chikachow.org`.\n- `git diff --check`: passed.\n- No commit or push performed.\n\n"}}
+</subagent_notification>
+
+---
+
+<subagent_notification>
+{"agent_path":"019ffd17-bb0b-7311-b524-3b4285d10560","status":{"completed":"Checkpoint:\n\nChanged scope:\n\n- `workers/cyspbot/src/github-app-token.ts`\n- `test/github-app-token.test.ts`\n- `workers/cyspbot/wrangler.jsonc`\n- regenerated `workers/cyspbot/src/env.generated.d.ts`\n- `vitest.config.ts`\n- `workers/cyspbot/package.json`\n- `docs/implementation.md`\n- `docs/deployment.md`\n- existing `test/cyspbot-worker.test.ts`\n\nValidation:\n\n- Focused client tests: 5 passed.\n- Generated env check: passed.\n- Typecheck: passed.\n- Scoped lint: passed.\n- Scoped Knip: passed.\n- Full `check`: blocked by unrelated `.worktrees`, `.pnpm-store`, and `docs/research` files.\n- Full Vitest: blocked by those same discovered external test trees and the intentionally local-but-undefined CWI service target.\n- Wrangler dry-run: not yet run.\n- No checks are currently running.\n\nThe type contract is explicit and contains no `unknown` or unjustified cast. No repository, scope, permit, token route, or external repository was added.\n\n"}}
+</subagent_notification>
+
+---
+
+<subagent_notification>
+{"agent_path":"019ffd28-0ef5-76d3-94ae-3e496bf65228","status":"shutdown"}
+</subagent_notification>
+
+---
+
+Can the urn subject be simply “cyspbot”?
+
+---
+
+Make that change holistically, then spawn a worker to self review all of this change. If satisfied, raise or update pull requests as necessary
+
+---
+
+<subagent_notification>
+{"agent_path":"019ffd32-31c2-7bd2-b47e-55936f04823d","status":"shutdown"}
+</subagent_notification>
+
+---
+
+<subagent_notification>
+{"agent_path":"019ffd35-3405-73e0-94c7-ac06f470263a","status":{"completed":"NOT READY — focused findings:\n\n- **High — validation gap:** `/Users/cysp/.codex/worktrees/cyspbot-deploy-workload-identity-20260814/src/cyspbot` is pinned to `e6d48ddf`, so its dry-run does not consume the public checkout’s uncommitted client/config changes. The dry-run passed, but does not validate the combined final source state.\n- **Medium — unrelated untracked changes:** `/Users/cysp/src/cyspbot` contains untracked `.codex/`, `.pnpm-store/`, `.worktrees/`, several research documents, and the requested new client/test files. These must be separated before publication.\n\nThe migration itself is consistent:\n\n- New subject is `cyspbot`; the old `urn:chikachow:workload:cyspbot` is absent. See broker policy [`src/token-issuance-policy.ts:83-91`](/Users/cysp/src/github-app-token-broker-deploy/src/token-issuance-policy.ts:83) and production props [`config/workers/cyspbot.wrangler.jsonc:23-29`](/Users/cysp/.codex/worktrees/cyspbot-deploy-workload-identity-20260814/config/workers/cyspbot.wrangler.jsonc:23).\n- Audience remains `https://cyspbot.chikachow.org` in source client [`github-app-token.ts:5-9`](/Users/cysp/src/cyspbot/workers/cyspbot/src/github-app-token.ts:5), production config [`config/workers/cyspbot.wrangler.jsonc:26-29`](/Users/cysp/.codex/worktrees/cyspbot-deploy-workload-identity-20260814/config/workers/cyspbot.wrangler.jsonc:26), and broker config [`github-app-token-broker.wrangler.json:43-47`](/Users/cysp/src/github-app-token-broker-deploy/config/workers/github-app-token-broker.wrangler.json:43).\n- CWI is RPC-only via `WorkloadIdentityIssuer`; the broker remains OAuth HTTP `/token` over service binding: [`github-app-token.ts:20-25,61-79`](/Users/cysp/src/cyspbot/workers/cyspbot/src/github-app-token.ts:20).\n- The exact permit is contents read for `https://api.github.com/repos/chikachow/cyspbot`, with subject `cyspbot`: [`src/token-issuance-policy.ts:83-90`](/Users/cysp/src/github-app-token-broker-deploy/src/token-issuance-policy.ts:83).\n- Public config has no production CWI props; private production props are present and correct: [`config/workers/cyspbot.wrangler.jsonc:17-30`](/Users/cysp/.codex/worktrees/cyspbot-deploy-workload-identity-20260814/config/workers/cyspbot.wrangler.jsonc:17).\n\nFocused tests passed: source client 7/7, broker tests 14/14, deployment preflight 26/26, and production dry-run.\n\n"}}
+</subagent_notification>
+
+---
+
+Can we make the policy allow access to any repository under an owner for this identity
+And the documentation should describe the current implementation, not potential futures
