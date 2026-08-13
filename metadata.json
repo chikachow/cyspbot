@@ -3,7 +3,7 @@
   "checkpoint_id": "01KZXHKRXABDWJ635W3QXW8W5V",
   "strategy": "manual-commit",
   "branch": "codex/add-cyspbot-root-worker",
-  "checkpoints_count": 1,
+  "checkpoints_count": 3,
   "files_touched": [
     "CONTEXT.md",
     "README.md",
@@ -34,10 +34,10 @@
     }
   ],
   "token_usage": {
-    "input_tokens": 191203,
+    "input_tokens": 422113,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 1679872,
-    "output_tokens": 6705,
-    "api_call_count": 19
+    "cache_read_tokens": 4288256,
+    "output_tokens": 11363,
+    "api_call_count": 33
   }
 }

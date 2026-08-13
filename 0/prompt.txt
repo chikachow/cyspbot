@@ -1,2 +1,0 @@
-Introduce a worker named cyspbot that is mounted as a workers domain at cyspbot.chikachow.org and renders an absolutely minimal html page, with something cheeky like “beep, boop” indicating that it’s a bot. It should render this only for the root, rendering empty 404 responses for all other routes
-The existing workers routes should take precedence to carve out their routes and respond to requests
