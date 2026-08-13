@@ -1,9 +1,15 @@
+import cyspbotWorker from "@cyspbot/cyspbot";
 import githubWebhookReceiverWorker from "@cyspbot/github-webhook-receiver";
 import { describe, expect, it, vi } from "vitest";
 
 import rootHarness from "./support/root-test-harness.ts";
 
 describe("worker entrypoint shapes", () => {
+  it("exports cyspbot as a fetch worker", () => {
+    expect(cyspbotWorker.fetch).toEqual(expect.any(Function));
+    expect(cyspbotWorker.queue).toBeUndefined();
+  });
+
   it("exports the webhook receiver as a fetch worker", () => {
     expect(githubWebhookReceiverWorker.fetch).toEqual(expect.any(Function));
     expect(githubWebhookReceiverWorker.queue).toBeUndefined();

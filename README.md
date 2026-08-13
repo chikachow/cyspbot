@@ -1,8 +1,12 @@
 # cyspbot
 
-cyspbot receives signed GitHub App webhook deliveries. It validates each delivery for the configured GitHub App, acknowledges valid JSON events, and does not retain raw webhook payloads or run event-specific product logic.
+cyspbot serves a tiny bot page and receives signed GitHub App webhook deliveries. It validates each delivery for the configured GitHub App, acknowledges valid JSON events, and does not retain raw webhook payloads or run event-specific product logic.
 
 ## Public surface
+
+### `GET /`
+
+The root renders a minimal HTML page identifying cyspbot as a bot. `HEAD /` returns the same status and headers without a body. Other methods at `/` return an empty `405` response with `Allow: GET, HEAD`. The root Worker returns an empty `404` response for every other path that is not carved out by a more specific Worker route.
 
 ### `POST /github/webhooks`
 
@@ -17,6 +21,7 @@ Valid deliveries receive `202`. Ping deliveries receive `{"accepted":true,"event
 
 ## Architecture
 
+- `workers/cyspbot` owns the Hono-based root-page Worker and its public-safe Wrangler configuration.
 - `workers/cyspbot-github-webhook-receiver` owns the deployable Worker, its route, runtime composition, and public-safe Wrangler configuration.
 - `packages/http` owns bounded request-body and JSON/problem-details response helpers.
 - `packages/github` owns the shared Cloudflare secret-binding adapter used by webhook verification.
@@ -43,7 +48,7 @@ fnm exec --using=24 corepack pnpm run check
 fnm exec --using=24 corepack pnpm run test:coverage
 ```
 
-The checks cover formatting, generated environment types, lint, type checking, unused-code detection, unit and Workerd integration tests, and a Wrangler deployment dry run for the webhook Worker.
+The checks cover formatting, generated environment types, lint, type checking, unused-code detection, unit and Workerd integration tests, and Wrangler deployment dry runs for both Workers.
 
 ## Deployment trigger
 

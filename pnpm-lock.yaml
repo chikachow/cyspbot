@@ -17,6 +17,9 @@ importers:
       '@cloudflare/workers-types':
         specifier: 5.20260810.1
         version: 5.20260810.1
+      '@cyspbot/cyspbot':
+        specifier: workspace:*
+        version: link:workers/cyspbot
       '@cyspbot/github-webhook-receiver':
         specifier: workspace:*
         version: link:workers/cyspbot-github-webhook-receiver
@@ -57,6 +60,12 @@ importers:
   packages/github: {}
 
   packages/http: {}
+
+  workers/cyspbot:
+    dependencies:
+      hono:
+        specifier: 4.13.2
+        version: 4.13.2
 
   workers/cyspbot-github-webhook-receiver:
     dependencies:
@@ -1452,6 +1461,10 @@ packages:
     resolution: {integrity: sha512-EykJT/Q1KjTWctppgIAgfSO0tKVuZUjhgMr17kqTumMl6Afv3EISleU7qZUzoXDFTAHTDC4NOoG/ZxU3EvlMPQ==}
     engines: {node: '>=8'}
 
+  hono@4.13.2:
+    resolution: {integrity: sha512-JydRilDRkYBQMt9qR9U92mXxmbGqsqSn/IKOrh4e7/gEbn+0zSr8igTu0obwJoNGN4sez28DIql7FBHWydoJpA==}
+    engines: {node: '>=16.9.0'}
+
   html-escaper@2.0.2:
     resolution: {integrity: sha512-H2iMtd0I4Mt5eYiapRdIDjp+XzelXQ0tFE4JS7YFwFevXXMmOp9myNrUvCg0D6ws8iqkRPBfKHgbwig1SmlLfg==}
 
@@ -2826,6 +2839,8 @@ snapshots:
       resolve-pkg-maps: 1.0.0
 
   has-flag@4.0.0: {}
+
+  hono@4.13.2: {}
 
   html-escaper@2.0.2: {}
 

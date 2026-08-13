@@ -14,6 +14,22 @@ export default defineConfig({
       {
         plugins: [
           cloudflareTest({
+            remoteBindings: false,
+            wrangler: {
+              configPath: "./workers/cyspbot/wrangler.jsonc",
+            },
+          }),
+        ],
+        test: {
+          allowOnly: false,
+          detectAsyncLeaks: true,
+          include: ["test/worker-integration/cyspbot.test.ts"],
+          name: "cyspbot-integration",
+        },
+      },
+      {
+        plugins: [
+          cloudflareTest({
             miniflare: {
               bindings: {
                 GITHUB_APP_ID: "000000",

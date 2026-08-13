@@ -1,6 +1,9 @@
 # cyspbot domain language
 
-cyspbot is a GitHub App webhook receiver. Use these terms consistently in source, tests, logs, and documentation.
+cyspbot is a bot with a minimal root page and a GitHub App webhook receiver. Use these terms consistently in source, tests, logs, and documentation.
+
+**Root Page**:
+The minimal HTML response that identifies cyspbot as a bot at `GET /`. `HEAD /` has the same status and headers without a body. Other root methods receive an empty `405`; other paths receive empty `404` responses, except where a more specific production Worker route takes precedence.
 
 **GitHub App**:
 The GitHub integration whose numeric ID must match each webhook delivery target.
