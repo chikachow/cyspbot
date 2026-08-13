@@ -11,11 +11,11 @@
 
 ## Documentation and boundaries
 
-- `README.md` describes cyspbot as a webhook receiver only.
-- `docs/service-contract.md` matches the implemented webhook behavior.
+- `README.md` describes the root page and webhook receiver.
+- `docs/service-contract.md` matches the implemented root-page and webhook behavior.
 - `docs/implementation.md` matches the packages, entrypoint, bindings, tests, and checks.
 - `docs/deployment.md` matches the public-source and deployment-repository boundary.
-- `CONTEXT.md` matches the webhook domain language.
+- `CONTEXT.md` matches the root-page and webhook domain language.
 
 ## Repository settings
 

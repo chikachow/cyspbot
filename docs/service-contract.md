@@ -2,15 +2,25 @@
 
 This document is authoritative for the observable behavior implemented by cyspbot.
 
-## Route
+## Routes
 
 | Route              | Method | Purpose                                                    | Success    |
 | ------------------ | ------ | ---------------------------------------------------------- | ---------- |
+| `/`                | `GET`  | Identify cyspbot as a bot                                  | `200` HTML |
 | `/github/webhooks` | `POST` | Authenticate and acknowledge GitHub App webhook deliveries | `202` JSON |
 
-Unknown routes return `404` problem details. Unsupported methods on `/github/webhooks` return `405` problem details with `Allow: POST`.
+`HEAD /` returns the same status and headers as `GET /` without a response body. Other methods at `/` return an empty `405` response with `Allow: GET, HEAD`. The root Worker returns an empty `404` response for every other path, regardless of method. More specific production Worker routes run before the root Worker and own the response within their route patterns. Unsupported methods on `/github/webhooks` return `405` problem details with `Allow: POST`.
 
-## Request requirements
+## Root page
+
+The `/` response has media type `text/html; charset=utf-8` and is equivalent to the minimal document:
+
+```html
+<!doctype html><title>cyspbot</title>
+<p>beep, boop. i am a bot.</p>
+```
+
+## Webhook request requirements
 
 The receiver requires:
 
@@ -25,7 +35,7 @@ The receiver requires:
 
 The signature is verified over the exact request bytes using `GITHUB_WEBHOOK_SECRET`. The body is parsed only after its target and signature authenticate.
 
-## Responses
+## Webhook responses
 
 Accepted ping deliveries return:
 

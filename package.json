@@ -6,7 +6,7 @@
   "scripts": {
     "check": "node --run lockfile:check && node --run format:check && node --run env-types:check && node --run lint && node --run typecheck && node --run knip && node --run test && node --run deploy:dry-run",
     "deploy:dry-run": "pnpm --recursive --filter './workers/*' run deploy:dry-run",
-    "dev": "WRANGLER_LOG=none WRANGLER_LOG_PATH=.wrangler/logs WRANGLER_REGISTRY_PATH=.wrangler/registry wrangler dev --config workers/cyspbot-github-webhook-receiver/wrangler.jsonc --env-file .dev.vars",
+    "dev": "WRANGLER_LOG=none WRANGLER_LOG_PATH=.wrangler/logs WRANGLER_REGISTRY_PATH=.wrangler/registry wrangler dev --config workers/cyspbot/wrangler.jsonc --config workers/cyspbot-github-webhook-receiver/wrangler.jsonc --env-file .dev.vars",
     "env-types:check": "pnpm --recursive --filter './workers/*' run env-types:check",
     "env-types:generate": "pnpm --recursive --filter './workers/*' run env-types:generate",
     "format": "oxfmt . '!workers/**/src/*.generated.d.ts'",
@@ -26,6 +26,7 @@
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "0.20.3",
     "@cloudflare/workers-types": "5.20260810.1",
+    "@cyspbot/cyspbot": "workspace:*",
     "@cyspbot/github-webhook-receiver": "workspace:*",
     "@cyspbot/http": "workspace:*",
     "@tsconfig/strictest": "2.0.8",
