@@ -13,21 +13,10 @@
   "observability": {
     "enabled": true,
   },
-  "ratelimits": [
-    {
-      "name": "TOKEN_EXCHANGE_RATE_LIMIT",
-      "namespace_id": "00000000000000000000000000000000",
-      "simple": {
-        "limit": 30,
-        "period": 60,
-      },
-    },
-  ],
   "secrets": {
-    "required": ["GITHUB_APP_PRIVATE_KEY", "GITHUB_WEBHOOK_SECRET"],
+    "required": ["GITHUB_WEBHOOK_SECRET"],
   },
   "vars": {
-    "GITHUB_API_BASE_URL": "https://api.github.com",
     "GITHUB_APP_ID": "000000",
   },
 }

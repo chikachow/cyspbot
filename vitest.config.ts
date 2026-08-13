@@ -2,7 +2,6 @@ import { cloudflareTest } from "@cloudflare/vitest-pool-workers";
 import { configDefaults, defineConfig } from "vitest/config";
 
 import { githubWebhookTestSecret } from "./test/support/webhook.ts";
-import { tokenExchangeOidcNodeFixture } from "./test/support/token-exchange-oidc-node-fixture.ts";
 
 export default defineConfig({
   test: {
@@ -31,30 +30,6 @@ export default defineConfig({
           detectAsyncLeaks: true,
           exclude: [...configDefaults.exclude, "test/worker-integration/**"],
           name: "unit",
-        },
-      },
-      {
-        plugins: [
-          cloudflareTest({
-            miniflare: {
-              bindings: {
-                GITHUB_APP_PRIVATE_KEY: "unused-because-token-issuance-policy-denies",
-                OIDC_TEST_PRIVATE_KEY: tokenExchangeOidcNodeFixture.privateKeyPem,
-              },
-              outboundService: tokenExchangeOidcNodeFixture.outboundService,
-            },
-            remoteBindings: false,
-            wrangler: {
-              configPath: "./workers/cyspbot-token-exchange/wrangler.jsonc",
-            },
-          }),
-        ],
-        test: {
-          allowOnly: false,
-          detectAsyncLeaks: true,
-          include: ["test/worker-integration/token-exchange.test.ts"],
-          name: "token-exchange-integration",
-          testTimeout: 10_000,
         },
       },
       {

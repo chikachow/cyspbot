@@ -1,30 +1,25 @@
 # Security Policy
 
-## Reporting Vulnerabilities
+## Reporting vulnerabilities
 
-Please report security vulnerabilities privately through GitHub private vulnerability reporting when it is enabled for this repository.
+Please report security vulnerabilities privately through GitHub's private vulnerability reporting feature. Do not open a public issue containing exploit details, webhook secrets, payloads, or deployment credentials.
 
-If private vulnerability reporting is unavailable, contact the repository maintainer without opening a public issue. Do not include exploit details, private keys, tokens, webhook secrets, session material, or tenant-specific deployment identifiers in public issues, pull requests, or discussions.
+## Security boundary
 
-## Security Boundary
+cyspbot accepts GitHub App webhook deliveries. The important security properties are:
 
-cyspbot accepts Client-presented OpenID Connect ID Tokens from configured issuers and exchanges only the resulting Verified Subject Tokens for repository-scoped GitHub App installation access tokens. The Client is not authenticated and is not assumed to be the ID Token Subject. The important security properties are:
+- request bodies are bounded to `256 KiB` before parsing;
+- the delivery target must be the configured GitHub App ID;
+- the exact request body must authenticate under `X-Hub-Signature-256` and the configured webhook secret;
+- the authenticated body must be valid JSON before acknowledgement;
+- raw webhook bodies and secret values are not logged or retained; and
+- event acceptance does not dispatch event-specific product behavior.
 
-- issuer trust is configured, not discovered from Client-presented tokens
-- the Verified Subject Token is derived only from Subject Token Claims in an ID Token accepted through an exact OIDC Provider Registration and, when non-null, its OIDC ID Token Profile
-- the ID Token audience must be the exact single string `cyspbot`; the unsupported token-exchange `audience` parameter grants nothing
-- OIDC Provider Registrations and Permit Statements are independent, checked-in trust decisions; registration authenticates tokens but never authorizes Installation Access Token Issuance
-- the exact production registration and Permit Statement inventory is maintained in the [service contract](docs/service-contract.md) and [implementation reference](docs/implementation.md)
-- Clients must supply exactly one effective canonical Repository Resource; value-less occurrences are omitted, and Subject Token Claims never select the target
-- Clients may name structurally valid GitHub permissions, but every Requested Permission must be covered by checked-in Permit Statements
-- checked-in Token Issuance Policy Permit Statements must compose Effective Permissions that cover the Requested Permissions for the Verified Subject Token and Repository Resource before a token is issued
-- the GitHub App installation independently remains the upper bound on repositories and permissions
-- the GitHub App private key remains inside the deployment secret boundary
-- webhook processing requires GitHub signature validation before state changes
-- webhook deliveries must identify the configured GitHub App before they are accepted
+## Deployment secrets
 
-## Deployment Secrets
+Never commit deployment secrets, local `.dev.vars`, `.env`, webhook secrets, Cloudflare API tokens, or generated Wrangler state.
 
-Never commit deployment secrets, local `.dev.vars`, `.env`, GitHub App private keys, webhook secrets, Cloudflare API tokens, or generated Wrangler state.
+The webhook receiver needs:
 
-The source repository intentionally carries only public-safe Wrangler templates for local development, tests, and dry-runs. Production deployment details, credentials, secret values, and deployment overlays must stay outside this codebase.
+- `GITHUB_APP_ID`, a non-secret Worker variable; and
+- `GITHUB_WEBHOOK_SECRET`, supplied by a Worker secret or Cloudflare Secrets Store.
