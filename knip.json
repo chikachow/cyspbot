@@ -1,5 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
+  "ignore": ["test/worker-integration/workload-identity-issuer.mjs"],
   "ignoreDependencies": ["cloudflare"],
   "includeEntryExports": true
 }
