@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "01M006Y44SVJ895CCCBV7Y32QV",
+  "strategy": "manual-commit",
+  "branch": "agent/add-workload-identity-token-client",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "pnpm-lock.yaml",
+    "test/github-app-token.test.ts",
+    "workers/cyspbot/package.json",
+    "workers/cyspbot/src/env.generated.d.ts",
+    "workers/cyspbot/src/github-app-token.ts",
+    "workers/cyspbot/wrangler.jsonc"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 4587939,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 133364736,
+    "output_tokens": 467461,
+    "api_call_count": 1091
+  }
+}
