@@ -1,4 +1,5 @@
-import { exports } from "cloudflare:workers";
+import { env, exports } from "cloudflare:workers";
+import { requestGitHubAppInstallationToken } from "@cyspbot/cyspbot/github-app-token";
 import { describe, expect, it } from "vitest";
 
 describe("cyspbot Worker entrypoint", () => {
@@ -21,5 +22,18 @@ describe("cyspbot Worker entrypoint", () => {
 
     expect(missingResponse.status).toBe(404);
     await expect(missingResponse.text()).resolves.toBe("");
+  });
+
+  it("calls the WorkloadIdentityIssuer named entrypoint over RPC", async () => {
+    await expect(
+      requestGitHubAppInstallationToken(env, {
+        resource: "https://api.github.com/repos/chikachow/cyspbot",
+        scope: "contents:read",
+      }),
+    ).resolves.toEqual({
+      accessToken: "ghs_integration_token",
+      expiresIn: 300,
+      scope: "contents:read",
+    });
   });
 });

@@ -76,6 +76,12 @@ values.
 
 The unit project exercises the root response, empty fallback response, bounded body reading, request-body size and status handling, signature/target validation, response mapping, and both Worker factories. Separate Workerd integration projects load each Worker's real Wrangler configuration and entrypoint.
 
+The cyspbot integration project runs a local `WorkloadIdentityIssuer`
+named-entrypoint fixture through a Workerd Service Binding and exercises the
+client's RPC call. This validates the local RPC serialization and method
+contract; it does not test the separately deployed issuer implementation. The
+unit project uses structural fixtures for validation failures.
+
 Use Node 24 and the pinned pnpm version:
 
 ```bash
