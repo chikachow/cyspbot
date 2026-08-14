@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "01M0076RWZH5REQZB9JFTNTB4Z",
+  "strategy": "manual-commit",
+  "branch": "agent/add-workload-identity-token-client",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "test/github-app-token.test.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 46874,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 3786496,
+    "output_tokens": 9218,
+    "api_call_count": 33
+  }
+}
