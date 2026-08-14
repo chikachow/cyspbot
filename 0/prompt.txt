@@ -1,0 +1,104 @@
+Perform a read-only adversarial review of the owner-scoped repository policy follow-up. Do not edit files, commit, push, or change PRs. Inspect:
+- /Users/cysp/src/github-app-token-broker-deploy/src/github-app-token-broker at source PR head d1e93d4
+- /Users/cysp/src/github-app-token-broker-deploy at broker deployment PR head f7e5a8e
+- /Users/cysp/src/cyspbot at source PR head a088b7d5
+- /Users/cysp/.codex/worktrees/cyspbot-deploy-workload-identity-20260814 at private deployment PR head 306df08
+
+Review specifically:
+1. whether owner-scoped constraints can authorize exactly any repository under chikachow for sub cyspbot, no other owner, and no broader permissions;
+2. whether target-support/error classification, compiled policy shape, type/API design, and tests are consistent;
+3. whether all affected docs describe only current behavior and do not claim an unmerged source revision is production accepted;
+4. whether submodule pins and PR dependency order are coherent.
+Report concrete findings with severity and file/line evidence. If no findings, state that clearly.
+
+---
+
+Please stop further exploration and return a concise final review now. List only concrete findings with severity and file/line evidence, or state no findings. Do not edit files.
+
+---
+
+Spawn a worker agent to self-review each of these changes separately
+
+---
+
+You are the independent reviewer for github-app-token-broker source PR #12 only.
+
+Repository/worktree: /Users/cysp/src/github-app-token-broker-deploy/src/github-app-token-broker
+Review exactly git diff main...HEAD at expected HEAD d1e93d40f6717d5344471eb0525cf4161c7b4c57. The fixed point is main; verify refs, commit list, and the full diff. This is a READ-ONLY review: do not edit files, commit, push, modify the PR, deploy, or create artifacts.
+
+Review the full change along two separate axes:
+1. Standards: inspect repository conventions, public API/type-export conventions, tests, documentation decisions, and flag concrete violations or clearly labelled code smells.
+2. Spec: the token issuance policy needs an explicit owner-scoped GitHub repository resource constraint that permits any repository under one configured owner while never permitting another owner. It must preserve exact canonical request resources for concrete repository requests, correctly participate in authorization, supported targets, and supported permissions, and retain least-privilege permission semantics. The exported constraint type/factory and matcher behavior must be coherent for all existing constraint kinds, with no accidental wildcard behavior beyond the owner. Tests must exercise positive same-owner and negative other-owner cases plus existing exact-resource behavior. Documentation should describe the current implementation and identifiers, not speculative futures.
+
+Pay special attention to resource parsing/canonicalization, owner/repository nullability, matching order, malformed input, permission-level coverage, export compatibility, and whether tests independently establish the security property. You may run read-only tests, but do not alter the worktree.
+
+Report under exactly:
+- Standards
+- Spec
+- Verdict
+
+For every finding give severity (blocker/high/medium/low), exact file and line or symbol, concrete evidence, and concise fix direction. Separate hard findings from judgement-call smells. If no findings on an axis, say "No findings." Do not invent issues; under 800 words.
+
+---
+
+You are the independent reviewer for cyspbot PR #167 only.
+
+Repository/worktree: /Users/cysp/src/cyspbot
+Review exactly git diff main...HEAD at expected HEAD a088b7d55d11230e1d0c4a76492bc543258afc04. The fixed point is main; first verify refs and inspect git log main..HEAD. This is a READ-ONLY review: do not edit files, commit, push, modify the PR, deploy, or create artifacts.
+
+Review the full change along two separate axes:
+1. Standards: inspect this repository's documented conventions, tests, TypeScript/Workers patterns, and flag concrete violations or clearly justified code smells.
+2. Spec: assess the accepted implementation. The worker must obtain its own OIDC ID token from the Cloudflare Workload Identity deployment, using issuer/discovery and the exact subject cyspbot/audience contract; then use OAuth over HTTP against github-app-token-broker's /token endpoint to obtain the GitHub App token. It should expose the intended request flow safely, validate responses and errors, keep configuration/bindings/types aligned, and document the current implementation rather than hypothetical futures. Do not require an RPC interface if the actual accepted design uses OAuth over HTTP.
+
+Inspect docs, tests, generated env types, wrangler configuration, and integration boundaries. Treat unrelated pre-existing untracked directories as out of scope. Check whether tests are meaningful and whether security-sensitive identifiers, URLs, scopes, credentials, or response handling are inconsistent. You may run read-only existing checks if useful, but do not alter the worktree.
+
+Report under exactly:
+- Standards
+- Spec
+- Verdict
+
+For every finding give severity (blocker/high/medium/low), exact file and line or symbol, concrete evidence, and a concise fix direction. Separate hard findings from judgement-call smells. If no findings on an axis, say "No findings." Do not invent issues; under 800 words.
+
+---
+
+You are the independent reviewer for private cyspbot-deploy PR #70 only.
+
+Repository/worktree: /Users/cysp/.codex/worktrees/cyspbot-deploy-workload-identity-20260814
+Review exactly git diff main...HEAD at expected HEAD 306df08875d96e850d0fadc2a53ceac62ec8ffbf. The fixed point is main; verify refs, commit list, and the full diff. This is a READ-ONLY review: do not edit files, commit, push, modify the PR, deploy, or create artifacts.
+
+Review the full change along two separate axes:
+1. Standards: inspect repository deployment/CI conventions, Wrangler configuration patterns, submodule update rules, DNS/custom-domain migration handling, and docs conventions; distinguish this feature's diff from unrelated changes already included in the branch.
+2. Spec: production cyspbot deployment must bind the worker to github-app-token-broker for OAuth token requests and to the Cloudflare Workload Identity deployment for OIDC token requests, with service binding names, worker entrypoints, props, subject cyspbot, and audience https://cyspbot.chikachow.org aligned end-to-end. The submodule must pin cyspbot PR #167's exact implementation head a088b7d55d11230e1d0c4a76492bc543258afc04. Deployment workflows, config validation, dry-run behavior, and update automation must consume the new config correctly. Documentation should describe the current implementation, not potential futures.
+
+Pay special attention to binding names and target worker names, entrypoint exports, props serialization, environment-specific config, workflow/config path changes, source pin consistency, accidentally removed behavior, and whether tests validate the actual production configuration. You may run read-only existing checks, but do not alter the worktree or deploy.
+
+Report under exactly:
+- Standards
+- Spec
+- Verdict
+
+For every finding give severity (blocker/high/medium/low), exact file and line or symbol, concrete evidence, and concise fix direction. Separate hard findings from judgement-call smells. If no findings on an axis, say "No findings." Do not invent issues; under 800 words.
+
+---
+
+You are the independent reviewer for github-app-token-broker-deploy PR #6 only.
+
+Repository/worktree: /Users/cysp/src/github-app-token-broker-deploy
+Review exactly git diff main...HEAD at expected HEAD f7e5a8e07912567f7a2665e29444306231c21ba7. The fixed point is main; verify refs, commit list, and the full diff. This is a READ-ONLY review: do not edit files, commit, push, modify the PR, deploy, or create artifacts.
+
+Review the full change along two separate axes:
+1. Standards: inspect Terraform/TypeScript/Cloudflare deployment conventions, source-pin/reproducibility rules, test patterns, and docs conventions; flag concrete violations or clearly labelled code smells.
+2. Spec: the deployment must trust/register the Cloudflare Workload Identity issuer and configure an exact permit for subject cyspbot, audience https://cyspbot.chikachow.org, GitHub owner chikachow, and contents:read, with repository scope covering any repository under that owner but no other owner. It must pin and test the broker source change that provides owner-scoped constraints, keep any accepted-main/source gate coherent, and describe the current implementation in README/docs. Verify composition and policy tests actually catch wrong subject/audience/owner/permission behavior and that source pin updates are internally consistent. The source PR dependency is github-app-token-broker #12; inspect the vendored/submodule relationship and report any integration risk, but do not change it.
+
+Pay special attention to issuer/audience/subject identifiers, policy serialization, owner wildcard semantics, source pin drift, submodule commit integrity, generated/deployment configuration, test independence, and deployment safety. You may run read-only existing checks, but do not alter the worktree or deploy.
+
+Report under exactly:
+- Standards
+- Spec
+- Verdict
+
+For every finding give severity (blocker/high/medium/low), exact file and line or symbol, concrete evidence, and concise fix direction. Separate hard findings from judgement-call smells. If no findings on an axis, say "No findings." Do not invent issues; under 800 words.
+
+---
+
+Attempt to simplify the resulting codebases after these changes , while accurately following oauth specifications and terminology
