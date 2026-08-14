@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "01M008A0ED5M8MKXVYZTGYC3TW",
+  "strategy": "manual-commit",
+  "branch": "agent/add-workload-identity-token-client",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "docs/implementation.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 3562,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 701440,
+    "output_tokens": 530,
+    "api_call_count": 4
+  }
+}
