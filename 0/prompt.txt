@@ -1,9 +1,1 @@
-Wat
-
----
-
-Can documentation modifications be included in the commits that modify the documented aspects
-
----
-
 Proceed
