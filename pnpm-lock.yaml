@@ -63,6 +63,9 @@ importers:
 
   workers/cyspbot:
     dependencies:
+      '@cyspbot/http':
+        specifier: workspace:*
+        version: link:../../packages/http
       hono:
         specifier: 4.13.2
         version: 4.13.2

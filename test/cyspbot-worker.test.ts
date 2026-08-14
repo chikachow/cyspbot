@@ -66,6 +66,10 @@ function fetchCyspbot(input: RequestInfo | URL, init?: RequestInit): Promise<Res
   }
 
   return Promise.resolve(
-    handler(new Request(input, init) as Parameters<typeof handler>[0], {}, {} as ExecutionContext),
+    handler(
+      new Request(input, init) as Parameters<typeof handler>[0],
+      {} as CyspbotEnv,
+      {} as ExecutionContext,
+    ),
   );
 }

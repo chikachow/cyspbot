@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./github-app-token": "./src/github-app-token.ts",
     "./worker": "./src/worker.ts"
   },
   "scripts": {
@@ -17,6 +18,7 @@
     "typecheck": "node --run runtime-types:generate && tsc --project tsconfig.json"
   },
   "dependencies": {
+    "@cyspbot/http": "workspace:*",
     "hono": "4.13.2"
   }
 }

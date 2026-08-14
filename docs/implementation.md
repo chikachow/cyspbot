@@ -40,8 +40,37 @@ The operation does not retain bodies, deduplicate delivery IDs, or dispatch even
 
 - `GITHUB_APP_ID`: required non-secret variable used to bind deliveries to the intended GitHub App.
 - `GITHUB_WEBHOOK_SECRET`: required Worker secret or Cloudflare Secrets Store binding.
+- `WORKLOAD_IDENTITY_ISSUER`: RPC Service Binding to a separately deployed
+  `WorkloadIdentityIssuer` entrypoint. Its `issueToken(audience)` operation
+  returns an `IssuedToken`; the issuer deployment owns the workload subject
+  and signing details. This RPC is a workload-identity interface, not an OAuth
+  token endpoint.
+- `WORKLOAD_IDENTITY_TOKEN_AUDIENCE`: non-secret Worker variable containing the
+  logical audience requested from the issuer and accepted by the broker.
+- `GITHUB_APP_TOKEN_BROKER`: Service Binding used by the OAuth Client to call
+  the broker's existing RFC 8693 Token Endpoint with `fetch`.
+- `GITHUB_APP_TOKEN_BROKER_TOKEN_ENDPOINT`: non-secret Worker variable
+  containing the broker's token endpoint URL. It is separate from the logical
+  Workload Identity Token audience.
 
-The public Worker Wrangler files declare only local-development and dry-run values. Production domains, routes, resource identifiers, and secret-store references belong to the separate deployment repository.
+The internal Token Exchange Client first calls the issuer RPC, then posts the
+returned short-lived Workload Identity Token as a workload identity assertion
+to the configured broker endpoint as the RFC 8693 `subject_token` under the
+broker's OIDC ID Token subject-token profile. It requests a GitHub App
+Installation Access Token with a canonical GitHub `resource` and explicit permission
+`scope`; the broker remains the source of truth for normalization, OIDC ID
+Token profile verification, and Token Issuance Policy. On success, the client
+returns a `GitHubAppInstallationAccessToken`. On an OAuth failure, it throws a
+`GitHubAppTokenBrokerError` containing the HTTP status and OAuth error code and
+description. Workload identity assertions and issued GitHub tokens must not be
+logged.
+
+The client is an internal library operation and is not exposed as an HTTP
+route. Production service names, identity properties, domains, routes,
+resource identifiers, secret-store references, and Cloudflare Workload Identity
+properties belong to the separate deployment repository. The public Worker
+Wrangler files contain only local-development and dry-run service targets and
+values.
 
 ## Tests and validation
 
