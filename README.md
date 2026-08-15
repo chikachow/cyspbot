@@ -1,6 +1,6 @@
 # cyspbot
 
-cyspbot serves a tiny bot page and receives signed GitHub App webhook deliveries. It validates each delivery for the configured GitHub App, acknowledges valid JSON events, and does not retain raw webhook payloads or run event-specific product logic.
+cyspbot serves a tiny bot page and receives signed GitHub App webhook deliveries. It validates each delivery for the configured GitHub App, classifies status commands, and queues only the jobs that require processing. It does not retain raw webhook bodies.
 
 ## Public surface
 
@@ -17,14 +17,17 @@ The webhook receiver accepts `application/json` request bodies up to `256 KiB`. 
 - an HMAC signature that matches `GITHUB_WEBHOOK_SECRET`; and
 - a syntactically valid JSON body.
 
-Valid deliveries receive `202`. Ping deliveries receive `{"accepted":true,"event":"ping"}`; other events receive `{"accepted":true}`. See the [service contract](docs/service-contract.md) for the complete response behavior.
+Valid deliveries receive `202` after any matching status-reaction job is durably queued. Ping deliveries receive `{"accepted":true,"event":"ping"}`; other authenticated events receive `{"accepted":true}` without creating a job. A queue write failure receives `503` so GitHub can retry the delivery. See the [service contract](docs/service-contract.md) for the complete response behavior.
 
 ## Architecture
 
 - `workers/cyspbot` owns the Hono-based root-page Worker and its public-safe Wrangler configuration.
-- `workers/cyspbot-github-webhook-receiver` owns the deployable Worker, its route, runtime composition, and public-safe Wrangler configuration.
+- `workers/cyspbot-github-webhook-receiver` authenticates webhook deliveries, classifies status commands, and produces queue jobs.
+- `workers/cyspbot-github-webhook-processor` consumes queue jobs, obtains a GitHub App Installation Access Token, and adds the status reaction.
 - `packages/http` owns bounded request-body and JSON/problem-details response helpers.
 - `packages/github` owns the shared Cloudflare secret-binding adapter used by webhook verification.
+- `packages/token-exchange` owns the internal RFC 8693 client that obtains GitHub App Installation Access Tokens.
+- `packages/github-webhook-jobs` owns the versioned queue-job contract shared by the receiver and processor.
 - The root Wrangler configuration is a test harness, not a deployable product Worker.
 
 The source repository intentionally contains no Cloudflare account IDs, production routes, or secret values. Production ownership and service boundaries are documented in [deployment](docs/deployment.md).
@@ -48,7 +51,7 @@ fnm exec --using=24 corepack pnpm run check
 fnm exec --using=24 corepack pnpm run test:coverage
 ```
 
-The checks cover formatting, generated environment types, lint, type checking, unused-code detection, unit and Workerd integration tests, and Wrangler deployment dry runs for both Workers.
+The checks cover formatting, generated environment types, lint, type checking, unused-code detection, unit and Workerd integration tests, and Wrangler deployment dry runs for all three Workers.
 
 ## Deployment trigger
 

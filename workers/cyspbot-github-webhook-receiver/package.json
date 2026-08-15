@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@cyspbot/github": "workspace:*",
+    "@cyspbot/github-webhook-jobs": "workspace:*",
     "@cyspbot/http": "workspace:*"
   }
 }

@@ -1,6 +1,8 @@
 import { resolveSecretText, type SecretTextBinding } from "@cyspbot/github/secrets";
+import type { GitHubIssueCommentStatusReactionJob } from "@cyspbot/github-webhook-jobs";
 import { readRequestBodyUpTo } from "@cyspbot/http/request-body";
 import { verifyGitHubWebhookSignature } from "./signature.ts";
+import { classifyStatusReactionJob } from "./status-reaction.ts";
 
 const maxWebhookBodyBytes = 256 * 1024;
 
@@ -13,8 +15,16 @@ interface AuthenticatedWebhookEnvelope {
   kind: "authenticated";
 }
 
+interface GitHubWebhookJobQueue {
+  send(
+    message: GitHubIssueCommentStatusReactionJob,
+    options?: { contentType?: "json" },
+  ): Promise<unknown>;
+}
+
 export interface GitHubWebhookReceiverBaseEnv {
   GITHUB_APP_ID: string;
+  GITHUB_WEBHOOK_JOBS: GitHubWebhookJobQueue;
   GITHUB_WEBHOOK_SECRET?: SecretTextBinding;
 }
 
@@ -59,8 +69,10 @@ export async function acceptGitHubWebhookDelivery<Env extends GitHubWebhookRecei
     return envelope;
   }
 
+  let payload: unknown;
+
   try {
-    void JSON.parse(envelope.body);
+    payload = JSON.parse(envelope.body);
   } catch {
     logWebhookRejection(400, request, envelope);
     return rejected(400);
@@ -68,6 +80,20 @@ export async function acceptGitHubWebhookDelivery<Env extends GitHubWebhookRecei
 
   if (envelope.event === "ping") {
     return accepted({ accepted: true, event: envelope.event });
+  }
+
+  const job = classifyStatusReactionJob(envelope.event, envelope.deliveryId, payload);
+  if (job !== undefined) {
+    try {
+      await env.GITHUB_WEBHOOK_JOBS.send(job, { contentType: "json" });
+    } catch (error) {
+      console.error("github_webhook_job_enqueue_failed", {
+        deliveryId: envelope.deliveryId,
+        error: error instanceof Error ? error.name : typeof error,
+        event: envelope.event,
+      });
+      return rejected(503);
+    }
   }
 
   return accepted({ accepted: true });

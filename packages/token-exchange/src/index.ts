@@ -32,12 +32,21 @@ export class GitHubAppTokenBrokerError extends Error {
   }
 }
 
+export interface TokenExchangeEnvironment {
+  readonly GITHUB_APP_TOKEN_BROKER: {
+    fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
+  };
+  readonly GITHUB_APP_TOKEN_BROKER_TOKEN_ENDPOINT: string;
+  readonly WORKLOAD_IDENTITY_ISSUER: unknown;
+  readonly WORKLOAD_IDENTITY_TOKEN_AUDIENCE: string;
+}
+
 interface WorkloadIdentityIssuerBinding {
   issueToken(audience: string): Promise<unknown>;
 }
 
 export async function requestGitHubAppInstallationToken(
-  env: CyspbotEnv,
+  env: TokenExchangeEnvironment,
   request: GitHubAppInstallationTokenRequest,
 ): Promise<GitHubAppInstallationAccessToken> {
   const resource = requireNonEmptyString(request.resource, "resource");

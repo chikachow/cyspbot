@@ -46,6 +46,28 @@ describe("worker entrypoint shapes", () => {
         }) as Parameters<typeof fetch>[0],
         {
           GITHUB_APP_ID: "000000",
+          GITHUB_WEBHOOK_JOBS: {
+            metrics: async () => ({
+              backlogBytes: 0,
+              backlogCount: 0,
+            }),
+            send: async () => ({
+              metadata: {
+                metrics: {
+                  backlogBytes: 0,
+                  backlogCount: 0,
+                },
+              },
+            }),
+            sendBatch: async () => ({
+              metadata: {
+                metrics: {
+                  backlogBytes: 0,
+                  backlogCount: 0,
+                },
+              },
+            }),
+          },
           GITHUB_WEBHOOK_SECRET: "",
         },
         {} as ExecutionContext,

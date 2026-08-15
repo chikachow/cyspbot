@@ -1,7 +1,8 @@
 import {
   GitHubAppTokenBrokerError,
   requestGitHubAppInstallationToken,
-} from "@cyspbot/cyspbot/github-app-token";
+  type TokenExchangeEnvironment,
+} from "@cyspbot/token-exchange";
 import { describe, expect, it } from "vitest";
 
 const workloadIdentityAudience = "https://cyspbot.local";
@@ -211,7 +212,7 @@ interface TestOptions {
   readonly response?: Response;
 }
 
-function createEnv(options: TestOptions = {}): { env: CyspbotEnv } {
+function createEnv(options: TestOptions = {}): { env: TokenExchangeEnvironment } {
   const issuer =
     options.issuer ??
     createWorkloadIdentityIssuer((audience) => {
@@ -230,7 +231,7 @@ function createEnv(options: TestOptions = {}): { env: CyspbotEnv } {
     GITHUB_APP_TOKEN_BROKER_TOKEN_ENDPOINT: brokerTokenEndpoint,
     WORKLOAD_IDENTITY_ISSUER: issuer,
     WORKLOAD_IDENTITY_TOKEN_AUDIENCE: workloadIdentityAudience,
-  } satisfies CyspbotEnv;
+  } satisfies TokenExchangeEnvironment;
 
   return {
     env,

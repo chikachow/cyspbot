@@ -20,12 +20,21 @@ importers:
       '@cyspbot/cyspbot':
         specifier: workspace:*
         version: link:workers/cyspbot
+      '@cyspbot/github-webhook-jobs':
+        specifier: workspace:*
+        version: link:packages/github-webhook-jobs
+      '@cyspbot/github-webhook-processor':
+        specifier: workspace:*
+        version: link:workers/cyspbot-github-webhook-processor
       '@cyspbot/github-webhook-receiver':
         specifier: workspace:*
         version: link:workers/cyspbot-github-webhook-receiver
       '@cyspbot/http':
         specifier: workspace:*
         version: link:packages/http
+      '@cyspbot/token-exchange':
+        specifier: workspace:*
+        version: link:packages/token-exchange
       '@tsconfig/strictest':
         specifier: 2.0.8
         version: 2.0.8
@@ -59,22 +68,39 @@ importers:
 
   packages/github: {}
 
+  packages/github-webhook-jobs: {}
+
   packages/http: {}
 
-  workers/cyspbot:
+  packages/token-exchange:
     dependencies:
       '@cyspbot/http':
         specifier: workspace:*
-        version: link:../../packages/http
+        version: link:../http
+
+  workers/cyspbot:
+    dependencies:
       hono:
         specifier: 4.13.2
         version: 4.13.2
+
+  workers/cyspbot-github-webhook-processor:
+    dependencies:
+      '@cyspbot/github-webhook-jobs':
+        specifier: workspace:*
+        version: link:../../packages/github-webhook-jobs
+      '@cyspbot/token-exchange':
+        specifier: workspace:*
+        version: link:../../packages/token-exchange
 
   workers/cyspbot-github-webhook-receiver:
     dependencies:
       '@cyspbot/github':
         specifier: workspace:*
         version: link:../../packages/github
+      '@cyspbot/github-webhook-jobs':
+        specifier: workspace:*
+        version: link:../../packages/github-webhook-jobs
       '@cyspbot/http':
         specifier: workspace:*
         version: link:../../packages/http
