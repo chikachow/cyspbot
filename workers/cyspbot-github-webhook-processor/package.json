@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@cyspbot/github-webhook-jobs": "workspace:*",
+    "@cyspbot/http": "workspace:*",
     "@cyspbot/token-exchange": "workspace:*"
   }
 }

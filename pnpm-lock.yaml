@@ -89,6 +89,9 @@ importers:
       '@cyspbot/github-webhook-jobs':
         specifier: workspace:*
         version: link:../../packages/github-webhook-jobs
+      '@cyspbot/http':
+        specifier: workspace:*
+        version: link:../../packages/http
       '@cyspbot/token-exchange':
         specifier: workspace:*
         version: link:../../packages/token-exchange

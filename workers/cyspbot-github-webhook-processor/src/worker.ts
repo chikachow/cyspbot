@@ -37,6 +37,7 @@ export function createGitHubWebhookProcessorWorker(
             console.warn("github_webhook_job_retrying", {
               attempts: message.attempts,
               error: errorName(error),
+              ...errorLogFields(error),
               messageId: message.id,
               queue: batch.queue,
               status: errorStatus(error),
@@ -46,6 +47,7 @@ export function createGitHubWebhookProcessorWorker(
             console.error("github_webhook_job_failed", {
               attempts: message.attempts,
               error: errorName(error),
+              ...errorLogFields(error),
               messageId: message.id,
               queue: batch.queue,
               status: errorStatus(error),
@@ -84,4 +86,12 @@ function errorStatus(error: unknown): number | undefined {
   }
 
   return undefined;
+}
+
+function errorLogFields(error: unknown): Record<string, unknown> {
+  if (error instanceof GitHubReactionError) {
+    return { github: error.diagnostics };
+  }
+
+  return {};
 }
