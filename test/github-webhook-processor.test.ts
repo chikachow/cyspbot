@@ -75,6 +75,67 @@ describe("cyspbot-github-webhook-processor", () => {
     expect(message.ack).not.toHaveBeenCalled();
   });
 
+  it("retries transient broker failures", async () => {
+    const worker = createGitHubWebhookProcessorWorker({
+      fetch: async () => new Response(null, { status: 201 }),
+    });
+    const message = createMessage(job);
+
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      await invokeQueue(worker, [message], createTokenExchangeEnvironment({ brokerStatus: 503 }));
+    } finally {
+      consoleWarn.mockRestore();
+    }
+
+    expect(message.retry).toHaveBeenCalledOnce();
+    expect(message.ack).not.toHaveBeenCalled();
+  });
+
+  it("acknowledges permanent broker failures", async () => {
+    const worker = createGitHubWebhookProcessorWorker({
+      fetch: async () => new Response(null, { status: 201 }),
+    });
+    const message = createMessage(job);
+
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      await invokeQueue(worker, [message], createTokenExchangeEnvironment({ brokerStatus: 400 }));
+    } finally {
+      consoleError.mockRestore();
+    }
+
+    expect(message.ack).toHaveBeenCalledOnce();
+    expect(message.retry).not.toHaveBeenCalled();
+  });
+
+  it("retries unexpected token-exchange failures", async () => {
+    const worker = createGitHubWebhookProcessorWorker({
+      fetch: async () => new Response(null, { status: 201 }),
+    });
+    const message = createMessage(job);
+
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      await invokeQueue(
+        worker,
+        [message],
+        createTokenExchangeEnvironment({
+          issuer: {
+            issueToken: async () => {
+              throw "issuer unavailable";
+            },
+          },
+        }),
+      );
+    } finally {
+      consoleWarn.mockRestore();
+    }
+
+    expect(message.retry).toHaveBeenCalledOnce();
+    expect(message.ack).not.toHaveBeenCalled();
+  });
+
   it("acknowledges a non-rate-limited forbidden response", async () => {
     const worker = createGitHubWebhookProcessorWorker({
       fetch: async () => new Response(null, { status: 403 }),
@@ -172,6 +233,8 @@ async function invokeQueue(
 
 function createTokenExchangeEnvironment(
   options: {
+    brokerStatus?: number;
+    issuer?: { issueToken(audience: string): Promise<unknown> };
     onBrokerRequest?: (input: RequestInfo | URL, init: RequestInit | undefined) => void;
   } = {},
 ): TokenExchangeEnvironment {
@@ -181,20 +244,27 @@ function createTokenExchangeEnvironment(
         options.onBrokerRequest?.(input, init);
         return Promise.resolve(
           new Response(
-            JSON.stringify({
-              access_token: "ghs_test_token",
-              expires_in: 300,
-              issued_token_type: "urn:ietf:params:oauth:token-type:access_token",
-              scope: "issues:write",
-              token_type: "Bearer",
-            }),
-            { headers: { "content-type": "application/json" }, status: 200 },
+            JSON.stringify(
+              options.brokerStatus === undefined || options.brokerStatus === 200
+                ? {
+                    access_token: "ghs_test_token",
+                    expires_in: 300,
+                    issued_token_type: "urn:ietf:params:oauth:token-type:access_token",
+                    scope: "issues:write",
+                    token_type: "Bearer",
+                  }
+                : { error: "token_exchange_failed" },
+            ),
+            {
+              headers: { "content-type": "application/json" },
+              status: options.brokerStatus ?? 200,
+            },
           ),
         );
       },
     },
     GITHUB_APP_TOKEN_BROKER_TOKEN_ENDPOINT: "https://broker.example/token",
-    WORKLOAD_IDENTITY_ISSUER: {
+    WORKLOAD_IDENTITY_ISSUER: options.issuer ?? {
       issueToken: async () => ({ token: "eyJ.test.workload.identity" }),
     },
     WORKLOAD_IDENTITY_TOKEN_AUDIENCE: "https://cyspbot.example",
