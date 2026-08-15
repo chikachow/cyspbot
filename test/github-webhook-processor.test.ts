@@ -153,6 +153,55 @@ describe("cyspbot-github-webhook-processor", () => {
     expect(message.retry).not.toHaveBeenCalled();
   });
 
+  it("logs bounded GitHub response details for a permanent failure", async () => {
+    const worker = createGitHubWebhookProcessorWorker({
+      fetch: async () =>
+        new Response(
+          JSON.stringify({
+            documentation_url:
+              "https://docs.github.com/rest/reactions/reactions#create-reaction-for-an-issue-comment",
+            message: "Resource not accessible by integration",
+            private_detail: "do not log this",
+            status: "403",
+          }),
+          {
+            headers: {
+              "x-accepted-github-permissions": "issues=write",
+              "x-github-request-id": "ABC123",
+              "x-ratelimit-remaining": "4997",
+            },
+            status: 403,
+          },
+        ),
+    });
+    const message = createMessage(job);
+
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      await invokeQueue(worker, [message], createTokenExchangeEnvironment());
+
+      expect(consoleError).toHaveBeenCalledWith(
+        "github_webhook_job_failed",
+        expect.objectContaining({
+          github: {
+            acceptedPermissions: "issues=write",
+            documentationUrl:
+              "https://docs.github.com/rest/reactions/reactions#create-reaction-for-an-issue-comment",
+            message: "Resource not accessible by integration",
+            rateLimitRemaining: "4997",
+            requestId: "ABC123",
+          },
+        }),
+      );
+      expect(JSON.stringify(consoleError.mock.calls)).not.toContain("do not log this");
+    } finally {
+      consoleError.mockRestore();
+    }
+
+    expect(message.ack).toHaveBeenCalledOnce();
+    expect(message.retry).not.toHaveBeenCalled();
+  });
+
   it("retries a rate-limited forbidden response", async () => {
     const worker = createGitHubWebhookProcessorWorker({
       fetch: async () =>
