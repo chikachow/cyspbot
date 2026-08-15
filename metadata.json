@@ -1,0 +1,59 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "01M01EG8EG2G73F9S7KQV1TXZ9",
+  "strategy": "manual-commit",
+  "branch": "agent/add-workload-identity-token-client",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "CONTEXT.md",
+    "README.md",
+    "docs/deployment.md",
+    "docs/implementation.md",
+    "docs/release.md",
+    "docs/service-contract.md",
+    "package.json",
+    "packages/github-webhook-jobs/package.json",
+    "packages/github-webhook-jobs/src/index.ts",
+    "packages/http/src/problem-details.ts",
+    "packages/token-exchange/package.json",
+    "packages/token-exchange/src/index.ts",
+    "test/github-app-token.test.ts",
+    "test/github-webhook-jobs.test.ts",
+    "test/github-webhook-processor.test.ts",
+    "test/support/worker-env.ts",
+    "test/webhook-delivery-acceptance.test.ts",
+    "test/worker-entrypoints.test.ts",
+    "test/worker-integration/cyspbot.test.ts",
+    "test/worker-integration/github-webhook-processor.test.ts",
+    "test/worker-integration/github-webhook-receiver.test.ts",
+    "vitest.config.ts",
+    "workers/cyspbot-github-webhook-processor/package.json",
+    "workers/cyspbot-github-webhook-processor/src/github/reactions.ts",
+    "workers/cyspbot-github-webhook-processor/src/index.ts",
+    "workers/cyspbot-github-webhook-processor/src/worker.ts",
+    "workers/cyspbot-github-webhook-processor/tsconfig.json",
+    "workers/cyspbot-github-webhook-processor/wrangler.jsonc",
+    "workers/cyspbot-github-webhook-receiver/package.json",
+    "workers/cyspbot-github-webhook-receiver/src/github-webhooks/acceptance.ts",
+    "workers/cyspbot-github-webhook-receiver/src/github-webhooks/status-reaction.ts",
+    "workers/cyspbot-github-webhook-receiver/wrangler.jsonc",
+    "workers/cyspbot/package.json",
+    "workers/cyspbot/src/github-app-token.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 5892163,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 176708352,
+    "output_tokens": 652811,
+    "api_call_count": 1477
+  }
+}
