@@ -42,6 +42,9 @@ describe("cyspbot-github-webhook-processor", () => {
     expect(new Headers(githubRequests[0]?.headers).get("authorization")).toBe(
       "Bearer ghs_test_token",
     );
+    expect(new Headers(githubRequests[0]?.headers).get("user-agent")).toBe(
+      "cyspbot-github-webhook-processor",
+    );
     expect(githubRequests[0]?.body).toBe(JSON.stringify({ content: "eyes" }));
 
     const requestBody = brokerRequests[0]?.body;

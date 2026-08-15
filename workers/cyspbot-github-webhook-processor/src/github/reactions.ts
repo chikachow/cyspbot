@@ -6,6 +6,7 @@ import {
 
 const githubApiBaseUrl = "https://api.github.com";
 const githubApiVersion = "2022-11-28";
+const githubUserAgent = "cyspbot-github-webhook-processor";
 const reactionContent = "eyes";
 const reactionScope = "issues:write";
 
@@ -47,6 +48,7 @@ export async function addStatusReaction(
         accept: "application/vnd.github+json",
         authorization: `Bearer ${token.accessToken}`,
         "content-type": "application/json",
+        "user-agent": githubUserAgent,
         "x-github-api-version": githubApiVersion,
       },
       method: "POST",

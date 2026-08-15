@@ -12,6 +12,9 @@ export async function githubWebhookProcessorOutboundService(request: Request): P
   if (request.headers.get("content-type") !== "application/json") {
     throw new Error("unexpected GitHub Content-Type header");
   }
+  if (request.headers.get("user-agent") !== "cyspbot-github-webhook-processor") {
+    throw new Error("unexpected GitHub User-Agent header");
+  }
   if (request.headers.get("x-github-api-version") !== "2022-11-28") {
     throw new Error("unexpected GitHub API version header");
   }
