@@ -30,7 +30,13 @@ describe("GitHub webhook jobs", () => {
   it.each([
     ["an unknown version", { version: 2 }],
     ["an extra property", { unexpected: true }],
+    ["an empty delivery id", { deliveryId: " " }],
     ["a path separator in the repository", { repository: { name: "repo/name", owner: "owner" } }],
+    ["a repository fragment", { repository: { name: "repo#name", owner: "owner" } }],
+    [
+      "a control character in the repository",
+      { repository: { name: "repo\u0001name", owner: "owner" } },
+    ],
     ["a non-positive comment id", { commentId: 0 }],
   ])("rejects %s", (_name, override) => {
     expect(
