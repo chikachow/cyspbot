@@ -23,10 +23,10 @@ producer and wires the processor to the queue consumer, WorkloadIdentityIssuer
 RPC entrypoint, and broker Service Binding. It provisions the primary queue and
 dead-letter queue before deploying the processor and receiver. It supplies the
 logical Workload Identity Token audience and broker Token Endpoint URL as
-separate variables. The issuer properties and broker policy remain
-deployment-owned; the client binding supplies transport only, while the broker
-verifies the workload identity assertion and performs authorization at its
-Token Endpoint.
+separate variables. The issuer binding supplies the `WorkloadIdentityIssuer`
+RPC together with its `subject` and `allowedAudiences` properties, while the
+broker binding supplies the broker transport. The broker verifies the workload
+identity assertion and performs authorization at its Token Endpoint.
 
 ## Local validation only
 
