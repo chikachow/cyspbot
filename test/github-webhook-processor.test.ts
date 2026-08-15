@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { GitHubIssueCommentStatusReactionJob } from "@cyspbot/github-webhook-jobs";
+import { GitHubReactionError } from "@cyspbot/github-webhook-processor/github/reactions";
 import { createGitHubWebhookProcessorWorker } from "@cyspbot/github-webhook-processor/worker";
 import type { TokenExchangeEnvironment } from "@cyspbot/token-exchange";
 
@@ -16,6 +17,10 @@ const job: GitHubIssueCommentStatusReactionJob = {
 };
 
 describe("cyspbot-github-webhook-processor", () => {
+  it("defaults GitHub reaction error diagnostics to an empty object", () => {
+    expect(new GitHubReactionError(403, false).diagnostics).toEqual({});
+  });
+
   it("requests issues:write and adds an eyes reaction", async () => {
     const brokerRequests: RequestInit[] = [];
     const githubRequests: RequestInit[] = [];
@@ -245,6 +250,31 @@ describe("cyspbot-github-webhook-processor", () => {
         "github_webhook_job_failed",
         expect.objectContaining({
           github: { requestId: "NON_OBJECT" },
+        }),
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  it("ignores absent fields in an object GitHub error body", async () => {
+    const worker = createGitHubWebhookProcessorWorker({
+      fetch: async () =>
+        new Response("{}", {
+          headers: { "x-github-request-id": "EMPTY_OBJECT" },
+          status: 403,
+        }),
+    });
+    const message = createMessage(job);
+
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      await invokeQueue(worker, [message], createTokenExchangeEnvironment());
+
+      expect(consoleError).toHaveBeenCalledWith(
+        "github_webhook_job_failed",
+        expect.objectContaining({
+          github: { requestId: "EMPTY_OBJECT" },
         }),
       );
     } finally {
