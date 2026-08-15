@@ -1,0 +1,24 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "01M020NNAWAE9RSGBRJ4FDV9BF",
+  "strategy": "manual-commit",
+  "branch": "agent/diagnose-github-reaction-errors",
+  "checkpoints_count": 3,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 7333284,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 238213120,
+    "output_tokens": 790016,
+    "api_call_count": 2004
+  }
+}
