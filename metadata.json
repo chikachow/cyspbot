@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "01M01F3K5GD6DWG2XJPFYD2V2H",
+  "strategy": "manual-commit",
+  "branch": "agent/add-workload-identity-token-client",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "test/worker-integration/github-webhook-processor-outbound.ts",
+    "test/worker-integration/github-webhook-processor.test.ts",
+    "vitest.config.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 5895949,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 180504320,
+    "output_tokens": 624765,
+    "api_call_count": 1487
+  }
+}
