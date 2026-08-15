@@ -1,6 +1,7 @@
 import { cloudflareTest } from "@cloudflare/vitest-pool-workers";
 import { configDefaults, defineConfig } from "vitest/config";
 
+import { githubWebhookProcessorOutboundService } from "./test/worker-integration/github-webhook-processor-outbound.ts";
 import { githubWebhookTestSecret } from "./test/support/webhook.ts";
 
 export default defineConfig({
@@ -103,6 +104,7 @@ export default defineConfig({
                   name: "workload-identity-issuer-local",
                 },
               },
+              outboundService: githubWebhookProcessorOutboundService,
             },
             remoteBindings: false,
             wrangler: {
