@@ -12,11 +12,12 @@
 
 ## Documentation and boundaries
 
-- `README.md` describes the root page and webhook receiver.
+- `README.md` describes the root page, webhook receiver, and queue processor.
 - `docs/service-contract.md` matches the implemented root-page and webhook behavior.
 - `docs/implementation.md` matches the packages, entrypoint, bindings, tests, and checks.
 - `docs/deployment.md` matches the public-source and deployment-repository boundary.
 - `CONTEXT.md` matches the repository's domain language.
+- Generated environment types cover all three Workers and their queue bindings.
 
 ## Repository settings
 

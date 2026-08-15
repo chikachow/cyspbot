@@ -101,6 +101,49 @@ export default defineConfig({
           name: "github-webhook-receiver-integration",
         },
       },
+      {
+        plugins: [
+          cloudflareTest({
+            miniflare: {
+              workers: [
+                {
+                  modules: [
+                    {
+                      path: "./test/worker-integration/workload-identity-issuer.mjs",
+                      type: "ESModule",
+                    },
+                  ],
+                  name: "workload-identity-issuer-local",
+                },
+              ],
+              serviceBindings: {
+                GITHUB_APP_TOKEN_BROKER: () =>
+                  Response.json({
+                    access_token: "ghs_integration_token",
+                    expires_in: 300,
+                    issued_token_type: "urn:ietf:params:oauth:token-type:access_token",
+                    scope: "issues:write",
+                    token_type: "Bearer",
+                  }),
+                WORKLOAD_IDENTITY_ISSUER: {
+                  entrypoint: "WorkloadIdentityIssuer",
+                  name: "workload-identity-issuer-local",
+                },
+              },
+            },
+            remoteBindings: false,
+            wrangler: {
+              configPath: "./workers/cyspbot-github-webhook-processor/wrangler.jsonc",
+            },
+          }),
+        ],
+        test: {
+          allowOnly: false,
+          detectAsyncLeaks: true,
+          include: ["test/worker-integration/github-webhook-processor.test.ts"],
+          name: "github-webhook-processor-integration",
+        },
+      },
     ],
   },
 });

@@ -19,4 +19,12 @@
   "vars": {
     "GITHUB_APP_ID": "000000",
   },
+  "queues": {
+    "producers": [
+      {
+        "binding": "GITHUB_WEBHOOK_JOBS",
+        "queue": "cyspbot-github-webhook-jobs",
+      },
+    ],
+  },
 }

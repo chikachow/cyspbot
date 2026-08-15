@@ -1,5 +1,5 @@
 import { env, exports } from "cloudflare:workers";
-import { requestGitHubAppInstallationToken } from "@cyspbot/cyspbot/github-app-token";
+import { requestGitHubAppInstallationToken } from "@cyspbot/token-exchange";
 import { describe, expect, it } from "vitest";
 
 describe("cyspbot Worker entrypoint", () => {
