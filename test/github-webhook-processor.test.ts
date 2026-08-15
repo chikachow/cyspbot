@@ -202,10 +202,95 @@ describe("cyspbot-github-webhook-processor", () => {
     expect(message.retry).not.toHaveBeenCalled();
   });
 
+  it("keeps header diagnostics when the GitHub error body exceeds the limit", async () => {
+    const worker = createGitHubWebhookProcessorWorker({
+      fetch: async () =>
+        new Response("x".repeat(16 * 1024 + 1), {
+          headers: { "x-github-request-id": "OVERSIZED" },
+          status: 403,
+        }),
+    });
+    const message = createMessage(job);
+
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      await invokeQueue(worker, [message], createTokenExchangeEnvironment());
+
+      expect(consoleError).toHaveBeenCalledWith(
+        "github_webhook_job_failed",
+        expect.objectContaining({
+          github: { requestId: "OVERSIZED" },
+        }),
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  it("keeps header diagnostics when the GitHub error body is not an object", async () => {
+    const worker = createGitHubWebhookProcessorWorker({
+      fetch: async () =>
+        new Response("[]", {
+          headers: { "x-github-request-id": "NON_OBJECT" },
+          status: 403,
+        }),
+    });
+    const message = createMessage(job);
+
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      await invokeQueue(worker, [message], createTokenExchangeEnvironment());
+
+      expect(consoleError).toHaveBeenCalledWith(
+        "github_webhook_job_failed",
+        expect.objectContaining({
+          github: { requestId: "NON_OBJECT" },
+        }),
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  it("keeps header diagnostics when the GitHub error body cannot be read", async () => {
+    const worker = createGitHubWebhookProcessorWorker({
+      fetch: async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.error(new Error("body unavailable"));
+            },
+          }),
+          {
+            headers: { "x-github-request-id": "UNREADABLE" },
+            status: 403,
+          },
+        ),
+    });
+    const message = createMessage(job);
+
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      await invokeQueue(worker, [message], createTokenExchangeEnvironment());
+
+      expect(consoleError).toHaveBeenCalledWith(
+        "github_webhook_job_failed",
+        expect.objectContaining({
+          github: { requestId: "UNREADABLE" },
+        }),
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
   it("retries a rate-limited forbidden response", async () => {
     const worker = createGitHubWebhookProcessorWorker({
       fetch: async () =>
-        new Response(null, { headers: { "x-ratelimit-remaining": "0" }, status: 403 }),
+        new Response(null, {
+          headers: { "retry-after": "60", "x-ratelimit-remaining": "0" },
+          status: 403,
+        }),
     });
     const message = createMessage(job);
 
