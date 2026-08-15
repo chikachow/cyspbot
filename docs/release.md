@@ -17,7 +17,7 @@
 - `docs/implementation.md` matches the packages, entrypoint, bindings, tests, and checks.
 - `docs/deployment.md` matches the public-source and deployment-repository boundary.
 - `CONTEXT.md` matches the repository's domain language.
-- Generated environment types cover all three Workers and their queue bindings.
+- Generated environment types cover all three Workers, while Wrangler configuration defines their bindings, including queue producers and consumers.
 
 ## Repository settings
 
