@@ -5,9 +5,7 @@
   "branch": "agent/add-workload-identity-token-client",
   "checkpoints_count": 1,
   "files_touched": [
-    "test/github-webhook-jobs.test.ts",
-    "test/github-webhook-processor.test.ts",
-    "test/github-webhook-status-reaction.test.ts"
+    "test/github-webhook-processor.test.ts"
   ],
   "sessions": [
     {
