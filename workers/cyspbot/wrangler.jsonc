@@ -10,21 +10,6 @@
     "disallow_eval_during_startup",
     "global_fetch_strictly_public",
   ],
-  "vars": {
-    "WORKLOAD_IDENTITY_TOKEN_AUDIENCE": "https://cyspbot.local",
-    "GITHUB_APP_TOKEN_BROKER_TOKEN_ENDPOINT": "https://github-app-token-broker-local/token",
-  },
-  "services": [
-    {
-      "binding": "GITHUB_APP_TOKEN_BROKER",
-      "service": "github-app-token-broker-local",
-    },
-    {
-      "binding": "WORKLOAD_IDENTITY_ISSUER",
-      "service": "workload-identity-issuer-local",
-      "entrypoint": "WorkloadIdentityIssuer",
-    },
-  ],
   "observability": {
     "enabled": true,
   },

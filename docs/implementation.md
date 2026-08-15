@@ -53,16 +53,16 @@ Cloudflare Queues delivers messages at least once. Repeated jobs are safe becaus
 - `GITHUB_WEBHOOK_SECRET`: required Worker secret or Cloudflare Secrets Store binding.
 - `GITHUB_WEBHOOK_JOBS`: Queue producer binding used by the webhook receiver for derived status-reaction jobs.
 - `cyspbot-github-webhook-processor` consumes `cyspbot-github-webhook-jobs` and sends exhausted jobs to `cyspbot-github-webhook-jobs-dlq`.
-- `WORKLOAD_IDENTITY_ISSUER`: RPC Service Binding to a separately deployed
+- The processor's `WORKLOAD_IDENTITY_ISSUER`: RPC Service Binding to a separately deployed
   `WorkloadIdentityIssuer` entrypoint. Its `issueToken(audience)` operation
   returns an `IssuedToken`; the issuer deployment owns the workload subject
   and signing details. This RPC is a workload-identity interface, not an OAuth
   token endpoint.
-- `WORKLOAD_IDENTITY_TOKEN_AUDIENCE`: non-secret Worker variable containing the
+- The processor's `WORKLOAD_IDENTITY_TOKEN_AUDIENCE`: non-secret Worker variable containing the
   logical audience requested from the issuer and accepted by the broker.
-- `GITHUB_APP_TOKEN_BROKER`: Service Binding used by the OAuth Client to call
+- The processor's `GITHUB_APP_TOKEN_BROKER`: Service Binding used by the OAuth Client to call
   the broker's existing RFC 8693 Token Endpoint with `fetch`.
-- `GITHUB_APP_TOKEN_BROKER_TOKEN_ENDPOINT`: non-secret Worker variable
+- The processor's `GITHUB_APP_TOKEN_BROKER_TOKEN_ENDPOINT`: non-secret Worker variable
   containing the broker's token endpoint URL. It is separate from the logical
   Workload Identity Token audience.
 
@@ -89,11 +89,12 @@ values.
 
 The unit project exercises the root response, bounded body reading, request-body size and status handling, signature/target validation, queue-job classification and processing, token-exchange response mapping, and all Worker factories. Separate Workerd integration projects load each Worker's real Wrangler configuration and entrypoint.
 
-The cyspbot integration project runs a local `WorkloadIdentityIssuer`
-named-entrypoint fixture through a Workerd Service Binding and exercises the
-client's RPC call. This validates the local RPC serialization and method
-contract; it does not test the separately deployed issuer implementation. The
-unit project uses structural fixtures for validation failures.
+The processor integration project loads the processor Wrangler configuration,
+runs a local `WorkloadIdentityIssuer` named-entrypoint fixture through a
+Workerd Service Binding, and exercises the queue entrypoint's token exchange.
+This validates the local RPC serialization and method contract; it does not test
+the separately deployed issuer implementation. The unit project uses
+structural fixtures for validation failures.
 
 Use Node 24 and the pinned pnpm version:
 

@@ -4,13 +4,13 @@ This repository contains the public source, tests, and public-safe Wrangler temp
 
 ## Deployable Workers
 
-`@cyspbot/cyspbot` deploys Worker `cyspbot` as the fallback origin. Its Hono application serves the root bot page for `GET` and standard bodyless `HEAD` requests, rejects other root methods with an empty `405`, and returns empty `404` responses for other paths. The Worker also contains an internal OAuth Token Exchange Client; the current HTTP routes do not invoke it and expose no token-request route.
+`@cyspbot/cyspbot` deploys Worker `cyspbot` as the fallback origin. Its Hono application serves the root bot page for `GET` and standard bodyless `HEAD` requests, rejects other root methods with an empty `405`, and returns empty `404` responses for other paths.
 
 `@cyspbot/github-webhook-receiver` deploys Worker `cyspbot-github-webhook-receiver` for `POST /github/webhooks`.
 
 `@cyspbot/github-webhook-processor` deploys Worker `cyspbot-github-webhook-processor` as the consumer for the status-reaction job queue.
 
-The source-owned Worker configurations define their entrypoints, compatibility dates and flags, required binding names, safe local/dry-run service targets, and safe local values for the token-client variables. Production deployment configuration replaces those targets and supplies the deployment-owned values for the token-client variables and issuer properties.
+The source-owned Worker configurations define their entrypoints, compatibility dates and flags, required binding names, safe local/dry-run service targets, and safe local values for the processor's token-client variables. Production deployment configuration replaces those targets and supplies the deployment-owned values for the processor's token-client variables and issuer properties.
 
 ## Separate deployment pipeline
 
