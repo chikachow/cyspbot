@@ -7,6 +7,7 @@ updates:
       day: monday
       time: "09:00"
       timezone: Australia/Sydney
+    open-pull-requests-limit: 10
   - package-ecosystem: npm
     directory: /
     schedule:
@@ -25,7 +26,8 @@ updates:
         patterns:
           - vitest
           - "@vitest/*"
-      oxlint:
+      oxc-tooling:
         patterns:
+          - oxfmt
           - oxlint
           - oxlint-tsgolint
