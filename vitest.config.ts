@@ -14,33 +14,6 @@ export default defineConfig({
       {
         plugins: [
           cloudflareTest({
-            miniflare: {
-              workers: [
-                {
-                  modules: [
-                    {
-                      path: "./test/worker-integration/workload-identity-issuer.mjs",
-                      type: "ESModule",
-                    },
-                  ],
-                  name: "workload-identity-issuer-local",
-                },
-              ],
-              serviceBindings: {
-                GITHUB_APP_TOKEN_BROKER: () =>
-                  Response.json({
-                    access_token: "ghs_integration_token",
-                    expires_in: 300,
-                    issued_token_type: "urn:ietf:params:oauth:token-type:access_token",
-                    scope: "contents:read",
-                    token_type: "Bearer",
-                  }),
-                WORKLOAD_IDENTITY_ISSUER: {
-                  entrypoint: "WorkloadIdentityIssuer",
-                  name: "workload-identity-issuer-local",
-                },
-              },
-            },
             remoteBindings: false,
             wrangler: {
               configPath: "./workers/cyspbot/wrangler.jsonc",
