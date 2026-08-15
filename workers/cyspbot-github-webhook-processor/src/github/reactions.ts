@@ -9,7 +9,7 @@ const githubApiBaseUrl = "https://api.github.com";
 const githubApiVersion = "2022-11-28";
 const githubUserAgent = "cyspbot-github-webhook-processor";
 const reactionContent = "eyes";
-const reactionScope = "issues:write";
+const reactionScope = "issues:write pull_requests:write";
 const maxGitHubReactionErrorBodyBytes = 16 * 1024;
 const maxGitHubReactionDiagnosticValueLength = 1024;
 

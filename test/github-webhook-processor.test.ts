@@ -21,7 +21,7 @@ describe("cyspbot-github-webhook-processor", () => {
     expect(new GitHubReactionError(403, false).diagnostics).toEqual({});
   });
 
-  it("requests issues:write and adds an eyes reaction", async () => {
+  it("requests comment-write permissions and adds an eyes reaction", async () => {
     const brokerRequests: RequestInit[] = [];
     const githubRequests: RequestInit[] = [];
     const env = createTokenExchangeEnvironment({
@@ -59,7 +59,7 @@ describe("cyspbot-github-webhook-processor", () => {
 
     expect(Object.fromEntries(requestBody)).toMatchObject({
       resource: "https://api.github.com/repos/chikachow/cyspbot",
-      scope: "issues:write",
+      scope: "issues:write pull_requests:write",
     });
   });
 
@@ -414,7 +414,7 @@ function createTokenExchangeEnvironment(
                     access_token: "ghs_test_token",
                     expires_in: 300,
                     issued_token_type: "urn:ietf:params:oauth:token-type:access_token",
-                    scope: "issues:write",
+                    scope: "issues:write pull_requests:write",
                     token_type: "Bearer",
                   }
                 : { error: "token_exchange_failed" },
