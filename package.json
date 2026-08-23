@@ -24,8 +24,8 @@
     "wrangler:whoami": "WRANGLER_LOG=none WRANGLER_LOG_PATH=.wrangler/logs WRANGLER_REGISTRY_PATH=.wrangler/registry wrangler whoami"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "0.21.3",
-    "@cloudflare/workers-types": "5.20260813.1",
+    "@cloudflare/vitest-pool-workers": "0.22.0",
+    "@cloudflare/workers-types": "5.20260820.1",
     "@cyspbot/cyspbot": "workspace:*",
     "@cyspbot/github-webhook-jobs": "workspace:*",
     "@cyspbot/github-webhook-processor": "workspace:*",
@@ -41,7 +41,7 @@
     "oxlint-tsgolint": "7.0.2001",
     "typescript": "7.0.2",
     "vitest": "4.1.10",
-    "wrangler": "4.123.0"
+    "wrangler": "4.125.0"
   },
   "engines": {
     "node": "24"
