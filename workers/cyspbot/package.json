@@ -17,6 +17,6 @@
     "typecheck": "node --run runtime-types:generate && tsc --project tsconfig.json"
   },
   "dependencies": {
-    "hono": "4.13.3"
+    "hono": "4.13.5"
   }
 }
