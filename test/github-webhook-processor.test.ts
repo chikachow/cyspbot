@@ -409,6 +409,35 @@ describe("cyspbot-github-webhook-processor", () => {
     expect(message.retry).toHaveBeenCalledExactlyOnceWith({ delaySeconds: 480 });
   });
 
+  it.each([
+    ["invalid_scope", "invalid_scope"],
+    ["ghs_private_token", "unrecognized_error"],
+  ])("logs safe broker diagnostics for %s", async (brokerError, oauthErrorCode) => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const message = createMessage({ ...job, deliveryId: "d".repeat(200) });
+    try {
+      await invokeQueue(
+        createGitHubWebhookProcessorWorker({
+          fetch: async () => {
+            throw new Error("GitHub must not be called");
+          },
+        }),
+        [message],
+        createTokenExchangeEnvironment({ brokerStatus: 400, brokerError }),
+      );
+      expect(consoleError).toHaveBeenCalledExactlyOnceWith(
+        "github_webhook_job_failed",
+        expect.objectContaining({ deliveryId: "d".repeat(128), oauthErrorCode, status: 400 }),
+      );
+      expect(JSON.stringify(consoleError.mock.calls)).not.toContain("private broker description");
+      expect(JSON.stringify(consoleError.mock.calls)).not.toContain("ghs_private_token");
+    } finally {
+      consoleError.mockRestore();
+    }
+    expect(message.ack).toHaveBeenCalledOnce();
+    expect(message.retry).not.toHaveBeenCalled();
+  });
+
   it("acknowledges invalid jobs without calling GitHub", async () => {
     let githubCalls = 0;
     const worker = createGitHubWebhookProcessorWorker({
@@ -472,6 +501,7 @@ async function invokeQueue(
 function createTokenExchangeEnvironment(
   options: {
     brokerStatus?: number;
+    brokerError?: string;
     issuer?: { issueToken(audience: string): Promise<unknown> };
     onBrokerRequest?: (input: RequestInfo | URL, init: RequestInit | undefined) => void;
   } = {},
@@ -491,7 +521,10 @@ function createTokenExchangeEnvironment(
                     scope: "issues:write pull_requests:write",
                     token_type: "Bearer",
                   }
-                : { error: "token_exchange_failed" },
+                : {
+                    error: options.brokerError ?? "token_exchange_failed",
+                    error_description: "private broker description",
+                  },
             ),
             {
               headers: { "content-type": "application/json" },

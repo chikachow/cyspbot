@@ -113,3 +113,5 @@ completion, so repeated jobs do not require a separate deduplication store.
 ## Logging and retention
 
 Rejected deliveries may log the delivery ID, event, Cloudflare Ray ID, and response status. Raw request bodies, signature values, and webhook secrets are not logged or retained.
+
+Processor failures log the queue message ID, delivery ID (at most 128 characters), attempt count, status, and bounded GitHub diagnostics or a recognized OAuth error code. Unrecognized broker codes are logged as `unrecognized_error`; broker descriptions and credentials are excluded.

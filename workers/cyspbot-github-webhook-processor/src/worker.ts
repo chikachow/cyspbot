@@ -33,15 +33,16 @@ export function createGitHubWebhookProcessorWorker(
           await addStatusReaction(env, job, dependencies);
           message.ack();
         } catch (error) {
+          const fields = {
+            attempts: message.attempts,
+            deliveryId: job.deliveryId.slice(0, 128),
+            error: error instanceof Error ? error.name : typeof error,
+            ...errorLogFields(error),
+            messageId: message.id,
+            queue: batch.queue,
+          };
           if (shouldRetry(error)) {
-            console.warn("github_webhook_job_retrying", {
-              attempts: message.attempts,
-              error: errorName(error),
-              ...errorLogFields(error),
-              messageId: message.id,
-              queue: batch.queue,
-              status: errorStatus(error),
-            });
+            console.warn("github_webhook_job_retrying", fields);
             if (error instanceof GitHubReactionError) {
               message.retry({
                 delaySeconds:
@@ -52,14 +53,7 @@ export function createGitHubWebhookProcessorWorker(
               message.retry();
             }
           } else {
-            console.error("github_webhook_job_failed", {
-              attempts: message.attempts,
-              error: errorName(error),
-              ...errorLogFields(error),
-              messageId: message.id,
-              queue: batch.queue,
-              status: errorStatus(error),
-            });
+            console.error("github_webhook_job_failed", fields);
             message.ack();
           }
         }
@@ -80,26 +74,35 @@ function shouldRetry(error: unknown): boolean {
   return true;
 }
 
-function errorName(error: unknown): string {
-  if (error instanceof Error) {
-    return error.name;
-  }
-
-  return typeof error;
-}
-
-function errorStatus(error: unknown): number | undefined {
-  if (error instanceof GitHubReactionError || error instanceof GitHubAppTokenBrokerError) {
-    return error.status;
-  }
-
-  return undefined;
-}
-
 function errorLogFields(error: unknown): Record<string, unknown> {
   if (error instanceof GitHubReactionError) {
-    return { github: error.diagnostics };
+    return { github: error.diagnostics, status: error.status };
+  }
+
+  if (error instanceof GitHubAppTokenBrokerError) {
+    return {
+      oauthErrorCode: oauthErrorCodes.has(error.oauthErrorCode)
+        ? error.oauthErrorCode
+        : "unrecognized_error",
+      status: error.status,
+    };
   }
 
   return {};
 }
+
+// Only known protocol codes are safe diagnostics; arbitrary broker text can contain credentials.
+const oauthErrorCodes = new Set([
+  "invalid_request",
+  "invalid_client",
+  "invalid_grant",
+  "unauthorized_client",
+  "unsupported_grant_type",
+  "unsupported_token_type",
+  "invalid_scope",
+  "invalid_target",
+  "access_denied",
+  "server_error",
+  "temporarily_unavailable",
+  "invalid_response",
+]);
