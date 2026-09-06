@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.10.5",
+  "checkpoint_id": "01M1TWD9EWCEVR4RVESJRFYP1X",
+  "strategy": "manual-commit",
+  "branch": "codex/simplify-webhook-processing",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".github/workflows/ci-deploy-dry-run.yml",
+    ".github/workflows/ci-env-types.yml",
+    ".github/workflows/ci-format.yml",
+    ".github/workflows/ci-knip.yml",
+    ".github/workflows/ci-lint.yml",
+    ".github/workflows/ci-typecheck.yml",
+    ".github/workflows/ci.yml",
+    "docs/implementation.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 4027,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 356736,
+    "output_tokens": 1342,
+    "api_call_count": 2
+  }
+}

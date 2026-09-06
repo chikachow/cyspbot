@@ -1,0 +1,47 @@
+{
+  "cli_version": "0.10.5",
+  "checkpoint_id": "01M1TWD9EWCEVR4RVESJRFYP1X",
+  "session_id": "01a075b4-3dc5-72c1-b4e4-ed9108b5ad02",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-06T08:12:28.556868Z",
+  "branch": "codex/simplify-webhook-processing",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".github/workflows/ci-deploy-dry-run.yml",
+    ".github/workflows/ci-env-types.yml",
+    ".github/workflows/ci-format.yml",
+    ".github/workflows/ci-knip.yml",
+    ".github/workflows/ci-lint.yml",
+    ".github/workflows/ci-typecheck.yml",
+    ".github/workflows/ci.yml",
+    "docs/implementation.md"
+  ],
+  "agent": "Codex",
+  "model": "gpt-6-astra",
+  "turn_id": "47a0d0f21a21",
+  "checkpoint_transcript_start": 339,
+  "transcript_lines_at_start": 339,
+  "compact_transcript_start": 41,
+  "token_usage": {
+    "input_tokens": 4027,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 356736,
+    "output_tokens": 1342,
+    "api_call_count": 2
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-06T08:12:28.491249Z",
+    "agent_lines": 34,
+    "agent_removed": 187,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 34,
+    "total_lines_changed": 221,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}
