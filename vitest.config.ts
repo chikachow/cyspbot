@@ -1,7 +1,10 @@
 import { cloudflareTest } from "@cloudflare/vitest-pool-workers";
 import { configDefaults, defineConfig } from "vitest/config";
 
-import { githubWebhookProcessorOutboundService } from "./test/worker-integration/github-webhook-processor-outbound.ts";
+import {
+  githubWebhookProcessorOutboundService,
+  githubWebhookProcessorBrokerService,
+} from "./test/worker-integration/github-webhook-processor-outbound.ts";
 import { githubWebhookTestSecret } from "./test/support/webhook.ts";
 
 export default defineConfig({
@@ -91,14 +94,7 @@ export default defineConfig({
                 },
               ],
               serviceBindings: {
-                GITHUB_APP_TOKEN_BROKER: () =>
-                  Response.json({
-                    access_token: "ghs_integration_token",
-                    expires_in: 300,
-                    issued_token_type: "urn:ietf:params:oauth:token-type:access_token",
-                    scope: "issues:write",
-                    token_type: "Bearer",
-                  }),
+                GITHUB_APP_TOKEN_BROKER: githubWebhookProcessorBrokerService,
                 WORKLOAD_IDENTITY_ISSUER: {
                   entrypoint: "WorkloadIdentityIssuer",
                   name: "workload-identity-issuer-local",
