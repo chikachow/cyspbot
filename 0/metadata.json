@@ -1,0 +1,44 @@
+{
+  "cli_version": "0.10.5",
+  "checkpoint_id": "01M1TW0TJD96H8FKYE818YYT2Q",
+  "session_id": "01a075b4-3dc5-72c1-b4e4-ed9108b5ad02",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-06T08:05:40.085284Z",
+  "branch": "codex/simplify-webhook-processing",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "docs/implementation.md",
+    "docs/service-contract.md",
+    "test/github-webhook-processor.test.ts",
+    "workers/cyspbot-github-webhook-processor/src/github/reactions.ts",
+    "workers/cyspbot-github-webhook-processor/src/worker.ts"
+  ],
+  "agent": "Codex",
+  "model": "gpt-6-astra",
+  "turn_id": "47a0d0f21a21",
+  "checkpoint_transcript_start": 222,
+  "transcript_lines_at_start": 222,
+  "compact_transcript_start": 27,
+  "token_usage": {
+    "input_tokens": 3866,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 474368,
+    "output_tokens": 2685,
+    "api_call_count": 3
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-06T08:05:40.031532Z",
+    "agent_lines": 119,
+    "agent_removed": 8,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 119,
+    "total_lines_changed": 127,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}
