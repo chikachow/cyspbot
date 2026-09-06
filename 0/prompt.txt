@@ -1,0 +1,15 @@
+proceed, implement these improvements, create a sequence of meaningful independent commits, conduct and adversarial review and raise a pull request
+
+---
+
+i liked the ci workflow split
+
+---
+
+i'm not sure about these tests being at the root with long relative import paths
+critically consider this approach compared with other filesystem layouts
+debate the pros and cons and produce a recommendation
+
+---
+
+fully implement these improvements, collaborating with an appropriate worker agent (appropriate model and reasoning effort)
