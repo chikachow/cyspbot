@@ -66,8 +66,6 @@ importers:
         specifier: 4.127.0
         version: 4.127.0(@cloudflare/workers-types@5.20260827.1)
 
-  packages/github: {}
-
   packages/github-webhook-jobs: {}
 
   packages/http: {}
@@ -98,9 +96,6 @@ importers:
 
   workers/cyspbot-github-webhook-receiver:
     dependencies:
-      '@cyspbot/github':
-        specifier: workspace:*
-        version: link:../../packages/github
       '@cyspbot/github-webhook-jobs':
         specifier: workspace:*
         version: link:../../packages/github-webhook-jobs

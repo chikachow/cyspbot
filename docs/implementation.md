@@ -11,7 +11,6 @@ cyspbot is a pnpm workspace with three deployable Cloudflare Workers:
 Shared packages:
 
 - `packages/http` provides bounded body reading, request-body handling, JSON responses, and problem-details responses.
-- `packages/github` provides the string-or-Secrets-Store secret-binding adapter used by webhook verification.
 - `packages/token-exchange` provides the internal RFC 8693 Token Exchange Client.
 - `packages/github-webhook-jobs` provides the versioned job contract shared by the webhook receiver and processor.
 
@@ -27,7 +26,7 @@ In production, this Worker is the Custom Domain origin. More specific Cloudflare
 
 `workers/cyspbot-github-webhook-receiver/src/worker.ts` exposes only `POST /github/webhooks`. It rejects unknown routes and other methods before calling `handleGitHubWebhookRequest`.
 
-`acceptGitHubWebhookDelivery` then:
+`handleGitHubWebhookRequest` owns the HTTP response and privately authenticates the envelope. It:
 
 1. resolves `GITHUB_WEBHOOK_SECRET` from a direct Worker secret or Secrets Store binding;
 2. requires `application/json` and reads at most `256 KiB`;
@@ -38,6 +37,8 @@ In production, this Worker is the Custom Domain origin. More specific Cloudflare
 7. classifies `issue_comment` deliveries with `action: "created"` and a trimmed comment body exactly equal to `/cyspbot status`;
 8. sends the derived version-1 job to `GITHUB_WEBHOOK_JOBS` and waits for the queue write; and
 9. returns the acknowledgement shape for ping, matching, or other events.
+
+The receiver resolves direct secrets and Secrets Store bindings through its private secret adapter.
 
 The receiver sends only a derived job to the queue. The job contains the kind, version, delivery ID, repository owner and name, and comment ID. The receiver does not apply repository filtering.
 
@@ -87,7 +88,7 @@ values.
 
 ## Tests and validation
 
-The unit project exercises the root response, bounded body reading, request-body size and status handling, signature/target validation, queue-job classification and processing, token-exchange response mapping, and all Worker factories. Separate Workerd integration projects load each Worker's real Wrangler configuration and entrypoint.
+The unit project exercises the root response, bounded body reading, request-body size and status handling, signature/target validation through HTTP responses, queue-job classification and processing, token-exchange response mapping, and all Worker factories. Separate Workerd integration projects load each Worker's real Wrangler configuration and entrypoint.
 
 The processor integration project loads the processor Wrangler configuration,
 runs a local `WorkloadIdentityIssuer` named-entrypoint fixture through a

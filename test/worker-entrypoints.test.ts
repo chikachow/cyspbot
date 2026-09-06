@@ -27,11 +27,8 @@ describe("worker entrypoint shapes", () => {
     expect(response.status).toBe(404);
   });
 
-  it("uses the default webhook clock when configuration is missing", async () => {
-    const now = new Date("2030-01-02T03:04:05.000Z");
+  it("returns a configuration error without logging secrets", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    vi.useFakeTimers();
-    vi.setSystemTime(now);
 
     try {
       const fetch = githubWebhookReceiverWorker.fetch;
@@ -74,12 +71,9 @@ describe("worker entrypoint shapes", () => {
       );
 
       expect(response.status).toBe(500);
-      expect(consoleError).toHaveBeenCalledWith("webhook_receiver_not_configured", {
-        occurred_at: now.toISOString(),
-      });
+      expect(consoleError).toHaveBeenCalledWith("webhook_receiver_not_configured");
       await response.body?.cancel();
     } finally {
-      vi.useRealTimers();
       consoleError.mockRestore();
     }
   });

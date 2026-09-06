@@ -1,14 +1,7 @@
 import { problemResponse } from "@cyspbot/http/problem-details";
-import type { GitHubWebhookReceiverDependencies } from "./github-webhooks/acceptance.ts";
 import { handleGitHubWebhookRequest } from "./webhook.ts";
 
-const defaultGitHubWebhookReceiverDependencies: GitHubWebhookReceiverDependencies = {
-  now: () => new Date(),
-};
-
-export function createGitHubWebhookReceiverWorker(
-  dependencies: GitHubWebhookReceiverDependencies = defaultGitHubWebhookReceiverDependencies,
-): ExportedHandler<GitHubWebhookReceiverEnv> {
+export function createGitHubWebhookReceiverWorker(): ExportedHandler<GitHubWebhookReceiverEnv> {
   return {
     fetch(request, env) {
       const url = new URL(request.url);
@@ -21,7 +14,7 @@ export function createGitHubWebhookReceiverWorker(
         return problemResponse(405, { allow: "POST" });
       }
 
-      return handleGitHubWebhookRequest(request, env, dependencies);
+      return handleGitHubWebhookRequest(request, env);
     },
   };
 }
