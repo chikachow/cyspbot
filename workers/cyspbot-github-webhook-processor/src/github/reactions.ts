@@ -18,6 +18,7 @@ export interface GitHubReactionErrorDiagnostics {
   readonly documentationUrl?: string | undefined;
   readonly message?: string | undefined;
   readonly rateLimitRemaining?: string | undefined;
+  readonly rateLimitReset?: string | undefined;
   readonly requestId?: string | undefined;
   readonly retryAfter?: string | undefined;
 }
@@ -28,7 +29,7 @@ export interface GitHubReactionDependencies {
 
 export class GitHubReactionError extends Error {
   readonly diagnostics: GitHubReactionErrorDiagnostics;
-  readonly rateLimited: boolean;
+  readonly retryDelaySeconds: number | undefined;
   readonly retryable: boolean;
   readonly status: number;
 
@@ -36,11 +37,12 @@ export class GitHubReactionError extends Error {
     status: number,
     rateLimited: boolean,
     diagnostics: GitHubReactionErrorDiagnostics = {},
+    retryDelaySeconds?: number,
   ) {
     super(`GitHub reaction request returned ${status}.`);
     this.name = "GitHubReactionError";
     this.diagnostics = diagnostics;
-    this.rateLimited = rateLimited;
+    this.retryDelaySeconds = retryDelaySeconds;
     this.retryable = status === 429 || status >= 500 || rateLimited;
     this.status = status;
   }
@@ -80,8 +82,10 @@ export async function addStatusReaction(
       response.status,
       response.status === 403 &&
         (response.headers.get("retry-after") !== null ||
-          response.headers.get("x-ratelimit-remaining") === "0"),
+          response.headers.get("x-ratelimit-remaining") === "0" ||
+          /\bsecondary rate limit\b/iu.test(diagnostics.message ?? "")),
       diagnostics,
+      retryDelayFromHeaders(response.headers),
     );
   }
 
@@ -93,11 +97,13 @@ async function readGitHubReactionErrorDiagnostics(
 ): Promise<GitHubReactionErrorDiagnostics> {
   const acceptedPermissions = boundedHeaderValue(response, "x-accepted-github-permissions");
   const rateLimitRemaining = boundedHeaderValue(response, "x-ratelimit-remaining");
+  const rateLimitReset = boundedHeaderValue(response, "x-ratelimit-reset");
   const retryAfter = boundedHeaderValue(response, "retry-after");
   const requestId = boundedHeaderValue(response, "x-github-request-id");
   const headerDiagnostics = {
     ...(acceptedPermissions === undefined ? {} : { acceptedPermissions }),
     ...(rateLimitRemaining === undefined ? {} : { rateLimitRemaining }),
+    ...(rateLimitReset === undefined ? {} : { rateLimitReset }),
     ...(retryAfter === undefined ? {} : { retryAfter }),
     ...(requestId === undefined ? {} : { requestId }),
   };
@@ -148,4 +154,22 @@ function boundedString(value: unknown): string | undefined {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function retryDelayFromHeaders(headers: Headers): number | undefined {
+  const retryAfter = nonNegativeInteger(headers.get("retry-after"));
+  const reset =
+    headers.get("x-ratelimit-remaining") === "0"
+      ? nonNegativeInteger(headers.get("x-ratelimit-reset"))
+      : undefined;
+  const resetDelay =
+    reset === undefined ? undefined : Math.max(0, Math.ceil(reset - Date.now() / 1000));
+  if (retryAfter === undefined && resetDelay === undefined) return undefined;
+  return Math.min(24 * 60 * 60, Math.max(60, retryAfter ?? 0, resetDelay ?? 0));
+}
+
+function nonNegativeInteger(value: string | null): number | undefined {
+  if (value === null || !/^[0-9]+$/u.test(value)) return undefined;
+  const number = Number(value);
+  return Number.isSafeInteger(number) ? number : undefined;
 }
