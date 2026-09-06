@@ -15,8 +15,5 @@
     "env-types:generate": "WRANGLER_LOG=none WRANGLER_LOG_PATH=../../.wrangler/logs WRANGLER_REGISTRY_PATH=../../.wrangler/registry wrangler types src/env.generated.d.ts --config wrangler.jsonc --env-interface CyspbotEnv --include-runtime false",
     "runtime-types:generate": "WRANGLER_LOG=none WRANGLER_LOG_PATH=../../.wrangler/logs WRANGLER_REGISTRY_PATH=../../.wrangler/registry wrangler types src/runtime.generated.d.ts --config wrangler.jsonc --include-env false",
     "typecheck": "node --run runtime-types:generate && tsc --project tsconfig.json"
-  },
-  "dependencies": {
-    "hono": "4.13.5"
   }
 }

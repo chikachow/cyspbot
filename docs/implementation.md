@@ -18,7 +18,7 @@ The root `wrangler.jsonc` points at `test/support/root-test-harness.ts`. It supp
 
 ## Root Worker flow
 
-`workers/cyspbot/src/worker.ts` uses Hono's tiny preset. Its `GET /` route returns the minimal HTML bot page; Hono maps `HEAD /` to that route and removes the body. Hono's method-not-allowed middleware returns an empty `405` response with `Allow: GET, HEAD` for other methods at `/`, and the custom not-found handler returns an empty `404` response for every other pathname. Query parameters do not change route matching.
+`workers/cyspbot/src/worker.ts` uses a native fetch handler. It returns the minimal HTML bot page for `GET /` and the same status and headers without a body for `HEAD /`. Other methods at `/` receive an empty `405` response with `Allow: GET, HEAD`; other pathnames receive an empty `404`. Query parameters do not change route matching.
 
 In production, this Worker is the Custom Domain origin. More specific Cloudflare Worker Routes execute first and preserve independently deployed product endpoints such as `/github/webhooks`.
 
