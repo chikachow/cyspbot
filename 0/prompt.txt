@@ -1,5 +1,1 @@
-conduct a thorough review of this codebase from first principles, aiming for the simplest expression of the intent captured in this project
-
----
-
 proceed, implement these improvements, create a sequence of meaningful independent commits, conduct and adversarial review and raise a pull request
