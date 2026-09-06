@@ -75,10 +75,13 @@ An authenticated `issue_comment` delivery creates a queue job only when its
 The receiver waits for the queue write before returning `202`. Authenticated
 events that do not classify to this job receive `202` without a queue write.
 The receiver does not apply repository filtering. A queue write failure
-returns `503 Service Unavailable` so GitHub can retry the delivery.
+returns `503 Service Unavailable`. GitHub does not automatically redeliver
+failed webhooks. Ingress is best effort until publication succeeds; operators
+manually redeliver failed deliveries after resolving the cause. See
+[delivery recovery](deployment.md#delivery-recovery).
 
 The processor requests a GitHub App Installation Access Token with
-`issues:write` for the canonical GitHub Repository Resource and posts the
+`issues:write pull_requests:write` for the canonical GitHub Repository Resource and posts the
 `eyes` reaction to the comment. GitHub `200` and `201` responses complete the
 job. Network failures, `429`, `5xx`, and rate-limited `403` responses retry;
 other failures are acknowledged. The queue uses one-message batches, five

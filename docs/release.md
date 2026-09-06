@@ -17,6 +17,8 @@
 - `docs/implementation.md` matches the packages, entrypoint, bindings, tests, and checks.
 - `docs/deployment.md` matches the public-source and deployment-repository boundary.
 - `CONTEXT.md` matches the repository's domain language.
+- The deployment operator can manually redeliver failed GitHub webhooks and replay exhausted queue jobs after resolving the failure.
+- Broker policy covers the processor's intended repositories and `issues:write pull_requests:write` scope.
 - Generated environment types cover all three Workers, while Wrangler configuration defines their bindings, including queue producers and consumers.
 
 ## Repository settings

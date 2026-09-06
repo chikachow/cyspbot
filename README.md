@@ -17,7 +17,7 @@ The webhook receiver accepts `application/json` request bodies up to `256 KiB`. 
 - an HMAC signature that matches `GITHUB_WEBHOOK_SECRET`; and
 - a syntactically valid JSON body.
 
-Valid deliveries receive `202` after any matching status-reaction job is durably queued. Ping deliveries receive `{"accepted":true,"event":"ping"}`; other authenticated events receive `{"accepted":true}` without creating a job. A queue write failure receives `503` so GitHub can retry the delivery. See the [service contract](docs/service-contract.md) for the complete response behavior.
+Valid deliveries receive `202` after any matching status-reaction job is durably queued. Ping deliveries receive `{"accepted":true,"event":"ping"}`; other authenticated events receive `{"accepted":true}` without creating a job. A queue write failure receives `503`; GitHub does not automatically redeliver failed webhooks. Operators manually redeliver failed deliveries after resolving the cause. See the [service contract](docs/service-contract.md) for the complete response behavior.
 
 ## Architecture
 
@@ -42,7 +42,7 @@ cp .dev.vars.example .dev.vars
 fnm exec --using=24 corepack pnpm run dev
 ```
 
-Fill in the GitHub App ID and webhook secret in `.dev.vars`. Do not commit that file.
+Fill in the GitHub App ID and webhook secret in `.dev.vars`. Do not commit that file. This command starts the root and receiver only. The processor, issuer, and broker interactions are exercised with local fixtures by the integration tests.
 
 Run the complete validation suite with:
 
