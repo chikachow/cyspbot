@@ -105,5 +105,3 @@ fnm exec --using=24 corepack pnpm run test:coverage
 ```
 
 `check` verifies the frozen lockfile, formatting, generated environment types, lint, TypeScript, Knip, unit and integration tests, and all three Workers' Wrangler deploy dry runs.
-
-CI runs formatting, generated-type checks, lint, type checking, Knip, and dry runs as named steps in one validation job. Tests and Codecov run in a parallel job with OIDC permission; the aggregate `ci` check requires both jobs to succeed. Each job installs the frozen lockfile once.
