@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { GitHubIssueCommentStatusReactionJob } from "@cyspbot/github-webhook-jobs";
-import {
-  acceptGitHubWebhookDelivery,
-  type GitHubWebhookReceiverDependencies,
-} from "@cyspbot/github-webhook-receiver/github-webhooks/acceptance";
+import { handleGitHubWebhookRequest } from "../workers/cyspbot-github-webhook-receiver/src/webhook.ts";
 import { githubWebhookHeaders } from "./support/webhook.ts";
 
 interface TestWebhookEnv {
@@ -35,21 +32,17 @@ describe("webhook delivery acceptance", () => {
       },
     });
 
-    const result = await acceptGitHubWebhookDelivery(
+    const result = await handleGitHubWebhookRequest(
       new Request("https://example.test/github/webhooks", {
         body,
         headers: githubWebhookHeaders(body, "test-webhook-secret", "issues", "delivery-issues"),
         method: "POST",
       }),
       testWebhookEnv,
-      testDependencies(),
     );
 
-    expect(result).toEqual({
-      body: { accepted: true },
-      kind: "accepted",
-      status: 202,
-    });
+    expect(result.status).toBe(202);
+    await expect(result.json()).resolves.toEqual({ accepted: true });
   });
 
   it("accepts signed github ping webhook deliveries", async () => {
@@ -60,21 +53,17 @@ describe("webhook delivery acceptance", () => {
       zen: "Speak like a human.",
     });
 
-    const result = await acceptGitHubWebhookDelivery(
+    const result = await handleGitHubWebhookRequest(
       new Request("https://example.test/github/webhooks", {
         body,
         headers: githubWebhookHeaders(body, "test-webhook-secret", "ping"),
         method: "POST",
       }),
       testWebhookEnv,
-      testDependencies(),
     );
 
-    expect(result).toEqual({
-      body: { accepted: true, event: "ping" },
-      kind: "accepted",
-      status: 202,
-    });
+    expect(result.status).toBe(202);
+    await expect(result.json()).resolves.toEqual({ accepted: true, event: "ping" });
   });
 
   it("enqueues a job for a newly created status comment", async () => {
@@ -93,7 +82,7 @@ describe("webhook delivery acceptance", () => {
       },
     });
 
-    const result = await acceptGitHubWebhookDelivery(
+    const result = await handleGitHubWebhookRequest(
       new Request("https://example.test/github/webhooks", {
         body,
         headers: githubWebhookHeaders(body, "test-webhook-secret", "issue_comment", "delivery-job"),
@@ -107,14 +96,10 @@ describe("webhook delivery acceptance", () => {
           },
         },
       },
-      testDependencies(),
     );
 
-    expect(result).toEqual({
-      body: { accepted: true },
-      kind: "accepted",
-      status: 202,
-    });
+    expect(result.status).toBe(202);
+    await expect(result.json()).resolves.toEqual({ accepted: true });
     expect(jobs).toEqual([
       {
         commentId: 42,
@@ -144,7 +129,7 @@ describe("webhook delivery acceptance", () => {
       },
     });
 
-    const result = await acceptGitHubWebhookDelivery(
+    const result = await handleGitHubWebhookRequest(
       new Request("https://example.test/github/webhooks", {
         body,
         headers: githubWebhookHeaders(body, "test-webhook-secret", "issue_comment"),
@@ -158,13 +143,9 @@ describe("webhook delivery acceptance", () => {
           },
         },
       },
-      testDependencies(),
     );
 
-    expect(result).toEqual({
-      kind: "rejected",
-      status: 503,
-    });
+    expect(result.status).toBe(503);
   });
 
   it("reads the webhook secret from Cloudflare Secrets Store when bound", async () => {
@@ -175,7 +156,7 @@ describe("webhook delivery acceptance", () => {
       zen: "Speak like a human.",
     });
 
-    const result = await acceptGitHubWebhookDelivery(
+    const result = await handleGitHubWebhookRequest(
       new Request("https://example.test/github/webhooks", {
         body,
         headers: githubWebhookHeaders(body, "test-webhook-secret", "ping"),
@@ -188,14 +169,10 @@ describe("webhook delivery acceptance", () => {
           get: async () => "test-webhook-secret",
         },
       },
-      testDependencies(),
     );
 
-    expect(result).toEqual({
-      body: { accepted: true, event: "ping" },
-      kind: "accepted",
-      status: 202,
-    });
+    expect(result.status).toBe(202);
+    await expect(result.json()).resolves.toEqual({ accepted: true, event: "ping" });
   });
 
   it("accepts repeated signed webhook delivery ids", async () => {
@@ -209,17 +186,11 @@ describe("webhook delivery acceptance", () => {
         method: "POST",
       });
 
-    await expect(
-      acceptGitHubWebhookDelivery(request(), testWebhookEnv, testDependencies()),
-    ).resolves.toMatchObject({
-      kind: "accepted",
+    await expect(handleGitHubWebhookRequest(request(), testWebhookEnv)).resolves.toMatchObject({
       status: 202,
     });
 
-    await expect(
-      acceptGitHubWebhookDelivery(request(), testWebhookEnv, testDependencies()),
-    ).resolves.toMatchObject({
-      kind: "accepted",
+    await expect(handleGitHubWebhookRequest(request(), testWebhookEnv)).resolves.toMatchObject({
       status: 202,
     });
   });
@@ -227,20 +198,16 @@ describe("webhook delivery acceptance", () => {
   it("rejects invalid json after authenticating the delivery", async () => {
     const body = "{";
 
-    const result = await acceptGitHubWebhookDelivery(
+    const result = await handleGitHubWebhookRequest(
       new Request("https://example.test/github/webhooks", {
         body,
         headers: githubWebhookHeaders(body, "test-webhook-secret", "issues"),
         method: "POST",
       }),
       testWebhookEnv,
-      testDependencies(),
     );
 
-    expect(result).toEqual({
-      kind: "rejected",
-      status: 400,
-    });
+    expect(result.status).toBe(400);
   });
 
   it("rejects invalid signatures", async () => {
@@ -248,20 +215,16 @@ describe("webhook delivery acceptance", () => {
       action: "opened",
     });
 
-    const result = await acceptGitHubWebhookDelivery(
+    const result = await handleGitHubWebhookRequest(
       new Request("https://example.test/github/webhooks", {
         body,
         headers: githubWebhookHeaders(body, "wrong-secret", "issues"),
         method: "POST",
       }),
       testWebhookEnv,
-      testDependencies(),
     );
 
-    expect(result).toEqual({
-      kind: "rejected",
-      status: 401,
-    });
+    expect(result.status).toBe(401);
   });
 
   it("rejects oversized streamed bodies without relying on content-length", async () => {
@@ -276,12 +239,9 @@ describe("webhook delivery acceptance", () => {
 
     expect(request.headers.get("content-length")).toBeNull();
 
-    const result = await acceptGitHubWebhookDelivery(request, testWebhookEnv, testDependencies());
+    const result = await handleGitHubWebhookRequest(request, testWebhookEnv);
 
-    expect(result).toEqual({
-      kind: "rejected",
-      status: 413,
-    });
+    expect(result.status).toBe(413);
   });
 
   it.each([
@@ -298,20 +258,16 @@ describe("webhook delivery acceptance", () => {
       "x-hub-signature-256": signatureHeader,
     };
 
-    const result = await acceptGitHubWebhookDelivery(
+    const result = await handleGitHubWebhookRequest(
       new Request("https://example.test/github/webhooks", {
         body,
         headers,
         method: "POST",
       }),
       testWebhookEnv,
-      testDependencies(),
     );
 
-    expect(result).toEqual({
-      kind: "rejected",
-      status: 401,
-    });
+    expect(result.status).toBe(401);
   });
 
   it("rejects content types whose primary media type is not JSON", async () => {
@@ -323,25 +279,15 @@ describe("webhook delivery acceptance", () => {
       "content-type": "text/plain; application/json",
     };
 
-    const result = await acceptGitHubWebhookDelivery(
+    const result = await handleGitHubWebhookRequest(
       new Request("https://example.test/github/webhooks", {
         body,
         headers,
         method: "POST",
       }),
       testWebhookEnv,
-      testDependencies(),
     );
 
-    expect(result).toEqual({
-      kind: "rejected",
-      status: 415,
-    });
+    expect(result.status).toBe(415);
   });
 });
-
-function testDependencies(): GitHubWebhookReceiverDependencies {
-  return {
-    now: () => new Date("2026-05-24T00:00:00.000Z"),
-  };
-}

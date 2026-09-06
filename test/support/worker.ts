@@ -1,19 +1,10 @@
 import { createGitHubWebhookReceiverWorker } from "@cyspbot/github-webhook-receiver/worker";
-import type { GitHubWebhookReceiverDependencies } from "@cyspbot/github-webhook-receiver/github-webhooks/acceptance";
 
 import { testEnv } from "./worker-env.ts";
 
 type TestEnv = GitHubWebhookReceiverEnv;
 
-const testNow = new Date("2026-05-24T00:00:00.000Z");
-
-const testGitHubWebhookReceiverDependencies = {
-  now: () => testNow,
-} satisfies GitHubWebhookReceiverDependencies;
-
-const githubWebhookReceiverApp = createGitHubWebhookReceiverWorker(
-  testGitHubWebhookReceiverDependencies,
-);
+const githubWebhookReceiverApp = createGitHubWebhookReceiverWorker();
 
 export function fetchGitHubWebhookReceiver(
   input: RequestInfo | URL,

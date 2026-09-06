@@ -25,7 +25,6 @@ Valid deliveries receive `202` after any matching status-reaction job is durably
 - `workers/cyspbot-github-webhook-receiver` authenticates webhook deliveries, classifies status commands, and produces queue jobs.
 - `workers/cyspbot-github-webhook-processor` consumes queue jobs, obtains a GitHub App Installation Access Token, and adds the status reaction.
 - `packages/http` owns bounded request-body and JSON/problem-details response helpers.
-- `packages/github` owns the shared Cloudflare secret-binding adapter used by webhook verification.
 - `packages/token-exchange` owns the internal RFC 8693 client that obtains GitHub App Installation Access Tokens.
 - `packages/github-webhook-jobs` owns the versioned queue-job contract shared by the receiver and processor.
 - The root Wrangler configuration is a test harness, not a deployable product Worker.
