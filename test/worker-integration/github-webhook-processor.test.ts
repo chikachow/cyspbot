@@ -1,54 +1,38 @@
-import { env, exports } from "cloudflare:workers";
+import { env } from "cloudflare:workers";
+import { createExecutionContext, createMessageBatch, getQueueResult } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import worker from "../../workers/cyspbot-github-webhook-processor/src/index.ts";
 
 describe("GitHub webhook processor Worker entrypoint", () => {
-  it("processes a status reaction through the real queue entrypoint", async () => {
-    const processor = exports.default as ProcessorEntrypoint;
-    const queue = processor.queue;
-    if (queue === undefined) {
-      throw new Error("expected a queue handler");
-    }
-
-    await expect(
-      queue(
+  it.each([
+    [42, "created", false],
+    [43, "already exists", false],
+    [44, "unavailable", true],
+  ] as const)(
+    "observes queue completion when reaction %s is %s",
+    async (commentId, _name, retry) => {
+      const batch = createMessageBatch("cyspbot-github-webhook-jobs", [
         {
-          messages: [
-            {
-              ack() {},
-              attempts: 1,
-              body: {
-                commentId: 42,
-                deliveryId: "integration-delivery",
-                kind: "github.issue-comment.status-reaction",
-                repository: {
-                  name: "cyspbot",
-                  owner: "chikachow",
-                },
-                version: 1,
-              },
-              id: "valid-job",
-              retry() {},
-              timestamp: new Date("2026-08-15T00:00:00.000Z"),
-            },
-          ],
-          metadata: {
-            metrics: {
-              backlogBytes: 0,
-              backlogCount: 0,
-            },
+          id: "integration-job",
+          attempts: 1,
+          timestamp: new Date("2026-08-15T00:00:00.000Z"),
+          body: {
+            commentId,
+            deliveryId: "integration-delivery",
+            kind: "github.issue-comment.status-reaction",
+            repository: { name: "cyspbot", owner: "chikachow" },
+            version: 1,
           },
-          queue: "cyspbot-github-webhook-jobs",
-          ackAll() {},
-          retryAll() {},
         },
-        env,
-        {} as ExecutionContext,
-      ),
-    ).resolves.toBeUndefined();
-  });
+      ]);
+      const context = createExecutionContext();
+      if (worker.queue === undefined) throw new Error("expected a queue handler");
+      await worker.queue(batch, env, context);
+      const result = await getQueueResult(batch, context);
+      expect(result.explicitAcks).toEqual(retry ? [] : ["integration-job"]);
+      expect(result.retryMessages).toEqual(retry ? [{ msgId: "integration-job" }] : []);
+      expect(result.ackAll).toBe(false);
+      expect(result.retryBatch).toMatchObject({ retry: false });
+    },
+  );
 });
-
-type ProcessorEntrypoint = Pick<
-  ExportedHandler<GitHubWebhookProcessorEnv, unknown>,
-  "fetch" | "queue"
->;

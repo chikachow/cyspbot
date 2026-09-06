@@ -92,7 +92,7 @@ The unit project exercises the root response, bounded body reading, request-body
 The processor integration project loads the processor Wrangler configuration,
 runs a local `WorkloadIdentityIssuer` named-entrypoint fixture through a
 Workerd Service Binding, and exercises the queue entrypoint's token exchange.
-This validates the local RPC serialization and method contract; it does not test
+The test checks the broker request, exact GitHub token use, and queue acknowledgement or retry through Cloudflare message-batch helpers. This validates the local RPC serialization and method contract; it does not test
 the separately deployed issuer implementation. The unit project uses
 structural fixtures for validation failures.
 
