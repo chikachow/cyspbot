@@ -10,20 +10,41 @@ permissions:
   contents: read
 
 jobs:
-  format:
-    uses: ./.github/workflows/ci-format.yml
+  validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
 
-  lint:
-    uses: ./.github/workflows/ci-lint.yml
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-  env-types:
-    uses: ./.github/workflows/ci-env-types.yml
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          run_install: false
 
-  typecheck:
-    uses: ./.github/workflows/ci-typecheck.yml
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
 
-  knip:
-    uses: ./.github/workflows/ci-knip.yml
+      - run: pnpm install --frozen-lockfile
+
+      - name: Check formatting
+        run: node --run format:check
+
+      - name: Check generated environment types
+        run: node --run env-types:check
+
+      - name: Lint
+        run: node --run lint
+
+      - name: Type check
+        run: node --run typecheck
+
+      - name: Check unused code
+        run: node --run knip
+
+      - name: Dry run all Workers
+        run: node --run deploy:dry-run
 
   test:
     permissions:
@@ -31,20 +52,12 @@ jobs:
       id-token: write
     uses: ./.github/workflows/ci-test.yml
 
-  deploy-dry-run:
-    uses: ./.github/workflows/ci-deploy-dry-run.yml
-
   ci:
     name: ci
     runs-on: ubuntu-latest
     needs:
-      - format
-      - lint
-      - env-types
-      - typecheck
-      - knip
+      - validation
       - test
-      - deploy-dry-run
     if: ${{ always() }}
     steps:
       - name: Require all CI jobs to pass
