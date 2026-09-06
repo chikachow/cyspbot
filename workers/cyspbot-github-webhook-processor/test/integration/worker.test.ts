@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { createExecutionContext, createMessageBatch, getQueueResult } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import worker from "../../workers/cyspbot-github-webhook-processor/src/index.ts";
+import worker from "@cyspbot/github-webhook-processor";
 
 describe("GitHub webhook processor Worker entrypoint", () => {
   it.each([

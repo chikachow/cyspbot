@@ -6,7 +6,7 @@
   },
   "overrides": [
     {
-      "files": ["packages/**/*.ts", "workers/**/*.ts"],
+      "files": ["packages/*/src/**/*.ts", "workers/*/src/**/*.ts"],
       "plugins": ["unicorn", "typescript", "oxc", "import"],
       "rules": {
         "import/no-nodejs-modules": "deny"

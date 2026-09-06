@@ -1,4 +1,5 @@
-import { createCyspbotWorker } from "@cyspbot/cyspbot/worker";
+import cyspbotWorker from "@cyspbot/cyspbot";
+import { createCyspbotWorker } from "../src/worker.ts";
 import { describe, expect, it } from "vitest";
 
 const cyspbot = createCyspbotWorker();
@@ -73,3 +74,10 @@ function fetchCyspbot(input: RequestInfo | URL, init?: RequestInit): Promise<Res
     ),
   );
 }
+
+describe("worker entrypoint shapes", () => {
+  it("exports cyspbot as a fetch worker", () => {
+    expect(cyspbotWorker.fetch).toEqual(expect.any(Function));
+    expect(cyspbotWorker.queue).toBeUndefined();
+  });
+});

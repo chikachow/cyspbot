@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseGitHubIssueCommentStatusReactionJob } from "@cyspbot/github-webhook-jobs";
 
-import { classifyStatusReactionJob } from "../workers/cyspbot-github-webhook-receiver/src/github-webhooks/status-reaction.ts";
+import { classifyStatusReactionJob } from "../src/github-webhooks/status-reaction.ts";
 
 const matchingPayload = {
   action: "created",

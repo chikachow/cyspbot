@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { verifyGitHubWebhookSignature } from "../workers/cyspbot-github-webhook-receiver/src/github-webhooks/signature.ts";
+import { verifyGitHubWebhookSignature } from "../src/github-webhooks/signature.ts";
 
 describe("GitHub webhook signature verification", () => {
   it.each([

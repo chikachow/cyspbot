@@ -17,24 +17,9 @@ importers:
       '@cloudflare/workers-types':
         specifier: 5.20260827.1
         version: 5.20260827.1
-      '@cyspbot/cyspbot':
-        specifier: workspace:*
-        version: link:workers/cyspbot
-      '@cyspbot/github-webhook-jobs':
-        specifier: workspace:*
-        version: link:packages/github-webhook-jobs
-      '@cyspbot/github-webhook-processor':
-        specifier: workspace:*
-        version: link:workers/cyspbot-github-webhook-processor
-      '@cyspbot/github-webhook-receiver':
-        specifier: workspace:*
-        version: link:workers/cyspbot-github-webhook-receiver
       '@cyspbot/http':
         specifier: workspace:*
         version: link:packages/http
-      '@cyspbot/token-exchange':
-        specifier: workspace:*
-        version: link:packages/token-exchange
       '@tsconfig/strictest':
         specifier: 2.0.8
         version: 2.0.8

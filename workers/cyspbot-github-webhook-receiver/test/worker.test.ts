@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import githubWebhookReceiverWorker from "@cyspbot/github-webhook-receiver";
+import { describe, expect, it, vi } from "vitest";
 
 import { fetchGitHubWebhookReceiver } from "./support/worker.ts";
 import { githubWebhookHeaders } from "./support/webhook.ts";
@@ -187,5 +188,63 @@ describe("cyspbot-github-webhook-receiver", () => {
     await expect(response.json()).resolves.toEqual({
       accepted: true,
     });
+  });
+});
+
+describe("worker entrypoint shapes", () => {
+  it("exports the webhook receiver as a fetch worker", () => {
+    expect(githubWebhookReceiverWorker.fetch).toEqual(expect.any(Function));
+    expect(githubWebhookReceiverWorker.queue).toBeUndefined();
+  });
+
+  it("returns a configuration error without logging secrets", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    try {
+      const fetch = githubWebhookReceiverWorker.fetch;
+
+      if (fetch === undefined) {
+        throw new Error("expected webhook receiver fetch handler");
+      }
+
+      const response = await fetch(
+        new Request("https://example.test/github/webhooks", {
+          method: "POST",
+        }) as Parameters<typeof fetch>[0],
+        {
+          GITHUB_APP_ID: "000000",
+          GITHUB_WEBHOOK_JOBS: {
+            metrics: async () => ({
+              backlogBytes: 0,
+              backlogCount: 0,
+            }),
+            send: async () => ({
+              metadata: {
+                metrics: {
+                  backlogBytes: 0,
+                  backlogCount: 0,
+                },
+              },
+            }),
+            sendBatch: async () => ({
+              metadata: {
+                metrics: {
+                  backlogBytes: 0,
+                  backlogCount: 0,
+                },
+              },
+            }),
+          },
+          GITHUB_WEBHOOK_SECRET: "",
+        },
+        {} as ExecutionContext,
+      );
+
+      expect(response.status).toBe(500);
+      expect(consoleError).toHaveBeenCalledWith("webhook_receiver_not_configured");
+      await response.body?.cancel();
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 });
