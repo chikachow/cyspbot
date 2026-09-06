@@ -438,6 +438,21 @@ describe("cyspbot-github-webhook-processor", () => {
     expect(message.retry).not.toHaveBeenCalled();
   });
 
+  it("keeps the queue default for transport failures", async () => {
+    const message = { ...createMessage(job), attempts: 4 };
+    await invokeQueue(
+      createGitHubWebhookProcessorWorker({
+        fetch: async () => {
+          throw new TypeError("network unavailable");
+        },
+      }),
+      [message],
+      createTokenExchangeEnvironment(),
+    );
+    expect(message.ack).not.toHaveBeenCalled();
+    expect(message.retry).toHaveBeenCalledExactlyOnceWith();
+  });
+
   it("acknowledges invalid jobs without calling GitHub", async () => {
     let githubCalls = 0;
     const worker = createGitHubWebhookProcessorWorker({

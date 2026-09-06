@@ -46,14 +46,14 @@ The receiver sends only a derived job to the queue. The job contains the kind, v
 
 `workers/cyspbot-github-webhook-processor` consumes one message at a time from `cyspbot-github-webhook-jobs`. It validates the versioned job, requests a GitHub App Installation Access Token with `issues:write pull_requests:write` for the canonical GitHub Repository Resource, and posts an `eyes` reaction to the comment. GitHub `200` and `201` responses complete the job.
 
-Cloudflare Queues delivers messages at least once. Repeated jobs are safe because the GitHub reaction operation treats an existing reaction as success. The consumer retries network failures, HTTP `429`, HTTP `5xx`, and rate-limited HTTP `403` responses. It acknowledges permanent failures, retries up to five times, and sends exhausted jobs to `cyspbot-github-webhook-jobs-dlq`. GitHub failures honor server waiting hints or use exponential backoff starting at 60 seconds, bounded to 24 hours; other transient failures use the queue's 60-second default.
+Cloudflare Queues delivers messages at least once. Repeated jobs are safe because the GitHub reaction operation treats an existing reaction as success. The consumer retries network failures, HTTP `429`, HTTP `5xx`, and rate-limited HTTP `403` responses. It acknowledges permanent failures, retries up to five times, and sends exhausted jobs to `cyspbot-github-webhook-jobs-dlq`. GitHub HTTP error responses honor server waiting hints or use exponential backoff starting at 60 seconds, bounded to 24 hours; other transient failures use the queue's 60-second default.
 
 ## Runtime bindings
 
 - `GITHUB_APP_ID`: required non-secret variable used to bind deliveries to the intended GitHub App.
 - `GITHUB_WEBHOOK_SECRET`: required Worker secret or Cloudflare Secrets Store binding.
 - `GITHUB_WEBHOOK_JOBS`: Queue producer binding used by the webhook receiver for derived status-reaction jobs.
-- `cyspbot-github-webhook-processor` consumes `cyspbot-github-webhook-jobs` and sends exhausted jobs to `cyspbot-github-webhook-jobs-dlq`. GitHub failures honor server waiting hints or use exponential backoff starting at 60 seconds, bounded to 24 hours; other transient failures use the queue's 60-second default.
+- `cyspbot-github-webhook-processor` consumes `cyspbot-github-webhook-jobs` and sends exhausted jobs to `cyspbot-github-webhook-jobs-dlq`. GitHub HTTP error responses honor server waiting hints or use exponential backoff starting at 60 seconds, bounded to 24 hours; other transient failures use the queue's 60-second default.
 - The processor's `WORKLOAD_IDENTITY_ISSUER`: RPC Service Binding to a separately deployed
   `WorkloadIdentityIssuer` entrypoint. Its `issueToken(audience)` operation
   returns an `IssuedToken`; the issuer deployment owns the workload subject
