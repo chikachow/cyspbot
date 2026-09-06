@@ -335,6 +335,80 @@ describe("cyspbot-github-webhook-processor", () => {
     expect(message.ack).not.toHaveBeenCalled();
   });
 
+  it("retries a secondary rate limit with primary quota remaining", async () => {
+    const message = createMessage(job);
+    await invokeQueue(
+      createGitHubWebhookProcessorWorker({
+        fetch: async () =>
+          Response.json(
+            {
+              message:
+                "You have exceeded a secondary rate limit. Please wait a few minutes before you try again.",
+            },
+            {
+              status: 403,
+              headers: { "x-ratelimit-remaining": "4999" },
+            },
+          ),
+      }),
+      [message],
+      createTokenExchangeEnvironment(),
+    );
+    expect(message.ack).not.toHaveBeenCalled();
+    expect(message.retry).toHaveBeenCalledExactlyOnceWith({ delaySeconds: 60 });
+  });
+
+  it.each([
+    ["retry-after", { "retry-after": "3600" }, 3600],
+    ["primary reset", { "x-ratelimit-remaining": "0", "x-ratelimit-reset": "1893457800" }, 1800],
+    [
+      "both waiting periods",
+      { "retry-after": "120", "x-ratelimit-remaining": "0", "x-ratelimit-reset": "1893457800" },
+      1800,
+    ],
+    ["maximum queue delay", { "retry-after": "172800" }, 86400],
+    ["zero delay", { "retry-after": "0" }, 60],
+    ["invalid delay", { "retry-after": "1e3" }, 60],
+    ["negative delay", { "retry-after": "-1" }, 60],
+    ["fractional delay", { "retry-after": "1.5" }, 60],
+    ["overflow delay", { "retry-after": "999999999999999999999" }, 60],
+    ["past reset", { "x-ratelimit-remaining": "0", "x-ratelimit-reset": "1" }, 60],
+    [
+      "reset with available quota",
+      { "x-ratelimit-remaining": "1", "x-ratelimit-reset": "1893457800" },
+      60,
+    ],
+  ] as const)("respects %s", async (_name, headers, delaySeconds) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2030-01-01T00:00:00.000Z"));
+    try {
+      const message = createMessage(job);
+      await invokeQueue(
+        createGitHubWebhookProcessorWorker({
+          fetch: async () => new Response(null, { status: 429, headers }),
+        }),
+        [message],
+        createTokenExchangeEnvironment(),
+      );
+      expect(message.ack).not.toHaveBeenCalled();
+      expect(message.retry).toHaveBeenCalledExactlyOnceWith({ delaySeconds });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("backs off repeated failures without waiting hints", async () => {
+    const message = { ...createMessage(job), attempts: 4 };
+    await invokeQueue(
+      createGitHubWebhookProcessorWorker({
+        fetch: async () => new Response(null, { status: 503 }),
+      }),
+      [message],
+      createTokenExchangeEnvironment(),
+    );
+    expect(message.retry).toHaveBeenCalledExactlyOnceWith({ delaySeconds: 480 });
+  });
+
   it("acknowledges invalid jobs without calling GitHub", async () => {
     let githubCalls = 0;
     const worker = createGitHubWebhookProcessorWorker({

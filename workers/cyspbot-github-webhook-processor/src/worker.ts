@@ -42,7 +42,15 @@ export function createGitHubWebhookProcessorWorker(
               queue: batch.queue,
               status: errorStatus(error),
             });
-            message.retry();
+            if (error instanceof GitHubReactionError) {
+              message.retry({
+                delaySeconds:
+                  error.retryDelaySeconds ??
+                  Math.min(86_400, 60 * 2 ** Math.max(0, message.attempts - 1)),
+              });
+            } else {
+              message.retry();
+            }
           } else {
             console.error("github_webhook_job_failed", {
               attempts: message.attempts,
