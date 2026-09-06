@@ -76,11 +76,7 @@ importers:
         specifier: workspace:*
         version: link:../http
 
-  workers/cyspbot:
-    dependencies:
-      hono:
-        specifier: 4.13.5
-        version: 4.13.5
+  workers/cyspbot: {}
 
   workers/cyspbot-github-webhook-processor:
     dependencies:
@@ -1519,10 +1515,6 @@ packages:
     resolution: {integrity: sha512-EykJT/Q1KjTWctppgIAgfSO0tKVuZUjhgMr17kqTumMl6Afv3EISleU7qZUzoXDFTAHTDC4NOoG/ZxU3EvlMPQ==}
     engines: {node: '>=8'}
 
-  hono@4.13.5:
-    resolution: {integrity: sha512-O6+/eCYRkzzzy0rPWwKLiGBR1nFuUPZynnwjxN1MBA62NNqbT0wQEzQyK2gSO5yDIDB336sXQleAhOHrzlYyKw==}
-    engines: {node: '>=16.9.0'}
-
   html-escaper@2.0.2:
     resolution: {integrity: sha512-H2iMtd0I4Mt5eYiapRdIDjp+XzelXQ0tFE4JS7YFwFevXXMmOp9myNrUvCg0D6ws8iqkRPBfKHgbwig1SmlLfg==}
 
@@ -2940,8 +2932,6 @@ snapshots:
       resolve-pkg-maps: 1.0.0
 
   has-flag@4.0.0: {}
-
-  hono@4.13.5: {}
 
   html-escaper@2.0.2: {}
 

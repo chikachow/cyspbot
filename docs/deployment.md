@@ -4,7 +4,7 @@ This repository contains the public source, tests, and public-safe Wrangler temp
 
 ## Deployable Workers
 
-`@cyspbot/cyspbot` deploys Worker `cyspbot` as the fallback origin. Its Hono application serves the root bot page for `GET` and standard bodyless `HEAD` requests, rejects other root methods with an empty `405`, and returns empty `404` responses for other paths.
+`@cyspbot/cyspbot` deploys Worker `cyspbot` as the fallback origin. Its native fetch handler serves the root bot page for `GET` and standard bodyless `HEAD` requests, rejects other root methods with an empty `405`, and returns empty `404` responses for other paths.
 
 `@cyspbot/github-webhook-receiver` deploys Worker `cyspbot-github-webhook-receiver` for `POST /github/webhooks`.
 

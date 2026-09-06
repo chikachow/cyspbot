@@ -21,7 +21,7 @@ Valid deliveries receive `202` after any matching status-reaction job is durably
 
 ## Architecture
 
-- `workers/cyspbot` owns the Hono-based root-page Worker and its public-safe Wrangler configuration.
+- `workers/cyspbot` owns the root-page Worker and its public-safe Wrangler configuration.
 - `workers/cyspbot-github-webhook-receiver` authenticates webhook deliveries, classifies status commands, and produces queue jobs.
 - `workers/cyspbot-github-webhook-processor` consumes queue jobs, obtains a GitHub App Installation Access Token, and adds the status reaction.
 - `packages/http` owns bounded request-body and JSON/problem-details response helpers.
