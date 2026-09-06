@@ -40,7 +40,7 @@ In production, this Worker is the Custom Domain origin. More specific Cloudflare
 
 The receiver resolves direct secrets and Secrets Store bindings through its private secret adapter.
 
-The receiver sends only a derived job to the queue. The job contains the kind, version, delivery ID, repository owner and name, and comment ID. The receiver does not apply repository filtering.
+The receiver sends only a derived job to the queue. The job contains the kind, version, delivery ID, repository owner and name, and comment ID. The receiver uses the same job parser as the processor to validate the projected job before publication. It does not apply repository authorization filtering.
 
 ## Webhook processor flow
 

@@ -1,4 +1,7 @@
-import type { GitHubIssueCommentStatusReactionJob } from "@cyspbot/github-webhook-jobs";
+import {
+  parseGitHubIssueCommentStatusReactionJob,
+  type GitHubIssueCommentStatusReactionJob,
+} from "@cyspbot/github-webhook-jobs";
 
 export function classifyStatusReactionJob(
   event: string,
@@ -25,38 +28,20 @@ export function classifyStatusReactionJob(
   }
 
   const owner = repository["owner"];
-  const name = repository["name"];
-  const commentId = comment["id"];
+  if (!isRecord(owner)) return undefined;
 
-  if (
-    !isRecord(owner) ||
-    typeof owner["login"] !== "string" ||
-    owner["login"].length === 0 ||
-    typeof name !== "string" ||
-    name.length === 0 ||
-    !isSafeCommentId(commentId)
-  ) {
-    return undefined;
-  }
-
-  const job = {
-    commentId,
+  return parseGitHubIssueCommentStatusReactionJob({
+    commentId: comment["id"],
     deliveryId,
     kind: "github.issue-comment.status-reaction",
     repository: {
-      name,
+      name: repository["name"],
       owner: owner["login"],
     },
     version: 1,
-  } satisfies GitHubIssueCommentStatusReactionJob;
-
-  return job;
+  });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isSafeCommentId(value: unknown): value is number {
-  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
 }

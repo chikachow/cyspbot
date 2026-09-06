@@ -74,7 +74,7 @@ An authenticated `issue_comment` delivery creates a queue job only when its
 
 The receiver waits for the queue write before returning `202`. Authenticated
 events that do not classify to this job receive `202` without a queue write.
-The receiver does not apply repository filtering. A queue write failure
+The receiver validates the derived job before publication: comment IDs must be positive safe integers, delivery IDs must be non-empty, and repository parts must be non-empty, at most 100 characters, and contain no path separators, query/fragment delimiters, or control characters. Payloads that cannot produce a valid job are acknowledged without a queue write. The receiver does not apply repository authorization filtering. A queue write failure
 returns `503 Service Unavailable`. GitHub does not automatically redeliver
 failed webhooks. Ingress is best effort until publication succeeds; operators
 manually redeliver failed deliveries after resolving the cause. See
