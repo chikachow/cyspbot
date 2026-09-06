@@ -15,34 +15,13 @@ export async function verifyGitHubWebhookSignature(input: {
     textEncoder.encode(input.secret),
     { hash: "SHA-256", name: "HMAC" },
     false,
-    ["sign"],
+    ["verify"],
   );
-  const digest = new Uint8Array(
-    await crypto.subtle.sign("HMAC", key, bytesAsBufferSource(input.body)),
-  );
-  const actualHex = [...digest].map((value) => value.toString(16).padStart(2, "0")).join("");
-  const expectedHex = input.signatureHeader.slice("sha256=".length);
-
-  return constantTimeEquals(actualHex, expectedHex);
-}
-
-function constantTimeEquals(left: string, right: string): boolean {
-  if (left.length !== right.length) {
-    return false;
+  const hex = input.signatureHeader.slice("sha256=".length);
+  const signature = new Uint8Array(32);
+  for (let index = 0; index < signature.length; index += 1) {
+    signature[index] = Number.parseInt(hex.slice(index * 2, index * 2 + 2), 16);
   }
 
-  let mismatch = 0;
-
-  for (let index = 0; index < left.length; index += 1) {
-    mismatch |= left.charCodeAt(index) ^ right.charCodeAt(index);
-  }
-
-  return mismatch === 0;
-}
-
-function bytesAsBufferSource(value: Uint8Array): BufferSource {
-  const copy = new Uint8Array(value.byteLength);
-  copy.set(value);
-
-  return copy;
+  return crypto.subtle.verify("HMAC", key, signature, new Uint8Array(input.body));
 }
