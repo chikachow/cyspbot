@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { GitHubIssueCommentStatusReactionJob } from "@cyspbot/github-webhook-jobs";
-import { GitHubReactionError } from "@cyspbot/github-webhook-processor/github/reactions";
-import { createGitHubWebhookProcessorWorker } from "@cyspbot/github-webhook-processor/worker";
+import { GitHubReactionError } from "../src/github/reactions.ts";
+import { createGitHubWebhookProcessorWorker } from "../src/worker.ts";
 import type { TokenExchangeEnvironment } from "@cyspbot/token-exchange";
 
 const job: GitHubIssueCommentStatusReactionJob = {

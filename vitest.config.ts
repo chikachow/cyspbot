@@ -4,13 +4,13 @@ import { configDefaults, defineConfig } from "vitest/config";
 import {
   githubWebhookProcessorOutboundService,
   githubWebhookProcessorBrokerService,
-} from "./test/worker-integration/github-webhook-processor-outbound.ts";
-import { githubWebhookTestSecret } from "./test/support/webhook.ts";
+} from "./workers/cyspbot-github-webhook-processor/test/integration/outbound.ts";
+import { githubWebhookTestSecret } from "./workers/cyspbot-github-webhook-receiver/test/support/webhook.ts";
 
 export default defineConfig({
   test: {
     coverage: {
-      exclude: ["**/*.test.ts", "test/**", "worker-configuration.d.ts"],
+      exclude: ["**/*.test.ts", "**/test/**", "worker-configuration.d.ts"],
       provider: "istanbul",
       reporter: ["text", "lcov"],
     },
@@ -27,7 +27,7 @@ export default defineConfig({
         test: {
           allowOnly: false,
           detectAsyncLeaks: true,
-          include: ["test/worker-integration/cyspbot.test.ts"],
+          include: ["workers/cyspbot/test/integration/**/*.test.ts"],
           name: "cyspbot-integration",
         },
       },
@@ -52,7 +52,12 @@ export default defineConfig({
             ...configDefaults.exclude,
             ".pnpm-store/**",
             ".worktrees/**",
-            "test/worker-integration/**",
+            "**/test/integration/**",
+          ],
+          include: [
+            "packages/*/test/**/*.test.ts",
+            "workers/*/test/**/*.test.ts",
+            "test/**/*.test.ts",
           ],
           name: "unit",
         },
@@ -74,7 +79,7 @@ export default defineConfig({
         test: {
           allowOnly: false,
           detectAsyncLeaks: true,
-          include: ["test/worker-integration/github-webhook-receiver.test.ts"],
+          include: ["workers/cyspbot-github-webhook-receiver/test/integration/**/*.test.ts"],
           name: "github-webhook-receiver-integration",
         },
       },
@@ -86,7 +91,7 @@ export default defineConfig({
                 {
                   modules: [
                     {
-                      path: "./test/worker-integration/workload-identity-issuer.mjs",
+                      path: "./workers/cyspbot-github-webhook-processor/test/integration/workload-identity-issuer.mjs",
                       type: "ESModule",
                     },
                   ],
@@ -111,7 +116,7 @@ export default defineConfig({
         test: {
           allowOnly: false,
           detectAsyncLeaks: true,
-          include: ["test/worker-integration/github-webhook-processor.test.ts"],
+          include: ["workers/cyspbot-github-webhook-processor/test/integration/**/*.test.ts"],
           name: "github-webhook-processor-integration",
         },
       },

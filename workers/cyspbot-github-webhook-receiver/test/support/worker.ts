@@ -1,4 +1,4 @@
-import { createGitHubWebhookReceiverWorker } from "@cyspbot/github-webhook-receiver/worker";
+import { createGitHubWebhookReceiverWorker } from "../../src/worker.ts";
 
 import { testEnv } from "./worker-env.ts";
 

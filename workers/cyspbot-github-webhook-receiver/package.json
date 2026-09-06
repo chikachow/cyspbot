@@ -4,8 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./worker": "./src/worker.ts"
+    ".": "./src/index.ts"
   },
   "scripts": {
     "check": "node --run env-types:check && node --run typecheck && node --run deploy:dry-run",

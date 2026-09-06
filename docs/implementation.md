@@ -88,6 +88,10 @@ values.
 
 ## Tests and validation
 
+Tests live in each owning package or Worker’s `test/` directory alongside `src/`. Worker integration tests and their fixtures live under `test/integration/`; helpers shared by tests within a Worker live under its `test/support/`. The root `test/` contains only the shared harness and its own test. Tests use local source imports for internal seams and package imports for package interfaces and dependencies. Worker package exports expose only their entrypoints.
+
+The root `vitest.config.ts` selects the unit suite and three Worker integration suites, and owns combined coverage. Test location does not change runtime selection. Production TypeScript checks and the Node-import lint restriction apply to `src/`; the root test TypeScript configuration also covers package-local tests and their helpers. CI retains separate validation workflows.
+
 The unit project exercises the root response, bounded body reading, request-body size and status handling, signature/target validation through HTTP responses, queue-job classification and processing, token-exchange response mapping, and all Worker factories. Separate Workerd integration projects load each Worker's real Wrangler configuration and entrypoint.
 
 The processor integration project loads the processor Wrangler configuration,

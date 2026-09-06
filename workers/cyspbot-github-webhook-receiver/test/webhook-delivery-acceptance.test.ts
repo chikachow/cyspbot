@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { GitHubIssueCommentStatusReactionJob } from "@cyspbot/github-webhook-jobs";
-import { handleGitHubWebhookRequest } from "../workers/cyspbot-github-webhook-receiver/src/webhook.ts";
+import { handleGitHubWebhookRequest } from "../src/webhook.ts";
 import { githubWebhookHeaders } from "./support/webhook.ts";
 
 interface TestWebhookEnv {
