@@ -43,7 +43,7 @@ The receiver sends only a derived job to the queue. The job contains the kind, v
 
 ## Webhook processor flow
 
-`workers/cyspbot-github-webhook-processor` consumes one message at a time from `cyspbot-github-webhook-jobs`. It validates the versioned job, requests a GitHub App Installation Access Token with `issues:write` for the canonical GitHub Repository Resource, and posts an `eyes` reaction to the comment. GitHub `200` and `201` responses complete the job.
+`workers/cyspbot-github-webhook-processor` consumes one message at a time from `cyspbot-github-webhook-jobs`. It validates the versioned job, requests a GitHub App Installation Access Token with `issues:write pull_requests:write` for the canonical GitHub Repository Resource, and posts an `eyes` reaction to the comment. GitHub `200` and `201` responses complete the job.
 
 Cloudflare Queues delivers messages at least once. Repeated jobs are safe because the GitHub reaction operation treats an existing reaction as success. The consumer retries network failures, HTTP `429`, HTTP `5xx`, and rate-limited HTTP `403` responses. It acknowledges permanent failures, retries up to five times, and sends exhausted jobs to `cyspbot-github-webhook-jobs-dlq`. GitHub failures honor server waiting hints or use exponential backoff starting at 60 seconds, bounded to 24 hours; other transient failures use the queue's 60-second default.
 

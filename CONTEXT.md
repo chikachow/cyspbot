@@ -27,7 +27,7 @@ The `github.issue-comment.status-reaction` version-1 Webhook Job containing a de
 The shared secret used to authenticate the exact request body through GitHub's `X-Hub-Signature-256` convention. It is supplied only through a Worker secret or Cloudflare Secrets Store binding.
 
 **Accepted Delivery**:
-A delivery whose media type, size, required headers, target App ID, signature, and JSON representation are valid. For a Status Reaction Job, acceptance includes a successful durable queue write.
+A delivery whose media type, size, required headers, target App ID, signature, and JSON representation are valid. For a Status Reaction Job, acceptance includes a successful durable queue write. Ingress remains best effort until that write succeeds; failed GitHub deliveries require operator-owned redelivery.
 
 **Rejected Delivery**:
 A delivery that fails one of the receiver's validation requirements. Logs may retain delivery metadata needed for diagnosis but must not retain the raw body or secret.

@@ -28,6 +28,14 @@ RPC together with its `subject` and `allowedAudiences` properties, while the
 broker binding supplies the broker transport. The broker verifies the workload
 identity assertion and performs authorization at its Token Endpoint.
 
+## Delivery recovery
+
+The deployment operator owns recovery of failed webhook deliveries and exhausted queue jobs. GitHub does not automatically redeliver failed webhooks; this source does not run a delivery-recovery scheduler. Queue durability starts only after the receiver successfully publishes the job.
+
+After resolving an ingress failure, inspect the GitHub App's recent webhook deliveries and manually redeliver the failed delivery. See [GitHub's redelivery procedure](https://docs.github.com/en/webhooks/testing-and-troubleshooting-webhooks/redelivering-webhooks). For jobs that reach `cyspbot-github-webhook-jobs-dlq`, resolve the processor or broker failure before replaying them through the primary queue. Permanent failures are acknowledged and logged, so they require redelivery from GitHub if another attempt is warranted.
+
+Broker policy must authorize the processor's workload identity for the intended repositories and the exact requested scope, `issues:write pull_requests:write`. Keep both permissions until issue and pull-request conversation-comment behavior has been verified against the deployed GitHub App and broker policy.
+
 ## Local validation only
 
 This repository's deployment command is a dry run:
