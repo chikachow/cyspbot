@@ -23,6 +23,10 @@ describe("GitHub status reaction classification", () => {
     ["a different comment", { ...matchingPayload, comment: { body: "/cyspbot help", id: 42 } }],
     ["a missing repository", { ...matchingPayload, repository: null }],
     [
+      "a missing repository owner",
+      { ...matchingPayload, repository: { name: "cyspbot", owner: null } },
+    ],
+    [
       "an invalid comment id",
       { ...matchingPayload, comment: { ...matchingPayload.comment, id: 0 } },
     ],
