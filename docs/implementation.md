@@ -32,7 +32,7 @@ In production, this Worker is the Custom Domain origin. More specific Cloudflare
 2. requires `application/json` and reads at most `256 KiB`;
 3. requires the event, delivery, signature, and installation-target headers;
 4. requires the target type `integration` and the configured `GITHUB_APP_ID`;
-5. verifies the exact bytes with HMAC-SHA256;
+5. verifies the exact bytes and decoded signature with Web Crypto HMAC-SHA256 verification;
 6. parses the authenticated body as JSON;
 7. classifies `issue_comment` deliveries with `action: "created"` and a trimmed comment body exactly equal to `/cyspbot status`;
 8. sends the derived version-1 job to `GITHUB_WEBHOOK_JOBS` and waits for the queue write; and
