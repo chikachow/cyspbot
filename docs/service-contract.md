@@ -86,12 +86,13 @@ The processor requests a GitHub App Installation Access Token with
 job. Network failures, `429`, `5xx`, and rate-limited `403` responses retry;
 other failures are acknowledged. The queue uses one-message batches, five
 retries, a 60-second default retry delay, and the
-`cyspbot-github-webhook-jobs-dlq` dead-letter queue. GitHub retries honor numeric
+`cyspbot-github-webhook-jobs-dlq` dead-letter queue. GitHub HTTP error responses honor numeric
 `Retry-After` and exhausted primary-quota `X-RateLimit-Reset` headers, using
 the longer wait with a 60-second minimum and Cloudflare's 24-hour maximum.
-Without a valid hint, GitHub failures use exponential backoff starting at
+Without a valid hint, GitHub HTTP error responses use exponential backoff starting at
 60 seconds, capped at 24 hours. Secondary-limit messages on `403` are
-retryable even when primary quota remains.
+retryable even when primary quota remains. Transport failures and other transient
+issuer or broker failures use the queue's 60-second default.
 
 Rejections use RFC 9457-style problem-details JSON with `type`, `title`, and `status` fields:
 
