@@ -1,0 +1,29 @@
+{
+  "cli_version": "0.10.5",
+  "checkpoint_id": "01M1TW7TFHBZ22S4Q6E6RX59KB",
+  "strategy": "manual-commit",
+  "branch": "codex/simplify-webhook-processing",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "docs/implementation.md",
+    "docs/service-contract.md",
+    "test/github-webhook-status-reaction.test.ts",
+    "workers/cyspbot-github-webhook-receiver/src/github-webhooks/status-reaction.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 2586,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 344576,
+    "output_tokens": 1274,
+    "api_call_count": 2
+  }
+}
