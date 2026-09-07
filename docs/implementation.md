@@ -105,8 +105,11 @@ structural fixtures for validation failures.
 
 The `built-workers-integration` project runs in Node and uses Wrangler's
 `createTestHarness()` to build and run all three Workers with their production
-compatibility dates and flags. It checks the root page and sends a signed
-Webhook Delivery through the receiver's configured queue to the processor.
+compatibility dates and flags. It checks the root page, bodyless responses for
+HEAD, unsupported methods and unknown paths, and rejection of matching webhooks
+with an invalid signature or installation target. It sends signed Webhook
+Deliveries through the receiver's configured queue to the processor and exercises
+GitHub's success responses for both new and existing reactions.
 Local issuer and broker fixtures validate the token exchange; a Node `fetch`
 mock validates the GitHub reaction request and blocks other outbound requests.
 The queue connection uses the production Wrangler configurations. This suite
