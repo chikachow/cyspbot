@@ -1,0 +1,124 @@
+diff --git a/dist/pool/index.mjs b/dist/pool/index.mjs
+index cb7fa286a8bb4c03ec3905625a400a17e86baa44..8a18f3d61d6c265044c483f44df14990b651ea45 100644
+--- a/dist/pool/index.mjs
++++ b/dist/pool/index.mjs
+@@ -48268,6 +48268,14 @@ async function handleSnapshotRequest(request$1, url$2) {
+ 	}
+ 	return new Response(null, { status: 405 });
+ }
++async function handleCoverageRequest(request$1, url$2) {
++	if (request$1.method !== "POST") return new Response(null, { status: 405 });
++	const directory = url$2.searchParams.get("directory");
++	if (directory === null) return new Response(null, { status: 400 });
++	const filePath = path.join(directory, `coverage-${randomUUID()}.json`);
++	await fs$1.writeFile(filePath, new Uint8Array(await request$1.arrayBuffer()));
++	return new Response(filePath);
++}
+ async function listDurableObjectIds(request$1, mf, url$2) {
+ 	if (request$1.method !== "GET") return new Response(null, { status: 405 });
+ 	const bindingName = url$2.searchParams.get("binding_name");
+@@ -48279,6 +48287,7 @@ async function listDurableObjectIds(request$1, mf, url$2) {
+ function handleLoopbackRequest(request$1, mf) {
+ 	const url$2 = new URL(request$1.url);
+ 	if (url$2.pathname === "/snapshot") return handleSnapshotRequest(request$1, url$2);
++	if (url$2.pathname === "/coverage") return handleCoverageRequest(request$1, url$2);
+ 	if (url$2.pathname === "/durable-objects") return listDurableObjectIds(request$1, mf, url$2);
+ 	return new Response(null, { status: 404 });
+ }
+@@ -48907,7 +48916,10 @@ async function load$1(vite, logBase, method, target, rawTarget, specifier, fileP
+ 	const targetUrl = pathToFileURL(target);
+ 	contents = withSourceUrl(contents, targetUrl);
+ 	if (module$1.kind === "esm") {
+-		contents = withImportMetaUrl(contents, targetUrl);
++		// Vitest 5 includes import.meta.url inside a quoted diagnostic.
++		if (!ensurePosixLikePath(filePath).endsWith("/vitest/dist/module-evaluator.js")) {
++			contents = withImportMetaUrl(contents, targetUrl);
++		}
+ 		debuglog(logBase, "esm:", filePath);
+ 		return buildModuleResponse(rawTarget, { esModule: contents });
+ 	}
+@@ -63188,6 +63200,7 @@ async function buildProjectWorkerOptions(project, customOptions, main) {
+ 		if (!isNodejsCompatDefaultOn(runnerWorker.compatibilityDate)) runnerWorker.compatibilityFlags.push("nodejs_compat_v2");
+ 	}
+ 	if (!runnerWorker.compatibilityFlags.includes("unsafe_module")) runnerWorker.compatibilityFlags.push("unsafe_module");
++	ensureFeature(runnerWorker.compatibilityFlags, "weak_ref", runnerWorker.compatibilityDate >= "2025-05-05");
+ 	ensureFeature(runnerWorker.compatibilityFlags, "nodejs_tty_module");
+ 	ensureFeature(runnerWorker.compatibilityFlags, "nodejs_fs_module");
+ 	ensureFeature(runnerWorker.compatibilityFlags, "nodejs_http_modules");
+@@ -63408,10 +63421,10 @@ function assertCompatibleVitestVersion(ctx) {
+ * @param compatibilityFlags The list of current compatibility flags.
+ * @param feature The name of the feature to enable.
+ */
+-function ensureFeature(compatibilityFlags, feature) {
++function ensureFeature(compatibilityFlags, feature, enabledByDefault = false) {
+ 	const flagToEnable = `enable_${feature}`;
+ 	const flagToDisable = `disable_${feature}`;
+-	if (!compatibilityFlags.includes(flagToEnable)) {
++	if (!enabledByDefault && !compatibilityFlags.includes(flagToEnable)) {
+ 		debug("Adding `%s` compatibility flag during tests as this feature is needed to support the Vitest runner.", flagToEnable);
+ 		compatibilityFlags.push(flagToEnable);
+ 	}
+diff --git a/dist/worker/index.mjs b/dist/worker/index.mjs
+index b4491b08b26b656a464fb4df3551c44ad0c719b4..09c2d768cbbcd835300732542f3063ecfcb6410b 100644
+--- a/dist/worker/index.mjs
++++ b/dist/worker/index.mjs
+@@ -788,6 +788,16 @@ function ensurePatchedFunction(unsafeEval) {
+ 		return unsafeEval.newFunction(script, "anonymous", ...args);
+ 	} });
+ }
++async function writeCoverageFile(loopback, coverageFilesDirectory, coverage) {
++	const url = new URL("http://placeholder/coverage");
++	url.searchParams.set("directory", coverageFilesDirectory);
++	const response = await loopback.fetch(url, {
++		method: "POST",
++		body: JSON.stringify(coverage),
++	});
++	if (!response.ok) throw new Error(`Failed to write coverage file: ${response.status}`);
++	return response.text();
++}
+ function applyDefines() {
+ 	for (const [key, value] of Object.entries(defines)) {
+ 		const segments = key.split(".");
+@@ -804,6 +814,19 @@ var __VITEST_POOL_WORKERS_RUNNER_DURABLE_OBJECT__ = class extends DurableObject
+ 		super(_state, doEnv);
+ 		vm._setUnsafeEval(doEnv.__VITEST_POOL_WORKERS_UNSAFE_EVAL);
+ 		ensurePatchedFunction(doEnv.__VITEST_POOL_WORKERS_UNSAFE_EVAL);
++		globalThis.__vitest_browser_runner__ = {
++			commands: {
++				triggerCommand: (command, args) => {
++					assert.strictEqual(command, "__vitest_writeCoverageFile");
++					assert.strictEqual(args.length, 1);
++					return writeCoverageFile(
++						doEnv.__VITEST_POOL_WORKERS_LOOPBACK_SERVICE,
++						__vitest_worker__.config.coverage.coverageFilesDirectory,
++						args[0],
++					);
++				},
++			},
++		};
+ 		applyDefines();
+ 	}
+ 	async handleVitestRunRequest(request) {
+@@ -852,6 +875,7 @@ var __VITEST_POOL_WORKERS_RUNNER_DURABLE_OBJECT__ = class extends DurableObject
+ 			setup: setupEnvironment,
+ 			onModuleRunner(moduleRunner) {
+ 				const runner = moduleRunner;
++				runner.isBrowser = true;
+ 				if (runner.evaluator?.createRequire) {
+ 					const originalCreateRequire = runner.evaluator.createRequire.bind(runner.evaluator);
+ 					function createRequire(url) {
+diff --git a/package.json b/package.json
+index aa8a3f50d4559fa1b0db7fe37259e7014b63070a..798486629e772819a40630ea85d6a4a83056f42c 100644
+--- a/package.json
++++ b/package.json
+@@ -74,9 +74,7 @@
+     "@cloudflare/workflows-shared": "0.13.0"
+   },
+   "peerDependencies": {
+-    "@vitest/runner": "^4.1.0",
+-    "@vitest/snapshot": "^4.1.0",
+-    "vitest": "^4.1.0"
++    "vitest": "^4.1.11 || ^5.0.0"
+   },
+   "volta": {
+     "extends": "../../package.json"
