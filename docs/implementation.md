@@ -88,11 +88,11 @@ values.
 
 ## Tests and validation
 
-Tests live in each owning package or Worker’s `test/` directory alongside `src/`. Worker integration tests and their fixtures live under `test/integration/`; helpers shared by tests within a Worker live under its `test/support/`. The root `test/` contains only the shared harness and its own test. Tests use local source imports for internal seams and package imports for package interfaces and dependencies. Worker package exports expose only their entrypoints.
+Tests live in each owning package or Worker’s `test/` directory alongside `src/`. Worker integration tests and their fixtures live under `test/integration/`; helpers shared by tests within a Worker live under its `test/support/`. The root `test/` contains the shared unit harness, its own test, and integration tests spanning multiple Workers. Tests use local source imports for internal seams and package imports for package interfaces and dependencies. Worker package exports expose only their entrypoints.
 
-The root `vitest.config.ts` selects the unit suite and three Worker integration suites, and owns combined coverage. Test location does not change runtime selection. Production TypeScript checks and the Node-import lint restriction apply to `src/`; the root test TypeScript configuration also covers package-local tests and their helpers. CI retains separate validation workflows.
+The root `vitest.config.ts` selects the unit suite, three Worker integration suites, and the built-Worker integration suite, and owns combined coverage. Production TypeScript checks and the Node-import lint restriction apply to `src/`; the root test TypeScript configuration also covers package-local tests and their helpers. CI retains separate validation workflows.
 
-Tests run in Workerd through `@cloudflare/vitest-plugin` with Vitest 4. Keep Vitest and its Istanbul coverage provider on matching versions supported by the Cloudflare plugin. Coverage explicitly includes package and Worker source files, including files not imported by tests, and excludes type declarations. Each Worker's production TypeScript check uses the runtime types generated from its Wrangler compatibility date and flags.
+The unit and individual Worker integration suites run in Workerd through `@cloudflare/vitest-plugin` with Vitest 4. Keep Vitest and its Istanbul coverage provider on matching versions supported by the Cloudflare plugin. Coverage explicitly includes package and Worker source files, including files not imported by tests, and excludes type declarations. Each Worker's production TypeScript check uses the runtime types generated from its Wrangler compatibility date and flags.
 
 The unit project exercises the root response, bounded body reading, request-body size and status handling, signature/target validation through HTTP responses, queue-job classification and processing, token-exchange response mapping, and all Worker factories. Separate Workerd integration projects load each Worker's real Wrangler configuration and entrypoint.
 
@@ -102,6 +102,16 @@ Workerd Service Binding, and exercises the queue entrypoint's token exchange.
 The test checks the broker request, exact GitHub token use, and queue acknowledgement or retry through Cloudflare message-batch helpers. This validates the local RPC serialization and method contract; it does not test
 the separately deployed issuer implementation. The unit project uses
 structural fixtures for validation failures.
+
+The `built-workers-integration` project runs in Node and uses Wrangler's
+`createTestHarness()` to build and run all three Workers with their production
+compatibility dates and flags. It checks the root page and sends a signed
+Webhook Delivery through the receiver's configured queue to the processor.
+Local issuer and broker fixtures validate the token exchange; a Node `fetch`
+mock validates the GitHub reaction request and blocks other outbound requests.
+The queue connection uses the production Wrangler configurations. This suite
+complements the individual processor tests that assert acknowledgement and retry
+behavior. Built Worker code runs outside Vitest's coverage instrumentation.
 
 Use Node 24 and the pinned pnpm version:
 
