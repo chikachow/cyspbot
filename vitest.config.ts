@@ -17,6 +17,14 @@ export default defineConfig({
     },
     projects: [
       {
+        test: {
+          allowOnly: false,
+          environment: "node",
+          include: ["test/integration/**/*.test.ts"],
+          name: "built-workers-integration",
+        },
+      },
+      {
         plugins: [
           cloudflareTest({
             remoteBindings: false,

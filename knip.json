@@ -1,6 +1,7 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "ignore": [
+    "test/integration/token-broker.ts",
     "workers/cyspbot-github-webhook-processor/test/integration/workload-identity-issuer.mjs"
   ],
   "ignoreDependencies": ["cloudflare"],
