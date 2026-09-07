@@ -92,6 +92,8 @@ Tests live in each owning package or Worker’s `test/` directory alongside `src
 
 The root `vitest.config.ts` selects the unit suite and three Worker integration suites, and owns combined coverage. Test location does not change runtime selection. Production TypeScript checks and the Node-import lint restriction apply to `src/`; the root test TypeScript configuration also covers package-local tests and their helpers. CI retains separate validation workflows.
 
+Tests run in Workerd through `@cloudflare/vitest-plugin` with Vitest 4. Keep Vitest and its Istanbul coverage provider on matching versions supported by the Cloudflare plugin. Coverage explicitly includes package and Worker source files, including files not imported by tests, and excludes type declarations. Each Worker's production TypeScript check uses the runtime types generated from its Wrangler compatibility date and flags.
+
 The unit project exercises the root response, bounded body reading, request-body size and status handling, signature/target validation through HTTP responses, queue-job classification and processing, token-exchange response mapping, and all Worker factories. Separate Workerd integration projects load each Worker's real Wrangler configuration and entrypoint.
 
 The processor integration project loads the processor Wrangler configuration,
