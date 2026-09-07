@@ -1,4 +1,4 @@
-import { cloudflareTest } from "@cloudflare/vitest-pool-workers";
+import { cloudflareTest } from "@cloudflare/vitest-plugin";
 import { configDefaults, defineConfig } from "vitest/config";
 
 import {
@@ -10,7 +10,8 @@ import { githubWebhookTestSecret } from "./workers/cyspbot-github-webhook-receiv
 export default defineConfig({
   test: {
     coverage: {
-      exclude: ["**/*.test.ts", "**/test/**", "worker-configuration.d.ts"],
+      exclude: ["**/*.d.ts"],
+      include: ["packages/*/src/**/*.ts", "workers/*/src/**/*.ts"],
       provider: "istanbul",
       reporter: ["text", "lcov"],
     },
