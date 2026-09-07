@@ -4,3 +4,12 @@ packages:
 
 autoInstallPeers: false
 engineStrict: true
+
+# Dependabot re-resolves these already-locked platform packages under its 72-hour
+# cooldown. Remove these version-specific exceptions once that window has elapsed.
+minimumReleaseAgeExclude:
+  - "@cloudflare/workerd-darwin-64@1.20260907.1"
+  - "@cloudflare/workerd-darwin-arm64@1.20260907.1"
+  - "@cloudflare/workerd-linux-64@1.20260907.1"
+  - "@cloudflare/workerd-linux-arm64@1.20260907.1"
+  - "@cloudflare/workerd-windows-64@1.20260907.1"
