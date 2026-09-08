@@ -89,7 +89,7 @@ export async function addStatusReaction(
     );
   }
 
-  await response.body?.cancel();
+  void response.body?.cancel().catch(() => undefined);
 }
 
 async function readGitHubReactionErrorDiagnostics(
