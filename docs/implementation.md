@@ -116,6 +116,17 @@ The queue connection uses the production Wrangler configurations. This suite
 complements the individual processor tests that assert acknowledgement and retry
 behavior. Built Worker code runs outside Vitest's coverage instrumentation.
 
+Vitest's async-leak diagnostics use Node's `async_hooks`; Workerd does not
+implement the hooks used by this detector. To investigate leaked resources in
+the Node test harness, run:
+
+```bash
+node --run test -- --project built-workers-integration --detectAsyncLeaks
+```
+
+This diagnoses resources in the Node test process; it does not detect leaks
+inside the Workers. Keep this slower diagnostic mode opt-in.
+
 Use Node 24 and the pinned pnpm version:
 
 ```bash
