@@ -34,7 +34,6 @@ export default defineConfig({
           }),
         ],
         test: {
-          detectAsyncLeaks: true,
           include: ["workers/cyspbot/test/integration/**/*.test.ts"],
           name: "cyspbot-integration",
         },
@@ -54,7 +53,6 @@ export default defineConfig({
           }),
         ],
         test: {
-          detectAsyncLeaks: true,
           exclude: [
             ...configDefaults.exclude,
             ".pnpm-store/**",
@@ -84,7 +82,6 @@ export default defineConfig({
           }),
         ],
         test: {
-          detectAsyncLeaks: true,
           include: ["workers/cyspbot-github-webhook-receiver/test/integration/**/*.test.ts"],
           name: "github-webhook-receiver-integration",
         },
@@ -120,7 +117,6 @@ export default defineConfig({
           }),
         ],
         test: {
-          detectAsyncLeaks: true,
           include: ["workers/cyspbot-github-webhook-processor/test/integration/**/*.test.ts"],
           name: "github-webhook-processor-integration",
         },
