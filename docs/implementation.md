@@ -92,6 +92,13 @@ Tests live in each owning package or Worker’s `test/` directory alongside `src
 
 The root `vitest.config.ts` selects the unit suite, three Worker integration suites, and the built-Worker integration suite, and owns combined coverage. Production TypeScript checks and the Node-import lint restriction apply to `src/`; the root test TypeScript configuration also covers package-local tests and their helpers. CI retains separate validation workflows.
 
+New commits cancel superseded CI runs for the same pull request. Every main push
+keeps its own CI run so successful checks can trigger the deployment update.
+The workspace's 72-hour minimum release age applies to local dependency resolution
+and the daily transitive updater, matching Dependabot's release-age floor.
+Version-specific exceptions for already-locked packages remain only until their
+72-hour window expires.
+
 The unit and individual Worker integration suites run in Workerd through `@cloudflare/vitest-plugin` with Vitest 4. Keep Vitest and its Istanbul coverage provider on matching versions supported by the published Cloudflare plugin. pnpm enforces peer dependencies, and Dependabot groups Cloudflare SDK and Vitest updates together. Vitest 5 updates are temporarily held in Dependabot until the published Cloudflare plugin supports them. Each Vitest project prohibits focused tests. Coverage explicitly includes package and Worker source files, including files not imported by tests, and excludes type declarations. Each Worker's production TypeScript check uses the runtime types generated from its Wrangler compatibility date and flags.
 
 The unit project exercises the root response, bounded body reading, request-body size and status handling, signature/target validation through HTTP responses, queue-job classification and processing, token-exchange response mapping, and all Worker factories. Separate Workerd integration projects load each Worker's real Wrangler configuration and entrypoint.
