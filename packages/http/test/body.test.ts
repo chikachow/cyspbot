@@ -3,6 +3,32 @@ import { describe, expect, it, vi } from "vitest";
 import { readBodyUpTo } from "@cyspbot/http/body";
 
 describe("bounded body reading", () => {
+  it("cancels a pending read on abort even when cancellation rejects", async () => {
+    const controller = new AbortController();
+    const reason = new Error("read deadline exceeded");
+    const cancel = vi.fn(() => Promise.reject(new Error("transport cancellation failed")));
+    const body = new ReadableStream<Uint8Array>({ cancel });
+    const reading = readBodyUpTo(body, 3, controller.signal);
+
+    controller.abort(reason);
+
+    await expect(reading).rejects.toBe(reason);
+    expect(cancel).toHaveBeenCalledExactlyOnceWith(reason);
+    expect(body.locked).toBe(false);
+  });
+
+  it("cancels without reading when the signal is already aborted", async () => {
+    const reason = new Error("read deadline exceeded");
+    const cancel = vi.fn();
+    const pull = vi.fn();
+    const body = new ReadableStream<Uint8Array>({ cancel, pull }, { highWaterMark: 0 });
+
+    await expect(readBodyUpTo(body, 3, AbortSignal.abort(reason))).rejects.toBe(reason);
+    expect(cancel).toHaveBeenCalledExactlyOnceWith(reason);
+    expect(pull).not.toHaveBeenCalled();
+    expect(body.locked).toBe(false);
+  });
+
   it("accepts an absent body as empty", async () => {
     await expect(readBodyUpTo(null, 0)).resolves.toEqual({
       bytes: new Uint8Array(),

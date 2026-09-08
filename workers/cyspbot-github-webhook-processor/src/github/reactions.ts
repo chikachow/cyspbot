@@ -11,10 +11,12 @@ const githubUserAgent = "cyspbot-github-webhook-processor";
 const reactionContent = "eyes";
 const reactionScope = "issues:write pull_requests:write";
 const maxGitHubReactionErrorBodyBytes = 16 * 1024;
+const maxGitHubReactionErrorBodyReadMilliseconds = 1000;
 const maxGitHubReactionDiagnosticValueLength = 1024;
 
 export interface GitHubReactionErrorDiagnostics {
   readonly acceptedPermissions?: string | undefined;
+  readonly bodyReadTimedOut?: boolean | undefined;
   readonly documentationUrl?: string | undefined;
   readonly message?: string | undefined;
   readonly rateLimitRemaining?: string | undefined;
@@ -83,6 +85,7 @@ export async function addStatusReaction(
       response.status === 403 &&
         (response.headers.get("retry-after") !== null ||
           response.headers.get("x-ratelimit-remaining") === "0" ||
+          diagnostics.bodyReadTimedOut === true ||
           /\bsecondary rate limit\b/iu.test(diagnostics.message ?? "")),
       diagnostics,
       retryDelayFromHeaders(response.headers),
@@ -109,10 +112,16 @@ async function readGitHubReactionErrorDiagnostics(
   };
 
   let body: Awaited<ReturnType<typeof readBodyUpTo>>;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), maxGitHubReactionErrorBodyReadMilliseconds);
   try {
-    body = await readBodyUpTo(response.body, maxGitHubReactionErrorBodyBytes);
+    body = await readBodyUpTo(response.body, maxGitHubReactionErrorBodyBytes, controller.signal);
   } catch {
-    return headerDiagnostics;
+    return controller.signal.aborted
+      ? { ...headerDiagnostics, bodyReadTimedOut: true }
+      : headerDiagnostics;
+  } finally {
+    clearTimeout(timeout);
   }
 
   if (!body.ok) {

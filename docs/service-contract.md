@@ -95,6 +95,12 @@ Without a valid hint, GitHub HTTP error responses use exponential backoff starti
 retryable even when primary quota remains. Transport failures and other transient
 issuer or broker failures use the queue's 60-second default.
 
+GitHub error-body diagnostics have a one-second total read budget and a 16 KiB
+size limit. On timeout the processor cancels the unfinished read, retains status
+and header diagnostics, and logs `bodyReadTimedOut: true`. A timed-out `403` body
+is retryable because its secondary-rate-limit classification is inconclusive.
+Other statuses retain their normal acknowledgement or retry policy.
+
 Rejections use RFC 9457-style problem-details JSON with `type`, `title`, and `status` fields:
 
 | Condition                                     | Status |
