@@ -131,6 +131,79 @@ describe("cyspbot-github-webhook-processor", () => {
     expect(message.ack).not.toHaveBeenCalled();
   });
 
+  it.each([
+    [503, { "retry-after": "120" }, 120],
+    [403, {}, 60],
+    [400, {}, undefined],
+  ] as const)("bounds stalled GitHub %s diagnostics", async (status, headers, delaySeconds) => {
+    vi.useFakeTimers();
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const reading = Promise.withResolvers<void>();
+    const cancel = vi.fn(() => new Promise<void>(() => undefined));
+    let bodyController: ReadableStreamDefaultController<Uint8Array> | undefined;
+    const body = new ReadableStream<Uint8Array>(
+      {
+        start(controller) {
+          bodyController = controller;
+          controller.enqueue(new TextEncoder().encode('{"message":"unavailable"}'));
+        },
+        pull() {
+          reading.resolve();
+        },
+        cancel,
+      },
+      { highWaterMark: 0 },
+    );
+    const message = createMessage(job);
+    const processing = invokeQueue(
+      createGitHubWebhookProcessorWorker({
+        fetch: async () =>
+          new Response(body, {
+            status,
+            headers: { ...headers, "x-github-request-id": "STALLED" },
+          }),
+      }),
+      [message],
+      createTokenExchangeEnvironment(),
+    );
+
+    try {
+      await reading.promise;
+      await vi.advanceTimersByTimeAsync(999);
+      expect(message.ack).not.toHaveBeenCalled();
+      expect(message.retry).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(cancel).toHaveBeenCalledOnce();
+      if (delaySeconds === undefined) {
+        expect(message.ack).toHaveBeenCalledOnce();
+        expect(message.retry).not.toHaveBeenCalled();
+      } else {
+        expect(message.retry).toHaveBeenCalledExactlyOnceWith({ delaySeconds });
+        expect(message.ack).not.toHaveBeenCalled();
+      }
+      expect([...consoleWarn.mock.calls, ...consoleError.mock.calls]).toEqual([
+        [
+          expect.any(String),
+          expect.objectContaining({
+            github: expect.objectContaining({ bodyReadTimedOut: true, requestId: "STALLED" }),
+            status,
+          }),
+        ],
+      ]);
+      await processing;
+      expect(body.locked).toBe(false);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      if (cancel.mock.calls.length === 0) bodyController?.close();
+      await processing;
+      consoleWarn.mockRestore();
+      consoleError.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
   it("acknowledges permanent broker failures", async () => {
     const worker = createGitHubWebhookProcessorWorker({
       fetch: async () => new Response(null, { status: 201 }),
@@ -426,6 +499,7 @@ describe("cyspbot-github-webhook-processor", () => {
       );
       expect(message.ack).not.toHaveBeenCalled();
       expect(message.retry).toHaveBeenCalledExactlyOnceWith({ delaySeconds });
+      expect(vi.getTimerCount()).toBe(0);
     } finally {
       vi.useRealTimers();
     }
