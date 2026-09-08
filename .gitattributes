@@ -1,2 +1,0 @@
-# Patch context preserves the upstream package's whitespace.
-patches/*.patch -whitespace

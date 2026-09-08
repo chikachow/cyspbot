@@ -9,7 +9,6 @@ import { githubWebhookTestSecret } from "./workers/cyspbot-github-webhook-receiv
 
 export default defineConfig({
   test: {
-    allowOnly: false,
     coverage: {
       exclude: ["**/*.d.ts"],
       include: ["packages/*/src/**/*.ts", "workers/*/src/**/*.ts"],
@@ -19,6 +18,7 @@ export default defineConfig({
     projects: [
       {
         test: {
+          allowOnly: false,
           environment: "node",
           include: ["test/integration/**/*.test.ts"],
           name: "built-workers-integration",
@@ -34,6 +34,7 @@ export default defineConfig({
           }),
         ],
         test: {
+          allowOnly: false,
           include: ["workers/cyspbot/test/integration/**/*.test.ts"],
           name: "cyspbot-integration",
         },
@@ -53,6 +54,7 @@ export default defineConfig({
           }),
         ],
         test: {
+          allowOnly: false,
           exclude: [
             ...configDefaults.exclude,
             ".pnpm-store/**",
@@ -82,6 +84,7 @@ export default defineConfig({
           }),
         ],
         test: {
+          allowOnly: false,
           include: ["workers/cyspbot-github-webhook-receiver/test/integration/**/*.test.ts"],
           name: "github-webhook-receiver-integration",
         },
@@ -117,6 +120,7 @@ export default defineConfig({
           }),
         ],
         test: {
+          allowOnly: false,
           include: ["workers/cyspbot-github-webhook-processor/test/integration/**/*.test.ts"],
           name: "github-webhook-processor-integration",
         },

@@ -6,12 +6,6 @@ autoInstallPeers: false
 engineStrict: true
 strictPeerDependencies: true
 
-# Match the peer contract of the Vitest 5 patch documented in patches/README.md.
-overrides:
-  "@cloudflare/vitest-plugin@1.1.5>@vitest/runner": "-"
-  "@cloudflare/vitest-plugin@1.1.5>@vitest/snapshot": "-"
-  "@cloudflare/vitest-plugin@1.1.5>vitest": "^4.1.11 || ^5.0.0"
-
 # Dependabot re-resolves these already-locked platform packages under its 72-hour
 # cooldown. Remove these version-specific exceptions once that window has elapsed.
 minimumReleaseAgeExclude:
@@ -20,6 +14,3 @@ minimumReleaseAgeExclude:
   - "@cloudflare/workerd-linux-64@1.20260907.1"
   - "@cloudflare/workerd-linux-arm64@1.20260907.1"
   - "@cloudflare/workerd-windows-64@1.20260907.1"
-
-patchedDependencies:
-  "@cloudflare/vitest-plugin@1.1.5": patches/@cloudflare__vitest-plugin@1.1.5.patch

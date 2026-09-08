@@ -16,13 +16,18 @@ updates:
       time: "09:00"
       timezone: Australia/Sydney
     open-pull-requests-limit: 10
+    # Remove these holds when the published Cloudflare plugin supports Vitest 5.
+    ignore:
+      - dependency-name: vitest
+        versions: [">=5.0.0 <6.0.0"]
+      - dependency-name: "@vitest/coverage-istanbul"
+        versions: [">=5.0.0 <6.0.0"]
     groups:
       cloudflare-workers-sdk:
         patterns:
           - "@cloudflare/vitest-plugin"
           - "@cloudflare/workers-types"
           - wrangler
-          - vite
           - vitest
           - "@vitest/*"
       oxc-tooling:
