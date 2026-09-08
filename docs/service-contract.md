@@ -83,7 +83,8 @@ manually redeliver failed deliveries after resolving the cause. See
 The processor requests a GitHub App Installation Access Token with
 `issues:write pull_requests:write` for the canonical GitHub Repository Resource and posts the
 `eyes` reaction to the comment. GitHub `200` and `201` responses complete the
-job. Network failures, `429`, `5xx`, and rate-limited `403` responses retry;
+job. Cancellation of their unused response bodies is best effort and does not
+delay acknowledgement or cause a retry. Network failures, `429`, `5xx`, and rate-limited `403` responses retry;
 other failures are acknowledged. The queue uses one-message batches, five
 retries, a 60-second default retry delay, and the
 `cyspbot-github-webhook-jobs-dlq` dead-letter queue. GitHub HTTP error responses honor numeric

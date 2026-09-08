@@ -63,6 +63,40 @@ describe("cyspbot-github-webhook-processor", () => {
     });
   });
 
+  it.each([200, 201])(
+    "acknowledges GitHub %s even when body cancellation rejects",
+    async (status) => {
+      const cancel = vi.fn(() => Promise.reject(new Error("transport cancellation failed")));
+      const worker = createGitHubWebhookProcessorWorker({
+        fetch: async () => new Response(new ReadableStream({ cancel }), { status }),
+      });
+      const message = createMessage(job);
+
+      await invokeQueue(worker, [message], createTokenExchangeEnvironment());
+
+      expect(cancel).toHaveBeenCalledOnce();
+      expect(message.ack).toHaveBeenCalledOnce();
+      expect(message.retry).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([200, 201])(
+    "acknowledges GitHub %s without waiting for body cancellation",
+    async (status) => {
+      const cancel = vi.fn(() => new Promise<void>(() => undefined));
+      const worker = createGitHubWebhookProcessorWorker({
+        fetch: async () => new Response(new ReadableStream({ cancel }), { status }),
+      });
+      const message = createMessage(job);
+
+      await invokeQueue(worker, [message], createTokenExchangeEnvironment());
+
+      expect(cancel).toHaveBeenCalledOnce();
+      expect(message.ack).toHaveBeenCalledOnce();
+      expect(message.retry).not.toHaveBeenCalled();
+    },
+  );
+
   it("retries transient GitHub failures", async () => {
     const worker = createGitHubWebhookProcessorWorker({
       fetch: async () => new Response(null, { status: 503 }),
