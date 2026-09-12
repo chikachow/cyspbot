@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { GitHubIssueCommentStatusReactionJob } from "@cyspbot/github-webhook-jobs";
 import { handleGitHubWebhookRequest } from "../src/webhook.ts";
@@ -24,6 +24,90 @@ const testWebhookEnv = {
 } satisfies TestWebhookEnv;
 
 describe("webhook delivery acceptance", () => {
+  it.each([".", "..", "high surrogate", "low surrogate"])(
+    "acknowledges without publishing a status job with an invalid repository segment: %s",
+    async (example) => {
+      const name = example.endsWith("surrogate")
+        ? String.fromCharCode(example === "high surrogate" ? 0xd800 : 0xdfff)
+        : example;
+      const send = vi.fn();
+      const body = JSON.stringify({
+        action: "created",
+        comment: { body: "/cyspbot status", id: 42 },
+        repository: { name, owner: { login: "owner" } },
+      });
+      const response = await handleGitHubWebhookRequest(
+        new Request("https://example.test/github/webhooks", {
+          body,
+          headers: githubWebhookHeaders(body, "test-webhook-secret", "issue_comment"),
+          method: "POST",
+        }),
+        { ...testWebhookEnv, GITHUB_WEBHOOK_JOBS: { send } },
+      );
+
+      expect(response.status).toBe(202);
+      await expect(response.json()).resolves.toEqual({ accepted: true });
+      expect(send.mock.calls.length).toBe(0);
+    },
+  );
+
+  it.each([[255], [192, 175], [226, 128]])(
+    "rejects malformed UTF-8 only after authenticating its exact bytes: %j",
+    async (...invalid) => {
+      const body = new Uint8Array([34, ...invalid, 34]);
+      const send = vi.fn();
+      for (const [secret, status] of [
+        ["test-webhook-secret", 400],
+        ["wrong-secret", 401],
+      ] as const) {
+        const response = await handleGitHubWebhookRequest(
+          new Request("https://example.test/github/webhooks", {
+            body,
+            headers: githubWebhookHeaders(body, secret, "ping"),
+            method: "POST",
+          }),
+          { ...testWebhookEnv, GITHUB_WEBHOOK_JOBS: { send } },
+        );
+        expect(response.status).toBe(status);
+        expect(response.headers.get("content-type")).toBe(
+          "application/problem+json; charset=utf-8",
+        );
+        await response.body?.cancel();
+      }
+      expect(send).not.toHaveBeenCalled();
+    },
+  );
+
+  it("returns a safe configuration error when Secrets Store cannot resolve the secret", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const send = vi.fn();
+    try {
+      const response = await handleGitHubWebhookRequest(
+        new Request("https://example.test/github/webhooks", { method: "POST" }),
+        {
+          ...testWebhookEnv,
+          GITHUB_WEBHOOK_JOBS: { send },
+          GITHUB_WEBHOOK_SECRET: {
+            get: async () => {
+              throw new Error("private secret binding failure details");
+            },
+          },
+        },
+      );
+      expect(response.status).toBe(500);
+      expect(response.headers.get("content-type")).toBe("application/problem+json; charset=utf-8");
+      await expect(response.json()).resolves.toEqual({
+        status: 500,
+        title: "Internal Server Error",
+        type: "about:blank",
+      });
+      expect(consoleError).toHaveBeenCalledExactlyOnceWith("webhook_receiver_secret_unavailable");
+      expect(send).not.toHaveBeenCalled();
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
   it("acknowledges signed non-ping webhook deliveries without dispatching", async () => {
     const body = JSON.stringify({
       action: "opened",
@@ -50,7 +134,7 @@ describe("webhook delivery acceptance", () => {
       hook: {
         active: true,
       },
-      zen: "Speak like a human.",
+      zen: "Speak like a human: caf\u00e9 \ud83d\udc40 \ufffd",
     });
 
     const result = await handleGitHubWebhookRequest(

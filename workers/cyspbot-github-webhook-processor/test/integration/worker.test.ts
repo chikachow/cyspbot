@@ -8,6 +8,7 @@ describe("GitHub webhook processor Worker entrypoint", () => {
     [42, "created", false],
     [43, "already exists", false],
     [44, "unavailable", true],
+    [45, "created after a repository redirect", false],
   ] as const)(
     "observes queue completion when reaction %s is %s",
     async (commentId, _name, retry) => {

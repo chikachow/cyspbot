@@ -3,6 +3,8 @@ export async function githubWebhookProcessorOutboundService(request: Request): P
     ["https://api.github.com/repos/chikachow/cyspbot/issues/comments/42/reactions", 201],
     ["https://api.github.com/repos/chikachow/cyspbot/issues/comments/43/reactions", 200],
     ["https://api.github.com/repos/chikachow/cyspbot/issues/comments/44/reactions", 503],
+    ["https://api.github.com/repos/chikachow/cyspbot/issues/comments/45/reactions", 301],
+    ["https://api.github.com/repositories/123/issues/comments/45/reactions", 201],
   ]);
   const status = statuses.get(request.url);
   if (request.method !== "POST" || status === undefined) {
@@ -30,7 +32,16 @@ export async function githubWebhookProcessorOutboundService(request: Request): P
     throw new Error("unexpected GitHub reaction request body");
   }
 
-  return new Response(null, { status });
+  return new Response(null, {
+    status,
+    ...(status === 301
+      ? {
+          headers: {
+            location: "https://api.github.com/repositories/123/issues/comments/45/reactions",
+          },
+        }
+      : {}),
+  });
 }
 
 export async function githubWebhookProcessorBrokerService(request: Request): Promise<Response> {

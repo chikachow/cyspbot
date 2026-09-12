@@ -6,18 +6,3 @@ autoInstallPeers: false
 engineStrict: true
 strictPeerDependencies: true
 minimumReleaseAge: 4320
-
-# Both updaters re-resolve these already-locked packages under the 72-hour
-# cooldown. All exceptions mature by 2026-09-10 15:23 UTC; remove them after
-# that time and a successful update probe.
-minimumReleaseAgeExclude:
-  - "@cloudflare/vitest-plugin@1.1.5"
-  - "@cloudflare/workers-types@5.20260907.1"
-  - "@cloudflare/workerd-darwin-64@1.20260907.1"
-  - "@cloudflare/workerd-darwin-arm64@1.20260907.1"
-  - "@cloudflare/workerd-linux-64@1.20260907.1"
-  - "@cloudflare/workerd-linux-arm64@1.20260907.1"
-  - "@cloudflare/workerd-windows-64@1.20260907.1"
-  - "miniflare@5.20260907.0-alpha"
-  - "workerd@1.20260907.1"
-  - "wrangler@4.129.1"
