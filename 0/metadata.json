@@ -1,0 +1,63 @@
+{
+  "cli_version": "0.10.5",
+  "checkpoint_id": "01M2A4PDRJ13TRTNQDWB0QZRVJ",
+  "session_id": "01a09440-1e16-74c0-b806-387008352d3f",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-12T06:25:52.899585Z",
+  "branch": "codex/adversarial-origin-review-20260912",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "README.md",
+    "docs/implementation.md",
+    "docs/service-contract.md",
+    "packages/github-webhook-jobs/src/index.ts",
+    "packages/github-webhook-jobs/test/github-webhook-jobs.test.ts",
+    "packages/token-exchange/src/index.ts",
+    "packages/token-exchange/test/github-app-token.test.ts",
+    "pnpm-workspace.yaml",
+    "workers/cyspbot-github-webhook-processor/src/github/reactions.ts",
+    "workers/cyspbot-github-webhook-processor/test/integration/outbound.ts",
+    "workers/cyspbot-github-webhook-processor/test/integration/worker.test.ts",
+    "workers/cyspbot-github-webhook-processor/test/worker.test.ts",
+    "workers/cyspbot-github-webhook-receiver/src/webhook.ts",
+    "workers/cyspbot-github-webhook-receiver/test/support/webhook.ts",
+    "workers/cyspbot-github-webhook-receiver/test/webhook-delivery-acceptance.test.ts"
+  ],
+  "agent": "Codex",
+  "model": "gpt-6-astra",
+  "turn_id": "4a741b02b074",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 98824,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 3936896,
+    "output_tokens": 14667,
+    "api_call_count": 49
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-12T06:25:52.864736Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 1959,
+    "human_modified": 71,
+    "human_removed": 0,
+    "total_committed": 1959,
+    "total_lines_changed": 2030,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 283,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".codex/config.toml": 3,
+        ".codex/hooks.json": 52,
+        "docs/research/wrangler-new-config.md": 228
+      }
+    }
+  ]
+}

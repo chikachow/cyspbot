@@ -1,0 +1,40 @@
+{
+  "cli_version": "0.10.5",
+  "checkpoint_id": "01M2A4PDRJ13TRTNQDWB0QZRVJ",
+  "strategy": "manual-commit",
+  "branch": "codex/adversarial-origin-review-20260912",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "README.md",
+    "docs/implementation.md",
+    "docs/service-contract.md",
+    "packages/github-webhook-jobs/src/index.ts",
+    "packages/github-webhook-jobs/test/github-webhook-jobs.test.ts",
+    "packages/token-exchange/src/index.ts",
+    "packages/token-exchange/test/github-app-token.test.ts",
+    "pnpm-workspace.yaml",
+    "workers/cyspbot-github-webhook-processor/src/github/reactions.ts",
+    "workers/cyspbot-github-webhook-processor/test/integration/outbound.ts",
+    "workers/cyspbot-github-webhook-processor/test/integration/worker.test.ts",
+    "workers/cyspbot-github-webhook-processor/test/worker.test.ts",
+    "workers/cyspbot-github-webhook-receiver/src/webhook.ts",
+    "workers/cyspbot-github-webhook-receiver/test/support/webhook.ts",
+    "workers/cyspbot-github-webhook-receiver/test/webhook-delivery-acceptance.test.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 98824,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 3936896,
+    "output_tokens": 14667,
+    "api_call_count": 49
+  }
+}
