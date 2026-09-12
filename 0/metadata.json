@@ -1,0 +1,51 @@
+{
+  "cli_version": "0.10.5",
+  "checkpoint_id": "01M2A4ZX91DNADEY1JPB9Q1KVK",
+  "session_id": "01a09440-1e16-74c0-b806-387008352d3f",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-12T06:31:03.713066Z",
+  "branch": "codex/adversarial-origin-review-20260912",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "docs/reviews/2026-09-12-origin-review.md"
+  ],
+  "agent": "Codex",
+  "model": "gpt-6-astra",
+  "turn_id": "4a741b02b074",
+  "checkpoint_transcript_start": 370,
+  "transcript_lines_at_start": 370,
+  "compact_transcript_start": 41,
+  "token_usage": {
+    "input_tokens": 10247,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1856384,
+    "output_tokens": 3938,
+    "api_call_count": 20
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-12T06:31:03.667856Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 215,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 215,
+    "total_lines_changed": 215,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 283,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".codex/config.toml": 3,
+        ".codex/hooks.json": 52,
+        "docs/research/wrangler-new-config.md": 228
+      }
+    }
+  ]
+}
