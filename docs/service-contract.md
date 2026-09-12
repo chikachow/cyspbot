@@ -31,7 +31,7 @@ The receiver requires:
 - `X-Hub-Signature-256` in GitHub's lowercase `sha256=<64 lowercase hex characters>` form;
 - `X-GitHub-Hook-Installation-Target-Type: integration`;
 - `X-GitHub-Hook-Installation-Target-ID` equal to `GITHUB_APP_ID`; and
-- a syntactically valid JSON body.
+- a syntactically valid JSON body encoded as UTF-8.
 
 The signature is verified over the exact request bytes using `GITHUB_WEBHOOK_SECRET`. The body is parsed only after its target and signature authenticate.
 
@@ -74,7 +74,7 @@ An authenticated `issue_comment` delivery creates a queue job only when its
 
 The receiver waits for the queue write before returning `202`. Authenticated
 events that do not classify to this job receive `202` without a queue write.
-The receiver validates the derived job before publication: comment IDs must be positive safe integers, delivery IDs must be non-empty, and repository parts must be non-empty, at most 100 characters, and contain no path separators, query/fragment delimiters, or control characters. Payloads that cannot produce a valid job are acknowledged without a queue write. The receiver does not apply repository authorization filtering. A queue write failure
+The receiver validates the derived job before publication: comment IDs must be positive safe integers, delivery IDs must be non-empty, and repository parts must be non-empty, at most 100 characters, and contain no path separators, query/fragment delimiters, or control characters. Repository parts must also be well-formed Unicode strings and cannot be `.` or `..`, so URL encoding neither throws nor changes the repository path. Payloads that cannot produce a valid job are acknowledged without a queue write. The receiver does not apply repository authorization filtering. A queue write failure
 returns `503 Service Unavailable`. GitHub does not automatically redeliver
 failed webhooks. Ingress is best effort until publication succeeds; operators
 manually redeliver failed deliveries after resolving the cause. See
@@ -83,7 +83,11 @@ manually redeliver failed deliveries after resolving the cause. See
 The processor requests a GitHub App Installation Access Token with
 `issues:write pull_requests:write` for the canonical GitHub Repository Resource and posts the
 `eyes` reaction to the comment. GitHub `200` and `201` responses complete the
-job. Cancellation of their unused response bodies is best effort and does not
+job. The processor follows at most three `301`, `302`, `307`, or `308` redirects,
+preserving the reaction POST, body, and authorization. Redirect destinations must
+remain on `https://api.github.com` without URL credentials. Other redirects,
+invalid destinations, and exhausted redirect chains are permanent failures.
+Cancellation of unused response bodies is best effort and does not
 delay acknowledgement or cause a retry. Network failures, `429`, `5xx`, and rate-limited `403` responses retry;
 other failures are acknowledged. The queue uses one-message batches, five
 retries, a 60-second default retry delay, and the
@@ -97,26 +101,38 @@ issuer or broker failures use the queue's 60-second default.
 
 GitHub error-body diagnostics have a one-second total read budget and a 16 KiB
 size limit. On timeout the processor cancels the unfinished read, retains status
-and header diagnostics, and logs `bodyReadTimedOut: true`. A timed-out `403` body
-is retryable because its secondary-rate-limit classification is inconclusive.
+and header diagnostics, and logs `bodyReadTimedOut: true`. Stream failures and
+size-limit failures retain header diagnostics and log `bodyReadFailed: true`.
+These incomplete `403` bodies are retryable because their secondary-rate-limit
+classification is inconclusive. Fully received empty or malformed bodies retain
+the normal status/header policy.
 Other statuses retain their normal acknowledgement or retry policy.
 
 Rejections use RFC 9457-style problem-details JSON with `type`, `title`, and `status` fields:
 
-| Condition                                     | Status |
-| --------------------------------------------- | -----: |
-| Missing or empty webhook secret configuration |  `500` |
-| Non-JSON media type                           |  `415` |
-| Body exceeds `256 KiB`                        |  `413` |
-| Missing event, delivery, or signature header  |  `400` |
-| Target type or target App ID mismatch         |  `401` |
-| Malformed or invalid signature                |  `401` |
-| Authenticated body is not valid JSON          |  `400` |
-| A matching job cannot be written to the queue |  `503` |
+| Condition                                                  | Status |
+| ---------------------------------------------------------- | -----: |
+| Missing, empty, or unreadable webhook secret configuration |  `500` |
+| Non-JSON media type                                        |  `415` |
+| Body exceeds `256 KiB`                                     |  `413` |
+| Missing event, delivery, or signature header               |  `400` |
+| Target type or target App ID mismatch                      |  `401` |
+| Malformed or invalid signature                             |  `401` |
+| Authenticated body is not UTF-8 JSON                       |  `400` |
+| A matching job cannot be written to the queue              |  `503` |
 
 Repeated delivery IDs are accepted. Queue delivery is at least once, and the
 processor treats both successful GitHub reaction response statuses as
 completion, so repeated jobs do not require a separate deduplication store.
+
+## Token exchange responses
+
+The internal Token Exchange Client accepts the OAuth `Bearer` token type without
+regard to case. If the broker omits `scope`, the issued scope is the requested
+scope; an explicit scope must be a non-empty string and is returned as issued.
+The client still requires an access token, the access-token `issued_token_type`,
+and a positive integer `expires_in` for the broker's installation-token profile.
+These response rules follow [RFC 8693 section 2.2.1](https://www.rfc-editor.org/rfc/rfc8693.html#section-2.2.1).
 
 ## Logging and retention
 

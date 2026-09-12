@@ -79,9 +79,54 @@ describe("cyspbot OAuth Token Exchange Client", () => {
     });
   });
 
+  it.each(["bearer", "BEARER", "bEaReR"])(
+    "accepts the case-insensitive OAuth token type %s",
+    async (tokenType) => {
+      const { env } = createEnv({
+        response: createBrokerSuccessResponse({ token_type: tokenType }),
+      });
+
+      await expect(requestGitHubAppInstallationToken(env, { resource, scope })).resolves.toEqual({
+        accessToken: "ghs_test_token",
+        expiresIn: 300,
+        scope,
+      });
+    },
+  );
+
+  it("uses the requested scope when the broker omits an unchanged scope", async () => {
+    const { env } = createEnv({ response: createBrokerSuccessResponse({ scope: undefined }) });
+
+    await expect(requestGitHubAppInstallationToken(env, { resource, scope })).resolves.toEqual({
+      accessToken: "ghs_test_token",
+      expiresIn: 300,
+      scope,
+    });
+  });
+
+  it("returns an explicitly issued scope without substituting the requested scope", async () => {
+    const { env } = createEnv({ response: createBrokerSuccessResponse({ scope: "issues:read" }) });
+
+    await expect(requestGitHubAppInstallationToken(env, { resource, scope })).resolves.toEqual({
+      accessToken: "ghs_test_token",
+      expiresIn: 300,
+      scope: "issues:read",
+    });
+  });
+
+  it.each([null, "", " ", 42])("rejects an explicitly invalid issued scope %j", async (value) => {
+    const { env } = createEnv({ response: createBrokerSuccessResponse({ scope: value }) });
+
+    await expect(requestGitHubAppInstallationToken(env, { resource, scope })).rejects.toThrow(
+      "scope must be a non-empty string",
+    );
+  });
+
   it.each([
     ["issued token type", { issued_token_type: "urn:example:token" }, "invalid issued token type"],
     ["token type", { token_type: "DPoP" }, "invalid token type"],
+    ["missing token type", { token_type: undefined }, "invalid token type"],
+    ["non-string token type", { token_type: 42 }, "invalid token type"],
     ["expiration", { expires_in: 1.5 }, "invalid expiration"],
   ] as const)("rejects a success response with an invalid %s", async (_name, override, message) => {
     const { env } = createEnv({ response: createBrokerSuccessResponse(override) });

@@ -28,12 +28,12 @@ In production, this Worker is the Custom Domain origin. More specific Cloudflare
 
 `handleGitHubWebhookRequest` owns the HTTP response and privately authenticates the envelope. It:
 
-1. resolves `GITHUB_WEBHOOK_SECRET` from a direct Worker secret or Secrets Store binding;
+1. resolves `GITHUB_WEBHOOK_SECRET` from a direct Worker secret or Secrets Store binding, mapping missing or unreadable secrets to a safe `500` problem response;
 2. requires `application/json` and reads at most `256 KiB`;
 3. requires the event, delivery, signature, and installation-target headers;
 4. requires the target type `integration` and the configured `GITHUB_APP_ID`;
 5. verifies the exact bytes and decoded signature with Web Crypto HMAC-SHA256 verification;
-6. parses the authenticated body as JSON;
+6. decodes the authenticated body as UTF-8 with fatal error handling and parses it as JSON;
 7. classifies `issue_comment` deliveries with `action: "created"` and a trimmed comment body exactly equal to `/cyspbot status`;
 8. sends the derived version-1 job to `GITHUB_WEBHOOK_JOBS` and waits for the queue write; and
 9. returns the acknowledgement shape for ping, matching, or other events.
@@ -44,7 +44,7 @@ The receiver sends only a derived job to the queue. The job contains the kind, v
 
 ## Webhook processor flow
 
-`workers/cyspbot-github-webhook-processor` consumes one message at a time from `cyspbot-github-webhook-jobs`. It validates the versioned job, requests a GitHub App Installation Access Token with `issues:write pull_requests:write` for the canonical GitHub Repository Resource, and posts an `eyes` reaction to the comment. GitHub `200` and `201` responses complete the job.
+`workers/cyspbot-github-webhook-processor` consumes one message at a time from `cyspbot-github-webhook-jobs`. It validates the versioned job, requests a GitHub App Installation Access Token with `issues:write pull_requests:write` for the canonical GitHub Repository Resource, and posts an `eyes` reaction to the comment. GitHub `200` and `201` responses complete the job. Its private redirect loop repeats the POST for supported redirects within `https://api.github.com`, with at most three redirects and no URL credentials; it cancels intermediate response bodies without awaiting cleanup.
 
 Cloudflare Queues delivers messages at least once. Repeated jobs are safe because the GitHub reaction operation treats an existing reaction as success. The consumer retries network failures, HTTP `429`, HTTP `5xx`, and rate-limited HTTP `403` responses. It acknowledges permanent failures, retries up to five times, and sends exhausted jobs to `cyspbot-github-webhook-jobs-dlq`. GitHub HTTP error responses honor server waiting hints or use exponential backoff starting at 60 seconds, bounded to 24 hours; other transient failures use the queue's 60-second default.
 
@@ -74,7 +74,9 @@ broker's OIDC ID Token subject-token profile. It requests a GitHub App
 Installation Access Token with a canonical GitHub `resource` and explicit permission
 `scope`; the broker remains the source of truth for normalization, OIDC ID
 Token profile verification, and Token Issuance Policy. On success, the client
-returns a `GitHubAppInstallationAccessToken`. On an OAuth failure, it throws a
+returns a `GitHubAppInstallationAccessToken`. Response validation accepts the
+case-insensitive `Bearer` token type and uses the requested scope when the broker
+omits an unchanged scope, preserving any explicit issued scope. On an OAuth failure, it throws a
 `GitHubAppTokenBrokerError` containing the HTTP status and OAuth error code and
 description. Workload identity assertions and issued GitHub tokens must not be
 logged.
@@ -96,8 +98,6 @@ New commits cancel superseded CI runs for the same pull request. Every main push
 keeps its own CI run so successful checks can trigger the deployment update.
 The workspace's 72-hour minimum release age applies to local dependency resolution
 and the daily transitive updater, matching Dependabot's release-age floor.
-Version-specific exceptions for already-locked packages remain only until their
-72-hour window expires.
 
 The unit and individual Worker integration suites run in Workerd through `@cloudflare/vitest-plugin` with Vitest 4. Keep Vitest and its Istanbul coverage provider on matching versions supported by the published Cloudflare plugin. pnpm enforces peer dependencies, and Dependabot groups Cloudflare SDK and Vitest updates together. Vitest 5 updates are temporarily held in Dependabot until the published Cloudflare plugin supports them. Each Vitest project prohibits focused tests. Coverage explicitly includes package and Worker source files, including files not imported by tests, and excludes type declarations. Each Worker's production TypeScript check uses the runtime types generated from its Wrangler compatibility date and flags.
 

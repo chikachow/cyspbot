@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { GitHubIssueCommentStatusReactionJob } from "@cyspbot/github-webhook-jobs";
-import { GitHubReactionError } from "../src/github/reactions.ts";
+import { GitHubReactionError, type GitHubReactionDependencies } from "../src/github/reactions.ts";
 import { createGitHubWebhookProcessorWorker } from "../src/worker.ts";
 import type { TokenExchangeEnvironment } from "@cyspbot/token-exchange";
 
@@ -79,6 +79,86 @@ describe("cyspbot-github-webhook-processor", () => {
       expect(message.retry).not.toHaveBeenCalled();
     },
   );
+
+  it.each([301, 302, 307, 308])("repeats the reaction POST after GitHub %s", async (status) => {
+    const cancel = vi.fn(() => new Promise<void>(() => undefined));
+    const fetch = vi
+      .fn<GitHubReactionDependencies["fetch"]>()
+      .mockResolvedValueOnce(
+        new Response(new ReadableStream({ cancel }), {
+          status,
+          headers: { location: "/repositories/123/issues/comments/42/reactions" },
+        }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 201 }));
+    const message = createMessage(job);
+
+    await invokeQueue(
+      createGitHubWebhookProcessorWorker({ fetch }),
+      [message],
+      createTokenExchangeEnvironment(),
+    );
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(new Request(fetch.mock.calls[1]?.[0] ?? "https://unexpected.example").url).toBe(
+      "https://api.github.com/repositories/123/issues/comments/42/reactions",
+    );
+    expect(fetch.mock.calls[1]?.[1]).toEqual(fetch.mock.calls[0]?.[1]);
+    expect(fetch.mock.calls[1]?.[1]).toMatchObject({
+      method: "POST",
+      redirect: "manual",
+      body: JSON.stringify({ content: "eyes" }),
+    });
+    expect(new Headers(fetch.mock.calls[1]?.[1]?.headers).get("authorization")).toBe(
+      "Bearer ghs_test_token",
+    );
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(message.ack).toHaveBeenCalledOnce();
+    expect(message.retry).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [301, "https://elsewhere.example/reactions"],
+    [302, "http://api.github.com/reactions"],
+    [307, "https://user:password@api.github.com/reactions"],
+    [308, "https://api.github.com:444/reactions"],
+    [301, "https://[invalid"],
+    [302, undefined],
+    [303, "https://api.github.com/reactions"],
+  ] as const)(
+    "does not send credentials to a rejected %s redirect %s",
+    async (status, location) => {
+      const fetch = vi.fn<GitHubReactionDependencies["fetch"]>(
+        async () =>
+          new Response(null, { status, headers: location === undefined ? {} : { location } }),
+      );
+      const message = createMessage(job);
+      await invokeQueue(
+        createGitHubWebhookProcessorWorker({ fetch }),
+        [message],
+        createTokenExchangeEnvironment(),
+      );
+      expect(fetch).toHaveBeenCalledOnce();
+      expect(fetch.mock.calls[0]?.[1]).toMatchObject({ redirect: "manual" });
+      expect(message.ack).toHaveBeenCalledOnce();
+      expect(message.retry).not.toHaveBeenCalled();
+    },
+  );
+
+  it("stops after three GitHub reaction redirects", async () => {
+    const fetch = vi.fn<GitHubReactionDependencies["fetch"]>(
+      async () => new Response(null, { status: 301, headers: { location: "/loop" } }),
+    );
+    const message = createMessage(job);
+    await invokeQueue(
+      createGitHubWebhookProcessorWorker({ fetch }),
+      [message],
+      createTokenExchangeEnvironment(),
+    );
+    expect(fetch).toHaveBeenCalledTimes(4);
+    expect(message.ack).toHaveBeenCalledOnce();
+    expect(message.retry).not.toHaveBeenCalled();
+  });
 
   it.each([200, 201])(
     "acknowledges GitHub %s without waiting for body cancellation",
@@ -314,7 +394,7 @@ describe("cyspbot-github-webhook-processor", () => {
     expect(message.retry).not.toHaveBeenCalled();
   });
 
-  it("keeps header diagnostics when the GitHub error body exceeds the limit", async () => {
+  it("retries a forbidden response when its body exceeds the limit", async () => {
     const worker = createGitHubWebhookProcessorWorker({
       fetch: async () =>
         new Response("x".repeat(16 * 1024 + 1), {
@@ -324,19 +404,21 @@ describe("cyspbot-github-webhook-processor", () => {
     });
     const message = createMessage(job);
 
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     try {
       await invokeQueue(worker, [message], createTokenExchangeEnvironment());
 
-      expect(consoleError).toHaveBeenCalledWith(
-        "github_webhook_job_failed",
+      expect(consoleWarn).toHaveBeenCalledWith(
+        "github_webhook_job_retrying",
         expect.objectContaining({
-          github: { requestId: "OVERSIZED" },
+          github: { bodyReadFailed: true, requestId: "OVERSIZED" },
         }),
       );
     } finally {
-      consoleError.mockRestore();
+      consoleWarn.mockRestore();
     }
+    expect(message.retry).toHaveBeenCalledExactlyOnceWith({ delaySeconds: 60 });
+    expect(message.ack).not.toHaveBeenCalled();
   });
 
   it("keeps header diagnostics when the GitHub error body is not an object", async () => {
@@ -389,7 +471,7 @@ describe("cyspbot-github-webhook-processor", () => {
     }
   });
 
-  it("keeps header diagnostics when the GitHub error body cannot be read", async () => {
+  it("retries a forbidden response when its body cannot be read", async () => {
     const worker = createGitHubWebhookProcessorWorker({
       fetch: async () =>
         new Response(
@@ -406,19 +488,21 @@ describe("cyspbot-github-webhook-processor", () => {
     });
     const message = createMessage(job);
 
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     try {
       await invokeQueue(worker, [message], createTokenExchangeEnvironment());
 
-      expect(consoleError).toHaveBeenCalledWith(
-        "github_webhook_job_failed",
+      expect(consoleWarn).toHaveBeenCalledWith(
+        "github_webhook_job_retrying",
         expect.objectContaining({
-          github: { requestId: "UNREADABLE" },
+          github: { bodyReadFailed: true, requestId: "UNREADABLE" },
         }),
       );
     } finally {
-      consoleError.mockRestore();
+      consoleWarn.mockRestore();
     }
+    expect(message.retry).toHaveBeenCalledExactlyOnceWith({ delaySeconds: 60 });
+    expect(message.ack).not.toHaveBeenCalled();
   });
 
   it("retries a rate-limited forbidden response", async () => {

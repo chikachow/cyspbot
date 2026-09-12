@@ -8,7 +8,7 @@ import { classifyStatusReactionJob } from "./github-webhooks/status-reaction.ts"
 const maxWebhookBodyBytes = 256 * 1024;
 
 interface AuthenticatedWebhookEnvelope {
-  body: string;
+  body: Uint8Array;
   deliveryId: string;
   event: string;
 }
@@ -30,7 +30,13 @@ export async function handleGitHubWebhookRequest(
   request: Request,
   env: WebhookReceiverEnvironment,
 ): Promise<Response> {
-  const secret = await resolveSecretText(env.GITHUB_WEBHOOK_SECRET);
+  let secret: string | undefined;
+  try {
+    secret = await resolveSecretText(env.GITHUB_WEBHOOK_SECRET);
+  } catch {
+    console.error("webhook_receiver_secret_unavailable");
+    return problemResponse(500);
+  }
 
   if (secret === undefined || secret.length === 0) {
     console.error("webhook_receiver_not_configured");
@@ -51,7 +57,9 @@ export async function handleGitHubWebhookRequest(
   let payload: unknown;
 
   try {
-    payload = JSON.parse(envelope.body);
+    payload = JSON.parse(
+      new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(envelope.body),
+    );
   } catch {
     logWebhookRejection(400, request, envelope);
     return problemResponse(400);
@@ -119,7 +127,7 @@ async function authenticateWebhookEnvelope(input: {
   }
 
   return {
-    body: new TextDecoder().decode(body.bytes),
+    body: body.bytes,
     deliveryId,
     event,
   };

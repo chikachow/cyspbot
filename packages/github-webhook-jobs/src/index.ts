@@ -54,13 +54,8 @@ export function parseGitHubIssueCommentStatusReactionJob(
 }
 
 function hasKeys(value: Record<string, unknown>, keys: string[]): boolean {
-  const actualKeys = Object.keys(value).sort();
-  const expectedKeys = keys.slice().sort();
-
-  return (
-    actualKeys.length === expectedKeys.length &&
-    actualKeys.every((key, index) => key === expectedKeys[index])
-  );
+  const actualKeys = Object.keys(value);
+  return actualKeys.length === keys.length && actualKeys.every((key) => keys.includes(key));
 }
 
 function isNonEmptyString(value: unknown): value is string {
@@ -72,6 +67,9 @@ function isRepositoryPart(value: unknown): value is string {
     typeof value !== "string" ||
     value.length === 0 ||
     value.length > 100 ||
+    value === "." ||
+    value === ".." ||
+    !value.isWellFormed() ||
     value.includes("\\") ||
     value.includes("/") ||
     value.includes("?") ||
