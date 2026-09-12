@@ -1,0 +1,1 @@
+Thoroughly critique pedantically adversarially the current origin implementation of this project. Identify improvements and simplifications and implement them, then review. Collaborate on improvements. Use authoritative documentation to guide implementation choices
