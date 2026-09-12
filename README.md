@@ -17,7 +17,7 @@ The webhook receiver accepts `application/json` request bodies up to `256 KiB`. 
 - an HMAC signature that matches `GITHUB_WEBHOOK_SECRET`; and
 - a syntactically valid JSON body.
 
-Valid deliveries receive `202` after any matching status-reaction job is durably queued. Ping deliveries receive `{"accepted":true,"event":"ping"}`; other authenticated events receive `{"accepted":true}` without creating a job. A queue write failure receives `503`; GitHub does not automatically redeliver failed webhooks. Operators manually redeliver failed deliveries after resolving the cause. See the [service contract](docs/service-contract.md) for the complete response behavior.
+Valid deliveries receive `202` after any matching status-reaction job is durably queued. Ping deliveries receive `{"accepted":true,"event":"ping"}`; other authenticated events receive `{"accepted":true}`. Only newly created `/cyspbot status` comments create a job. A queue write failure receives `503`; GitHub does not automatically redeliver failed webhooks. Operators manually redeliver failed deliveries after resolving the cause. See the [service contract](docs/service-contract.md) for the complete response behavior.
 
 ## Architecture
 

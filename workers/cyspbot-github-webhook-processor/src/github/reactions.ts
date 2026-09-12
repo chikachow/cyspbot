@@ -13,9 +13,11 @@ const reactionScope = "issues:write pull_requests:write";
 const maxGitHubReactionErrorBodyBytes = 16 * 1024;
 const maxGitHubReactionErrorBodyReadMilliseconds = 1000;
 const maxGitHubReactionDiagnosticValueLength = 1024;
+const maxGitHubReactionRedirects = 3;
 
 export interface GitHubReactionErrorDiagnostics {
   readonly acceptedPermissions?: string | undefined;
+  readonly bodyReadFailed?: boolean | undefined;
   readonly bodyReadTimedOut?: boolean | undefined;
   readonly documentationUrl?: string | undefined;
   readonly message?: string | undefined;
@@ -62,9 +64,9 @@ export async function addStatusReaction(
     scope: reactionScope,
   });
 
-  const response = await dependencies.fetch(
-    `${resource}/issues/comments/${job.commentId}/reactions`,
-    {
+  let url = new URL(`${resource}/issues/comments/${job.commentId}/reactions`);
+  for (let redirects = 0; ; redirects += 1) {
+    const response = await dependencies.fetch(url, {
       body: JSON.stringify({ content: reactionContent }),
       headers: {
         accept: "application/vnd.github+json",
@@ -74,10 +76,22 @@ export async function addStatusReaction(
         "x-github-api-version": githubApiVersion,
       },
       method: "POST",
-    },
-  );
+      redirect: "manual",
+    });
 
-  if (response.status !== 200 && response.status !== 201) {
+    if (response.status === 200 || response.status === 201) {
+      void response.body?.cancel().catch(() => undefined);
+      return;
+    }
+
+    const redirect =
+      redirects < maxGitHubReactionRedirects ? reactionRedirectUrl(response, url) : undefined;
+    if (redirect !== undefined) {
+      void response.body?.cancel().catch(() => undefined);
+      url = redirect;
+      continue;
+    }
+
     const diagnostics = await readGitHubReactionErrorDiagnostics(response);
 
     throw new GitHubReactionError(
@@ -85,14 +99,31 @@ export async function addStatusReaction(
       response.status === 403 &&
         (response.headers.get("retry-after") !== null ||
           response.headers.get("x-ratelimit-remaining") === "0" ||
+          diagnostics.bodyReadFailed === true ||
           diagnostics.bodyReadTimedOut === true ||
           /\bsecondary rate limit\b/iu.test(diagnostics.message ?? "")),
       diagnostics,
       retryDelayFromHeaders(response.headers),
     );
   }
+}
 
-  void response.body?.cancel().catch(() => undefined);
+function reactionRedirectUrl(response: Response, url: URL): URL | undefined {
+  // GitHub redirects repeat the operation; Fetch would change POST to GET for 301/302.
+  if (![301, 302, 307, 308].includes(response.status)) return undefined;
+  const location = response.headers.get("location");
+  if (location === null) return undefined;
+  let redirect: URL;
+  try {
+    redirect = new URL(location, url);
+  } catch {
+    return undefined;
+  }
+  return redirect.origin === githubApiBaseUrl &&
+    redirect.username === "" &&
+    redirect.password === ""
+    ? redirect
+    : undefined;
 }
 
 async function readGitHubReactionErrorDiagnostics(
@@ -119,13 +150,13 @@ async function readGitHubReactionErrorDiagnostics(
   } catch {
     return controller.signal.aborted
       ? { ...headerDiagnostics, bodyReadTimedOut: true }
-      : headerDiagnostics;
+      : { ...headerDiagnostics, bodyReadFailed: true };
   } finally {
     clearTimeout(timeout);
   }
 
   if (!body.ok) {
-    return headerDiagnostics;
+    return { ...headerDiagnostics, bodyReadFailed: true };
   }
 
   let value: unknown;

@@ -5,7 +5,7 @@ export const githubWebhookTestSecret = "test-webhook-secret";
 const githubWebhookTestAppId = "000000";
 
 export function githubWebhookHeaders(
-  body: string,
+  body: string | Uint8Array,
   secret: string,
   event = "installation_repositories",
   deliveryId = "delivery-123",

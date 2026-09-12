@@ -3,7 +3,6 @@ import { readBodyUpTo } from "@cyspbot/http/body";
 const tokenExchangeGrantType = "urn:ietf:params:oauth:grant-type:token-exchange";
 const requestedTokenType = "urn:ietf:params:oauth:token-type:access_token";
 const subjectTokenType = "urn:ietf:params:oauth:token-type:id_token";
-const accessTokenScheme = "Bearer";
 const maxBrokerResponseBytes = 64 * 1024;
 const maxOAuthErrorDescriptionLength = 1024;
 
@@ -79,7 +78,7 @@ export async function requestGitHubAppInstallationToken(
     throw await readBrokerError(response);
   }
 
-  return readInstallationAccessToken(response);
+  return readInstallationAccessToken(response, scope);
 }
 
 function requireWorkloadIdentityIssuer(value: unknown): WorkloadIdentityIssuerBinding {
@@ -120,6 +119,7 @@ async function readBrokerError(response: Response): Promise<GitHubAppTokenBroker
 
 async function readInstallationAccessToken(
   response: Response,
+  requestedScope: string,
 ): Promise<GitHubAppInstallationAccessToken> {
   const body = await readJsonBody(response);
 
@@ -136,14 +136,16 @@ async function readInstallationAccessToken(
     throw new TypeError("GitHub App token broker returned an invalid issued token type.");
   }
 
-  if (body["token_type"] !== accessTokenScheme) {
+  const tokenType = body["token_type"];
+  if (typeof tokenType !== "string" || tokenType.toLowerCase() !== "bearer") {
     throw new TypeError("GitHub App token broker returned an invalid token type.");
   }
 
   return {
     accessToken: requireNonEmptyString(body["access_token"], "access_token"),
     expiresIn,
-    scope: requireNonEmptyString(body["scope"], "scope"),
+    scope:
+      body["scope"] === undefined ? requestedScope : requireNonEmptyString(body["scope"], "scope"),
   };
 }
 
