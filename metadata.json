@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.10.5",
+  "checkpoint_id": "01M2F53HQ895QCHZJ9QMBD0HSX",
+  "strategy": "manual-commit",
+  "branch": "codex/adversarial-origin-review-20260912",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "docs/implementation.md",
+    "docs/reviews/2026-09-12-origin-review.md",
+    "docs/service-contract.md",
+    "workers/cyspbot-github-webhook-processor/src/github/reactions.ts",
+    "workers/cyspbot-github-webhook-processor/test/integration/outbound.ts",
+    "workers/cyspbot-github-webhook-processor/test/integration/worker.test.ts",
+    "workers/cyspbot-github-webhook-processor/test/worker.test.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 339634,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": -2940416,
+    "output_tokens": -6700,
+    "api_call_count": 40
+  }
+}

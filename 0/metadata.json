@@ -1,0 +1,60 @@
+{
+  "cli_version": "0.10.5",
+  "checkpoint_id": "01M2F53HQ895QCHZJ9QMBD0HSX",
+  "session_id": "01a09440-1e16-74c0-b806-387008352d3f",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-14T05:09:15.234131Z",
+  "branch": "codex/adversarial-origin-review-20260912",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "docs/implementation.md",
+    "docs/reviews/2026-09-12-origin-review.md",
+    "docs/service-contract.md",
+    "workers/cyspbot-github-webhook-processor/src/github/reactions.ts",
+    "workers/cyspbot-github-webhook-processor/test/integration/outbound.ts",
+    "workers/cyspbot-github-webhook-processor/test/integration/worker.test.ts",
+    "workers/cyspbot-github-webhook-processor/test/worker.test.ts"
+  ],
+  "agent": "Codex",
+  "model": "gpt-6-astra",
+  "turn_id": "635ab45458af",
+  "checkpoint_transcript_start": 525,
+  "transcript_lines_at_start": 525,
+  "compact_transcript_start": 57,
+  "token_usage": {
+    "input_tokens": 339634,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": -2940416,
+    "output_tokens": -6700,
+    "api_call_count": 40
+  },
+  "session_metrics": {
+    "turn_count": 3
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-14T05:09:15.141511Z",
+    "agent_lines": 1146,
+    "agent_removed": 49,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 1146,
+    "total_lines_changed": 1195,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 283,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".codex/config.toml": 3,
+        ".codex/hooks.json": 52,
+        "docs/research/wrangler-new-config.md": 228
+      }
+    }
+  ]
+}
