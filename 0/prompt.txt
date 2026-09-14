@@ -1,0 +1,13 @@
+Thoroughly critique pedantically adversarially the current origin implementation of this project. Identify improvements and simplifications and implement them, then review. Collaborate on improvements. Use authoritative documentation to guide implementation choices
+
+---
+
+Raise as a pull request
+
+---
+
+Critically assess all changes in this pull request. Is the documentation necessary and relevant for long term record
+
+---
+
+Proceed
