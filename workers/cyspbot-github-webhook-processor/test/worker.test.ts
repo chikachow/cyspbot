@@ -117,38 +117,85 @@ describe("cyspbot-github-webhook-processor", () => {
     expect(message.retry).not.toHaveBeenCalled();
   });
 
-  it.each([
-    [301, "https://elsewhere.example/reactions"],
-    [302, "http://api.github.com/reactions"],
-    [307, "https://user:password@api.github.com/reactions"],
-    [308, "https://api.github.com:444/reactions"],
-    [301, "https://[invalid"],
-    [302, undefined],
-    [303, "https://api.github.com/reactions"],
-  ] as const)(
-    "does not send credentials to a rejected %s redirect %s",
-    async (status, location) => {
-      const fetch = vi.fn<GitHubReactionDependencies["fetch"]>(
-        async () =>
+  describe.each([0, 3])("after %s permitted redirects", (redirects) => {
+    it.each([
+      [301, "https://elsewhere.example/reactions"],
+      [302, "http://api.github.com/reactions"],
+      [307, "https://user:password@api.github.com/reactions"],
+      [308, "https://api.github.com:444/reactions"],
+      [302, undefined],
+      [303, "https://api.github.com/reactions"],
+    ] as const)(
+      "does not send credentials to a rejected %s redirect %s",
+      async (status, location) => {
+        const fetch = vi.fn<GitHubReactionDependencies["fetch"]>();
+        for (let index = 0; index < redirects; index += 1) {
+          fetch.mockResolvedValueOnce(
+            new Response(null, { status: 301, headers: { location: "/permitted" } }),
+          );
+        }
+        fetch.mockResolvedValueOnce(
           new Response(null, { status, headers: location === undefined ? {} : { location } }),
-      );
-      const message = createMessage(job);
+        );
+        const message = createMessage(job);
+        await invokeQueue(
+          createGitHubWebhookProcessorWorker({ fetch }),
+          [message],
+          createTokenExchangeEnvironment(),
+        );
+        expect(fetch).toHaveBeenCalledTimes(redirects + 1);
+        expect(fetch.mock.calls[0]?.[1]).toMatchObject({ redirect: "manual" });
+        expect(message.ack).toHaveBeenCalledOnce();
+        expect(message.retry).not.toHaveBeenCalled();
+      },
+    );
+  });
+
+  it.each([301, 302, 307, 308])("retries an unparseable GitHub %s redirect", async (status) => {
+    const location = "https://user:private-password@[invalid";
+    const fetch = vi.fn<GitHubReactionDependencies["fetch"]>(
+      async () =>
+        new Response(null, {
+          status,
+          headers: { location, "retry-after": "120", "x-github-request-id": "REDIRECT" },
+        }),
+    );
+    const message = { ...createMessage(job), attempts: 3 };
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
       await invokeQueue(
         createGitHubWebhookProcessorWorker({ fetch }),
         [message],
         createTokenExchangeEnvironment(),
       );
       expect(fetch).toHaveBeenCalledOnce();
-      expect(fetch.mock.calls[0]?.[1]).toMatchObject({ redirect: "manual" });
-      expect(message.ack).toHaveBeenCalledOnce();
-      expect(message.retry).not.toHaveBeenCalled();
-    },
-  );
+      expect(message.ack).not.toHaveBeenCalled();
+      expect(message.retry).toHaveBeenCalledExactlyOnceWith({ delaySeconds: 120 });
+      expect(consoleWarn).toHaveBeenCalledWith(
+        "github_webhook_job_retrying",
+        expect.objectContaining({
+          status,
+          github: {
+            redirectFailure: "invalid_location",
+            requestId: "REDIRECT",
+            retryAfter: "120",
+          },
+        }),
+      );
+      expect(JSON.stringify(consoleWarn.mock.calls)).not.toContain("private-password");
+    } finally {
+      consoleWarn.mockRestore();
+    }
+  });
 
-  it("stops after three GitHub reaction redirects", async () => {
-    const fetch = vi.fn<GitHubReactionDependencies["fetch"]>(
-      async () => new Response(null, { status: 301, headers: { location: "/loop" } }),
-    );
+  it("completes a reaction after exactly three GitHub redirects", async () => {
+    const fetch = vi.fn<GitHubReactionDependencies["fetch"]>();
+    for (let index = 0; index < 3; index += 1) {
+      fetch.mockResolvedValueOnce(
+        new Response(null, { status: 301, headers: { location: `/redirect-${index}` } }),
+      );
+    }
+    fetch.mockResolvedValueOnce(new Response(null, { status: 201 }));
     const message = createMessage(job);
     await invokeQueue(
       createGitHubWebhookProcessorWorker({ fetch }),
@@ -158,6 +205,38 @@ describe("cyspbot-github-webhook-processor", () => {
     expect(fetch).toHaveBeenCalledTimes(4);
     expect(message.ack).toHaveBeenCalledOnce();
     expect(message.retry).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["/loop", "too_many_redirects"],
+    ["", "too_many_redirects"],
+    ["https://[invalid", "invalid_location"],
+  ] as const)("retries a fourth redirect to %s with backoff", async (location, redirectFailure) => {
+    const fetch = vi.fn<GitHubReactionDependencies["fetch"]>();
+    for (let index = 0; index < 3; index += 1) {
+      fetch.mockResolvedValueOnce(
+        new Response(null, { status: 301, headers: { location: "/permitted" } }),
+      );
+    }
+    fetch.mockResolvedValueOnce(new Response(null, { status: 301, headers: { location } }));
+    const message = { ...createMessage(job), attempts: 3 };
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      await invokeQueue(
+        createGitHubWebhookProcessorWorker({ fetch }),
+        [message],
+        createTokenExchangeEnvironment(),
+      );
+      expect(fetch).toHaveBeenCalledTimes(4);
+      expect(message.ack).not.toHaveBeenCalled();
+      expect(message.retry).toHaveBeenCalledExactlyOnceWith({ delaySeconds: 240 });
+      expect(consoleWarn).toHaveBeenCalledWith(
+        "github_webhook_job_retrying",
+        expect.objectContaining({ status: 301, github: { redirectFailure } }),
+      );
+    } finally {
+      consoleWarn.mockRestore();
+    }
   });
 
   it.each([200, 201])(

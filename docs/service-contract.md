@@ -80,13 +80,17 @@ failed webhooks. Ingress is best effort until publication succeeds; operators
 manually redeliver failed deliveries after resolving the cause. See
 [delivery recovery](deployment.md#delivery-recovery).
 
-The processor requests a GitHub App Installation Access Token with
+The processor requests a [GitHub App Installation Access Token](implementation.md#token-exchange-client) with
 `issues:write pull_requests:write` for the canonical GitHub Repository Resource and posts the
 `eyes` reaction to the comment. GitHub `200` and `201` responses complete the
 job. The processor follows at most three `301`, `302`, `307`, or `308` redirects,
 preserving the reaction POST, body, and authorization. Redirect destinations must
-remain on `https://api.github.com` without URL credentials. Other redirects,
-invalid destinations, and exhausted redirect chains are permanent failures.
+remain on `https://api.github.com` without URL credentials. A supported redirect
+with an unparseable `Location` URL or a chain requiring more than three permitted
+redirects retries through the queue. Diagnostics record `redirectFailure` as
+`invalid_location` or `too_many_redirects`; the `Location` header is not logged.
+Missing `Location`, unsupported redirect statuses, and disallowed destinations
+are permanent failures.
 Cancellation of unused response bodies is best effort and does not
 delay acknowledgement or cause a retry. Network failures, `429`, `5xx`, and rate-limited `403` responses retry;
 other failures are acknowledged. The queue uses one-message batches, five
@@ -124,15 +128,6 @@ Rejections use RFC 9457-style problem-details JSON with `type`, `title`, and `st
 Repeated delivery IDs are accepted. Queue delivery is at least once, and the
 processor treats both successful GitHub reaction response statuses as
 completion, so repeated jobs do not require a separate deduplication store.
-
-## Token exchange responses
-
-The internal Token Exchange Client accepts the OAuth `Bearer` token type without
-regard to case. If the broker omits `scope`, the issued scope is the requested
-scope; an explicit scope must be a non-empty string and is returned as issued.
-The client still requires an access token, the access-token `issued_token_type`,
-and a positive integer `expires_in` for the broker's installation-token profile.
-These response rules follow [RFC 8693 section 2.2.1](https://www.rfc-editor.org/rfc/rfc8693.html#section-2.2.1).
 
 ## Logging and retention
 

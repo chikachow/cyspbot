@@ -28,7 +28,7 @@ In production, this Worker is the Custom Domain origin. More specific Cloudflare
 
 `handleGitHubWebhookRequest` owns the HTTP response and privately authenticates the envelope. It:
 
-1. resolves `GITHUB_WEBHOOK_SECRET` from a direct Worker secret or Secrets Store binding, mapping missing or unreadable secrets to a safe `500` problem response;
+1. resolves `GITHUB_WEBHOOK_SECRET` from a direct Worker secret or Secrets Store binding through its private secret adapter;
 2. requires `application/json` and reads at most `256 KiB`;
 3. requires the event, delivery, signature, and installation-target headers;
 4. requires the target type `integration` and the configured `GITHUB_APP_ID`;
@@ -38,22 +38,20 @@ In production, this Worker is the Custom Domain origin. More specific Cloudflare
 8. sends the derived version-1 job to `GITHUB_WEBHOOK_JOBS` and waits for the queue write; and
 9. returns the acknowledgement shape for ping, matching, or other events.
 
-The receiver resolves direct secrets and Secrets Store bindings through its private secret adapter.
-
-The receiver sends only a derived job to the queue. The job contains the kind, version, delivery ID, repository owner and name, and comment ID. The receiver uses the same job parser as the processor to validate the projected job before publication. It does not apply repository authorization filtering.
+The receiver sends only a derived job to the queue, using the same job parser as the processor to validate the projected job before publication. The [service contract](service-contract.md#webhook-responses) defines the job fields and HTTP responses.
 
 ## Webhook processor flow
 
-`workers/cyspbot-github-webhook-processor` consumes one message at a time from `cyspbot-github-webhook-jobs`. It validates the versioned job, requests a GitHub App Installation Access Token with `issues:write pull_requests:write` for the canonical GitHub Repository Resource, and posts an `eyes` reaction to the comment. GitHub `200` and `201` responses complete the job. Its private redirect loop repeats the POST for supported redirects within `https://api.github.com`, with at most three redirects and no URL credentials; it cancels intermediate response bodies without awaiting cleanup.
+`workers/cyspbot-github-webhook-processor` consumes `cyspbot-github-webhook-jobs`. It validates each versioned job with the shared parser, then delegates token acquisition and reaction creation to its private `src/github/reactions.ts` module.
 
-Cloudflare Queues delivers messages at least once. Repeated jobs are safe because the GitHub reaction operation treats an existing reaction as success. The consumer retries network failures, HTTP `429`, HTTP `5xx`, and rate-limited HTTP `403` responses. It acknowledges permanent failures, retries up to five times, and sends exhausted jobs to `cyspbot-github-webhook-jobs-dlq`. GitHub HTTP error responses honor server waiting hints or use exponential backoff starting at 60 seconds, bounded to 24 hours; other transient failures use the queue's 60-second default.
+The module follows redirects manually to preserve the reaction POST: [automatic Fetch redirects](https://fetch.spec.whatwg.org/#http-redirect-fetch) can turn a `301` or `302` POST into a GET. Intermediate response bodies are cancelled without awaiting cleanup. The [service contract](service-contract.md#webhook-responses) defines redirect limits, acknowledgement, retries, and diagnostic handling.
 
 ## Runtime bindings
 
 - `GITHUB_APP_ID`: required non-secret variable used to bind deliveries to the intended GitHub App.
 - `GITHUB_WEBHOOK_SECRET`: required Worker secret or Cloudflare Secrets Store binding.
 - `GITHUB_WEBHOOK_JOBS`: Queue producer binding used by the webhook receiver for derived status-reaction jobs.
-- `cyspbot-github-webhook-processor` consumes `cyspbot-github-webhook-jobs` and sends exhausted jobs to `cyspbot-github-webhook-jobs-dlq`. GitHub HTTP error responses honor server waiting hints or use exponential backoff starting at 60 seconds, bounded to 24 hours; other transient failures use the queue's 60-second default.
+- `cyspbot-github-webhook-processor` consumes `cyspbot-github-webhook-jobs` and sends exhausted jobs to `cyspbot-github-webhook-jobs-dlq`.
 - The processor's `WORKLOAD_IDENTITY_ISSUER`: RPC Service Binding to a separately deployed
   `WorkloadIdentityIssuer` entrypoint. Its `issueToken(audience)` operation
   returns an `IssuedToken`; the issuer deployment owns the workload subject
@@ -67,16 +65,26 @@ Cloudflare Queues delivers messages at least once. Repeated jobs are safe becaus
   containing the broker's token endpoint URL. It is separate from the logical
   Workload Identity Token audience.
 
+## Token Exchange Client
+
 The internal Token Exchange Client in `packages/token-exchange` first calls the issuer RPC, then posts the
 returned short-lived Workload Identity Token as a workload identity assertion
 to the configured broker endpoint as the RFC 8693 `subject_token` under the
 broker's OIDC ID Token subject-token profile. It requests a GitHub App
 Installation Access Token with a canonical GitHub `resource` and explicit permission
 `scope`; the broker remains the source of truth for normalization, OIDC ID
-Token profile verification, and Token Issuance Policy. On success, the client
-returns a `GitHubAppInstallationAccessToken`. Response validation accepts the
-case-insensitive `Bearer` token type and uses the requested scope when the broker
-omits an unchanged scope, preserving any explicit issued scope. On an OAuth failure, it throws a
+Token profile verification, and Token Issuance Policy.
+
+On success, the client returns a `GitHubAppInstallationAccessToken`. It accepts
+the case-insensitive `Bearer` token type and uses the requested scope when the
+broker omits an unchanged scope, following
+[RFC 8693 section 2.2.1](https://www.rfc-editor.org/rfc/rfc8693.html#section-2.2.1).
+An explicit scope must be a non-empty string and is returned as issued. The
+client's GitHub installation-token profile requires a non-empty `access_token`,
+`issued_token_type=urn:ietf:params:oauth:token-type:access_token`, and a positive
+integer `expires_in`. RFC 8693 defines `expires_in` as recommended.
+
+On an OAuth failure, the client throws a
 `GitHubAppTokenBrokerError` containing the HTTP status and OAuth error code and
 description. Workload identity assertions and issued GitHub tokens must not be
 logged.

@@ -23,6 +23,7 @@ export interface GitHubReactionErrorDiagnostics {
   readonly message?: string | undefined;
   readonly rateLimitRemaining?: string | undefined;
   readonly rateLimitReset?: string | undefined;
+  readonly redirectFailure?: "invalid_location" | "too_many_redirects" | undefined;
   readonly requestId?: string | undefined;
   readonly retryAfter?: string | undefined;
 }
@@ -39,7 +40,7 @@ export class GitHubReactionError extends Error {
 
   constructor(
     status: number,
-    rateLimited: boolean,
+    retryable: boolean,
     diagnostics: GitHubReactionErrorDiagnostics = {},
     retryDelaySeconds?: number,
   ) {
@@ -47,7 +48,7 @@ export class GitHubReactionError extends Error {
     this.name = "GitHubReactionError";
     this.diagnostics = diagnostics;
     this.retryDelaySeconds = retryDelaySeconds;
-    this.retryable = status === 429 || status >= 500 || rateLimited;
+    this.retryable = retryable;
     this.status = status;
   }
 }
@@ -84,31 +85,42 @@ export async function addStatusReaction(
       return;
     }
 
-    const redirect =
-      redirects < maxGitHubReactionRedirects ? reactionRedirectUrl(response, url) : undefined;
-    if (redirect !== undefined) {
+    const redirect = reactionRedirect(response, url);
+    if (redirect?.kind === "follow" && redirects < maxGitHubReactionRedirects) {
       void response.body?.cancel().catch(() => undefined);
-      url = redirect;
+      url = redirect.url;
       continue;
     }
 
-    const diagnostics = await readGitHubReactionErrorDiagnostics(response);
-
-    throw new GitHubReactionError(
-      response.status,
-      response.status === 403 &&
+    const diagnostics: GitHubReactionErrorDiagnostics = {
+      ...(await readGitHubReactionErrorDiagnostics(response)),
+      ...(redirect === undefined
+        ? {}
+        : { redirectFailure: redirect.kind === "follow" ? "too_many_redirects" : redirect.kind }),
+    };
+    const retryable =
+      redirect !== undefined ||
+      response.status === 429 ||
+      response.status >= 500 ||
+      (response.status === 403 &&
         (response.headers.get("retry-after") !== null ||
           response.headers.get("x-ratelimit-remaining") === "0" ||
           diagnostics.bodyReadFailed === true ||
           diagnostics.bodyReadTimedOut === true ||
-          /\bsecondary rate limit\b/iu.test(diagnostics.message ?? "")),
+          /\bsecondary rate limit\b/iu.test(diagnostics.message ?? "")));
+
+    throw new GitHubReactionError(
+      response.status,
+      retryable,
       diagnostics,
       retryDelayFromHeaders(response.headers),
     );
   }
 }
 
-function reactionRedirectUrl(response: Response, url: URL): URL | undefined {
+type ReactionRedirect = { kind: "follow"; url: URL } | { kind: "invalid_location" };
+
+function reactionRedirect(response: Response, url: URL): ReactionRedirect | undefined {
   // GitHub redirects repeat the operation; Fetch would change POST to GET for 301/302.
   if (![301, 302, 307, 308].includes(response.status)) return undefined;
   const location = response.headers.get("location");
@@ -117,12 +129,12 @@ function reactionRedirectUrl(response: Response, url: URL): URL | undefined {
   try {
     redirect = new URL(location, url);
   } catch {
-    return undefined;
+    return { kind: "invalid_location" };
   }
   return redirect.origin === githubApiBaseUrl &&
     redirect.username === "" &&
     redirect.password === ""
-    ? redirect
+    ? { kind: "follow", url: redirect }
     : undefined;
 }
 
