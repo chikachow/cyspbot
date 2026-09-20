@@ -28,7 +28,7 @@
     "@cloudflare/workers-types": "5.20260911.1",
     "@cyspbot/http": "workspace:*",
     "@tsconfig/strictest": "2.0.8",
-    "@types/node": "24.13.4",
+    "@types/node": "24.13.5",
     "@vitest/coverage-istanbul": "4.1.11",
     "knip": "6.35.1",
     "oxfmt": "0.67.0",
