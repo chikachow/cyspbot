@@ -31,9 +31,9 @@
     "@types/node": "24.19.0",
     "@vitest/coverage-istanbul": "4.1.11",
     "knip": "6.36.0",
-    "oxfmt": "0.68.0",
-    "oxlint": "1.83.0",
-    "oxlint-tsgolint": "7.0.2001",
+    "oxfmt": "0.70.0",
+    "oxlint": "1.85.0",
+    "oxlint-tsgolint": "7.0.2003",
     "typescript": "7.0.2",
     "vitest": "4.1.11",
     "wrangler": "4.139.0"
