@@ -18,7 +18,7 @@ The root `wrangler.jsonc` points at `test/support/root-test-harness.ts`. It supp
 
 ## Root Worker flow
 
-`workers/cyspbot/src/worker.ts` uses a native fetch handler. It returns the minimal HTML bot page for `GET /` and the same status and headers without a body for `HEAD /`. Other methods at `/` receive an empty `405` response with `Allow: GET, HEAD`; other pathnames receive an empty `404`. Query parameters do not change route matching.
+`workers/cyspbot/src/worker.ts` uses a native fetch handler. It returns the minimal HTML bot page for `GET /` and the same status and headers without a body for `HEAD /`. Other methods at `/` receive an empty `405` response with `Allow: GET, HEAD`; other pathnames except `/token` receive an empty `404`. Query parameters do not change route matching.
 
 In production, this Worker is the Custom Domain origin. More specific Cloudflare Worker Routes execute first and preserve independently deployed product endpoints such as `/github/webhooks`.
 
@@ -150,3 +150,14 @@ fnm exec --using=24 corepack pnpm run test:coverage
 ```
 
 `check` verifies the frozen lockfile, formatting, generated environment types, lint, TypeScript, Knip, unit and integration tests, and all three Workers' Wrangler deploy dry runs.
+
+## Token Endpoint forwarding
+
+The root Worker's `/token` branch streams the request over an HTTP Service Binding
+and returns its response. `TOKEN_PROXY_ENDPOINT` must be an HTTPS
+canonical App path without credentials, query, or fragment. Both it and
+`GITHUB_APP_TOKEN_BROKER` are deployment-owned; request input cannot choose an
+upstream. The root Worker and webhook processor have separate bindings and endpoint
+variables. Tests exercise exact forwarding, sanitized transport errors, and the
+built Worker's service-binding preservation of `CF-Connecting-IP` and body bytes.
+That local runtime test does not establish production edge header behavior.

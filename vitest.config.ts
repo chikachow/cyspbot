@@ -1,3 +1,4 @@
+import { tokenBrokerFixture } from "./workers/cyspbot/test/integration/token-broker.ts";
 import { cloudflareTest } from "@cloudflare/vitest-plugin";
 import { configDefaults, defineConfig } from "vitest/config";
 
@@ -31,6 +32,7 @@ export default defineConfig({
             wrangler: {
               configPath: "./workers/cyspbot/wrangler.jsonc",
             },
+            miniflare: { serviceBindings: { GITHUB_APP_TOKEN_BROKER: tokenBrokerFixture } },
           }),
         ],
         test: {

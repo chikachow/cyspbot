@@ -68,3 +68,7 @@ After successful CI on `main`, `.github/workflows/run-cyspbot-deploy-update.yml`
 - [Implementation](docs/implementation.md)
 - [Deployment and service boundaries](docs/deployment.md)
 - [Release checklist](docs/release.md)
+
+The root Worker also forwards `/token` to a deployment-selected canonical broker
+App endpoint. See [the proxy contract](docs/service-contract.md#token-endpoint-proxy)
+and [cutover requirements](docs/deployment.md#token-proxy-cutover).

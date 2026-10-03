@@ -54,6 +54,26 @@ describe("built Workers", () => {
     }
   });
 
+  it("forwards token bytes and admission identity through the built Worker service binding", async () => {
+    const body = "scope=contents%3Aread&scope=issues%3Awrite&subject_token=unchanged%2Bbytes";
+    const response = await server.fetch("/token?ignored=1", {
+      method: "POST",
+      body,
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        "cf-connecting-ip": "192.0.2.17",
+      },
+    });
+    expect(response.status).toBe(429);
+    expect(response.headers.get("x-fixture-client-ip")).toBe("192.0.2.17");
+    expect(response.headers.get("x-fixture-method")).toBe("POST");
+    expect(response.headers.get("retry-after")).toBe("30");
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("pragma")).toBe("no-cache");
+    await expect(response.text()).resolves.toBe(body);
+    expect(outbound).not.toHaveBeenCalled();
+  });
+
   it("serves the root page from the built entrypoint", async () => {
     const response = await server.fetch("/");
 
