@@ -29,3 +29,11 @@ The webhook receiver needs:
 
 - `GITHUB_APP_ID`, a non-secret Worker variable; and
 - `GITHUB_WEBHOOK_SECRET`, supplied by a Worker secret or Cloudflare Secrets Store.
+
+The root Worker's Token Endpoint Proxy is trusted with incoming identity tokens
+and outgoing access tokens. It forwards only to a deployment-owned HTTPS canonical
+App path through a Service Binding, without caching, redirects, retries, or token
+logging. It preserves edge-supplied `CF-Connecting-IP` for broker admission.
+Public edge ingress must overwrite any client-supplied value; direct service-binding
+callers are trusted to preserve that admission identity. The broker authenticates
+and authorizes every exchange independently of transport.

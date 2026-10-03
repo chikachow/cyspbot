@@ -27,3 +27,6 @@
 - Dependabot security updates are enabled.
 - The protected branch requires the aggregate `ci` check.
 - Private vulnerability reporting is enabled when available.
+
+- Verify `/token` forwarding, the root Worker broker binding and canonical URL,
+  route precedence, and edge admission identity during coordinated cutover.

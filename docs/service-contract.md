@@ -9,7 +9,7 @@ This document is authoritative for the observable behavior implemented by cyspbo
 | `/`                | `GET`  | Identify cyspbot as a bot                                 | `200` HTML |
 | `/github/webhooks` | `POST` | Authenticate, classify, and queue GitHub App webhook jobs | `202` JSON |
 
-`HEAD /` returns the same status and headers as `GET /` without a response body. Other methods at `/` return an empty `405` response with `Allow: GET, HEAD`. The root Worker returns an empty `404` response for every other path, regardless of method. More specific production Worker routes run before the root Worker and own the response within their route patterns. Unsupported methods on `/github/webhooks` return `405` problem details with `Allow: POST`.
+`HEAD /` returns the same status and headers as `GET /` without a response body. Other methods at `/` return an empty `405` response with `Allow: GET, HEAD`. The root Worker returns an empty `404` response for every other path except `/token`, regardless of method. More specific production Worker routes run before the root Worker and own the response within their route patterns. Unsupported methods on `/github/webhooks` return `405` problem details with `Allow: POST`.
 
 ## Root page
 
@@ -134,3 +134,17 @@ completion, so repeated jobs do not require a separate deduplication store.
 Rejected deliveries may log the delivery ID, event, Cloudflare Ray ID, and response status. Raw request bodies, signature values, and webhook secrets are not logged or retained.
 
 Processor failures log the queue message ID, delivery ID (at most 128 characters), attempt count, status, and bounded GitHub diagnostics or a recognized OAuth error code. Unrecognized broker codes are logged as `unrecognized_error`; broker descriptions and credentials are excluded.
+
+## Token Endpoint proxy
+
+The root Worker forwards exactly `/token` to the deployment-owned canonical
+`/github/apps/{app_slug}/token` URL through `GITHUB_APP_TOKEN_BROKER`.
+It preserves the method, headers (including edge-supplied `CF-Connecting-IP`),
+and request bytes. Query parameters do not select an App or change the configured
+upstream URL. It returns the broker response status, headers, and bytes unchanged,
+including OAuth failures and admission responses. It does not cache responses,
+follow redirects, parse tokens, or retry requests. The broker owns request limits,
+OIDC verification, policy, GitHub I/O deadlines, and issuance observations.
+Invalid endpoint configuration or service-binding failure returns `503` with
+`{"error":"temporarily_unavailable"}`, `Cache-Control: no-store`, and
+`Pragma: no-cache`. `/token/` and other path variants remain unknown routes.

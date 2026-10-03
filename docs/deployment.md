@@ -4,7 +4,7 @@ This repository contains the public source, tests, and public-safe Wrangler temp
 
 ## Deployable Workers
 
-`@cyspbot/cyspbot` deploys Worker `cyspbot` as the fallback origin. Its native fetch handler serves the root bot page for `GET` and standard bodyless `HEAD` requests, rejects other root methods with an empty `405`, and returns empty `404` responses for other paths.
+`@cyspbot/cyspbot` deploys Worker `cyspbot` as the fallback origin. Its native fetch handler serves the root bot page for `GET` and standard bodyless `HEAD` requests, rejects other root methods with an empty `405`, and forwards `/token` to the broker, and returns empty `404` responses for other paths.
 
 `@cyspbot/github-webhook-receiver` deploys Worker `cyspbot-github-webhook-receiver` for `POST /github/webhooks`.
 
@@ -45,3 +45,13 @@ fnm exec --using=24 corepack pnpm run deploy:dry-run
 ```
 
 Do not add production credentials, domains, or routes to this repository.
+
+## Token proxy cutover
+
+The root Worker requires its own broker HTTP Service Binding and canonical Token
+Endpoint variable. Deploy the broker's canonical route, then update both cyspbot
+consumers. Remove any older, more-specific broker-owned `/token*` route so that
+`/token` reaches the cyspbot Custom Domain origin. Verify edge admission identity
+and unchanged OAuth responses before considering cutover complete. Coordinate
+rollback of the source pins, consumer URLs, and route ownership in the deployment
+repositories; this source does not create or remove production routes.
