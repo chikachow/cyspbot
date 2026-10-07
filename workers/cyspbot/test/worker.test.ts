@@ -37,7 +37,7 @@ describe("cyspbot", () => {
     },
   );
 
-  it.each(["/github/webhooks", "/health", "//"])(
+  it.each(["/token", "/token?ignored=1", "/github/webhooks", "/health", "//"])(
     "returns an empty 404 response for %s",
     async (path) => {
       const response = await fetchCyspbot(`https://cyspbot.chikachow.org${path}`);

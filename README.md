@@ -21,6 +21,7 @@ Valid deliveries receive `202` after any matching status-reaction job is durably
 
 ## Architecture
 
+- `workers/cyspbot-token-proxy` owns the Token Endpoint Proxy and its public-safe Wrangler configuration.
 - `workers/cyspbot` owns the root-page Worker and its public-safe Wrangler configuration.
 - `workers/cyspbot-github-webhook-receiver` authenticates webhook deliveries, classifies status commands, and produces queue jobs.
 - `workers/cyspbot-github-webhook-processor` consumes queue jobs, obtains a GitHub App Installation Access Token, and adds the status reaction.
@@ -41,7 +42,7 @@ cp .dev.vars.example .dev.vars
 fnm exec --using=24 corepack pnpm run dev
 ```
 
-Fill in the GitHub App ID and webhook secret in `.dev.vars`. Do not commit that file. This command starts the root and receiver only. The processor, issuer, and broker interactions are exercised with local fixtures by the integration tests.
+Fill in the GitHub App ID and webhook secret in `.dev.vars`. Do not commit that file. This command starts the root and receiver only. The proxy, processor, issuer, and broker interactions are exercised with local fixtures by the integration tests.
 
 Run the complete validation suite with:
 
@@ -50,7 +51,7 @@ fnm exec --using=24 corepack pnpm run check
 fnm exec --using=24 corepack pnpm run test:coverage
 ```
 
-The checks cover formatting, generated environment types, lint, type checking, unused-code detection, unit and Workerd integration tests, and Wrangler deployment dry runs for all three Workers.
+The checks cover formatting, generated environment types, lint, type checking, unused-code detection, unit and Workerd integration tests, and Wrangler deployment dry runs for all four Workers.
 
 ## Deployment trigger
 
@@ -68,3 +69,7 @@ After successful CI on `main`, `.github/workflows/run-cyspbot-deploy-update.yml`
 - [Implementation](docs/implementation.md)
 - [Deployment and service boundaries](docs/deployment.md)
 - [Release checklist](docs/release.md)
+
+The dedicated `cyspbot-token-proxy` Worker forwards `/token` to a deployment-selected canonical broker
+App endpoint. See [the proxy contract](docs/service-contract.md#token-endpoint-proxy)
+and [cutover requirements](docs/deployment.md#token-proxy-cutover).

@@ -1,10 +1,12 @@
 # Deployment
 
-This repository contains the public source, tests, and public-safe Wrangler templates for the cyspbot root page, GitHub webhook receiver, and GitHub webhook processor. It does not contain production domains, routes, Cloudflare resource identifiers, or secret values.
+This repository contains the public source, tests, and public-safe Wrangler templates for the cyspbot root page, Token Endpoint Proxy, GitHub webhook receiver, and GitHub webhook processor. It does not contain production domains, routes, Cloudflare resource identifiers, or secret values.
 
 ## Deployable Workers
 
 `@cyspbot/cyspbot` deploys Worker `cyspbot` as the fallback origin. Its native fetch handler serves the root bot page for `GET` and standard bodyless `HEAD` requests, rejects other root methods with an empty `405`, and returns empty `404` responses for other paths.
+
+`@cyspbot/token-proxy` deploys Worker `cyspbot-token-proxy` to forward exactly `/token` to the broker and return an empty `404` for all other paths.
 
 `@cyspbot/github-webhook-receiver` deploys Worker `cyspbot-github-webhook-receiver` for `POST /github/webhooks`.
 
@@ -14,7 +16,7 @@ The source-owned Worker configurations define their entrypoints, compatibility d
 
 ## Separate deployment pipeline
 
-[`chikachow/cyspbot-deploy`](https://github.com/chikachow/cyspbot-deploy) pins this repository as a submodule and owns the production Custom Domain, webhook route, Cloudflare identifiers, Secrets Store binding, validation, deployment workflow, and smoke probes. The specific webhook route executes before the Custom Domain origin Worker. A cyspbot source update must pass its own checks and strict Wrangler dry runs in that repository before deployment.
+[`chikachow/cyspbot-deploy`](https://github.com/chikachow/cyspbot-deploy) pins this repository as a submodule and owns the production Custom Domain, token and webhook routes, Cloudflare identifiers, Secrets Store binding, validation, deployment workflow, and smoke probes. The specific token and webhook routes execute before the Custom Domain origin Worker. A cyspbot source update must pass its own checks and strict Wrangler dry runs in that repository before deployment.
 
 The source workflow `.github/workflows/run-cyspbot-deploy-update.yml` is responsible for dispatching the deployment repository's source-update workflow after successful `main` CI. It obtains a short-lived GitHub token through `cyspbot-app-token-action`.
 
@@ -45,3 +47,25 @@ fnm exec --using=24 corepack pnpm run deploy:dry-run
 ```
 
 Do not add production credentials, domains, or routes to this repository.
+
+## Token proxy cutover
+
+The dedicated Token Endpoint Proxy requires a canonical HTTPS Token Endpoint
+variable. Its broker target must be reachable by public HTTPS; a Cloudflare
+[Custom Domain](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/)
+supports fetches from Workers in the same zone. No broker Service Binding is
+required, and the broker may be in another account. Same-zone forwarding retains
+per-client admission; cross-zone Cloudflare forwarding shares an admission key
+(see `SECURITY.md`). Deploy and probe the broker's canonical endpoint first. In the operator window, inspect and delete the exact old broker-owned
+`/token*` route before merging the cyspbot deployment PR. Do not rely on removing
+it from the broker's Wrangler file to release ownership. The cyspbot pipeline
+publishes the dedicated proxy and its `/token*` route before updating the root
+Worker and processor. The root Worker has no broker binding or endpoint variable.
+
+Verify the broker Custom Domain and applicable redirects, challenges, and WAF
+rules allow the proxy's HTTPS requests. Verify edge admission identity and unchanged OAuth responses before considering
+cutover complete. For rollback, release the exact proxy-owned route before
+restoring the old broker route and both repositories' saved source and
+configuration. Retain the unrouted proxy artifact until rollback is verified.
+The deployment repositories own the coordinated runbook and route ownership;
+this source does not create or remove production routes.

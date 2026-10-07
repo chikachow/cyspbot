@@ -4,10 +4,11 @@ This document is authoritative for the observable behavior implemented by cyspbo
 
 ## Routes
 
-| Route              | Method | Purpose                                                   | Success    |
-| ------------------ | ------ | --------------------------------------------------------- | ---------- |
-| `/`                | `GET`  | Identify cyspbot as a bot                                 | `200` HTML |
-| `/github/webhooks` | `POST` | Authenticate, classify, and queue GitHub App webhook jobs | `202` JSON |
+| Route              | Method | Purpose                                                    | Success         |
+| ------------------ | ------ | ---------------------------------------------------------- | --------------- |
+| `/`                | `GET`  | Identify cyspbot as a bot                                  | `200` HTML      |
+| `/token`           | Any    | Forward to the deployment-configured broker Token Endpoint | Broker response |
+| `/github/webhooks` | `POST` | Authenticate, classify, and queue GitHub App webhook jobs  | `202` JSON      |
 
 `HEAD /` returns the same status and headers as `GET /` without a response body. Other methods at `/` return an empty `405` response with `Allow: GET, HEAD`. The root Worker returns an empty `404` response for every other path, regardless of method. More specific production Worker routes run before the root Worker and own the response within their route patterns. Unsupported methods on `/github/webhooks` return `405` problem details with `Allow: POST`.
 
@@ -134,3 +135,23 @@ completion, so repeated jobs do not require a separate deduplication store.
 Rejected deliveries may log the delivery ID, event, Cloudflare Ray ID, and response status. Raw request bodies, signature values, and webhook secrets are not logged or retained.
 
 Processor failures log the queue message ID, delivery ID (at most 128 characters), attempt count, status, and bounded GitHub diagnostics or a recognized OAuth error code. Unrecognized broker codes are logged as `unrecognized_error`; broker descriptions and credentials are excluded.
+
+## Token Endpoint proxy
+
+The dedicated `cyspbot-token-proxy` Worker forwards exactly `/token` to the deployment-owned canonical
+`/github/apps/{app_slug}/token` URL over HTTPS.
+It preserves the method and request bytes. The configured URL determines the
+upstream destination; incoming query parameters cannot change it. Incoming `Host`
+is discarded so the runtime uses the destination hostname. The proxy sets
+`x-real-ip` from edge-supplied `CF-Connecting-IP`, or removes it if that header is
+absent; other headers are forwarded subject to Cloudflare's subrequest behavior.
+Same-zone forwarding preserves the client admission identity; cross-zone
+Cloudflare forwarding uses a shared Worker address as described in `SECURITY.md`.
+It returns non-3xx broker response status, headers, and bytes unchanged,
+including OAuth failures and admission responses. It does not cache responses,
+follow or forward redirects, parse tokens, or retry requests. The broker owns request limits,
+OIDC verification, policy, GitHub I/O deadlines, and issuance observations.
+Every upstream 3xx response, invalid endpoint configuration, or HTTPS transport failure
+before an upstream response is received returns `503` with
+`{"error":"temporarily_unavailable"}`, `Cache-Control: no-store`, and
+`Pragma: no-cache`; upstream redirect headers and bodies are discarded. `/token/` and other path variants remain unknown routes.
