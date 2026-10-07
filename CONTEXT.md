@@ -1,6 +1,6 @@
 # cyspbot domain language
 
-cyspbot is a bot with a minimal root page, a GitHub App webhook receiver, a GitHub webhook processor, and an internal OAuth Token Exchange Client. Use these terms consistently in source, tests, logs, and documentation.
+cyspbot is a bot with a minimal root page, a Token Endpoint Proxy, a GitHub App webhook receiver, a GitHub webhook processor, and an internal OAuth Token Exchange Client. Use these terms consistently in source, tests, logs, and documentation.
 
 **Root Page**:
 The minimal HTML response that identifies cyspbot as a bot at `GET /`. `HEAD /` has the same status and headers without a body. Other root methods receive an empty `405`; other paths receive empty `404` responses, except where a more specific production Worker route takes precedence.
@@ -47,3 +47,8 @@ The exact audience requested from the Workload Identity issuer and accepted by t
 **GitHub App Installation Access Token**:
 
 A short-lived GitHub App token returned by the broker's Token Endpoint for one canonical GitHub Repository Resource and the explicitly requested permissions.
+
+**Token Endpoint Proxy**:
+The dedicated `cyspbot-token-proxy` Worker's `/token` forwarding route. It transports identity tokens and
+access tokens over HTTPS between clients and the deployment-selected broker App. It has no
+authorization policy of its own; the broker remains the OAuth Authorization Server.

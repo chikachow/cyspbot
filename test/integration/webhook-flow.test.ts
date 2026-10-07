@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createTestHarness } from "wrangler";
+import { tokenBrokerFixture } from "../../workers/cyspbot-token-proxy/test/integration/token-broker.ts";
 
 import { githubWebhookProcessorOutboundService } from "../../workers/cyspbot-github-webhook-processor/test/integration/outbound.ts";
 import {
@@ -11,6 +12,7 @@ describe("built Workers", () => {
   const server = createTestHarness({
     workers: [
       { configPath: "workers/cyspbot/wrangler.jsonc" },
+      { configPath: "workers/cyspbot-token-proxy/wrangler.jsonc" },
       {
         configPath: "workers/cyspbot-github-webhook-receiver/wrangler.jsonc",
         secrets: { GITHUB_WEBHOOK_SECRET: githubWebhookTestSecret },
@@ -32,9 +34,12 @@ describe("built Workers", () => {
       },
     ],
   });
-  const outbound = vi.fn<typeof fetch>(async (input, init) =>
-    githubWebhookProcessorOutboundService(new Request(input, init)),
-  );
+  const outbound = vi.fn<typeof fetch>(async (input, init) => {
+    const request = new Request(input, init);
+    return request.url === "https://broker.example/github/apps/example-app/token"
+      ? tokenBrokerFixture(request)
+      : githubWebhookProcessorOutboundService(request);
+  });
 
   beforeAll(async () => {
     vi.stubGlobal("fetch", outbound);
@@ -54,6 +59,31 @@ describe("built Workers", () => {
     }
   });
 
+  it("forwards token bytes and admission identity over HTTPS through the built Worker", async () => {
+    const body = "scope=contents%3Aread&scope=issues%3Awrite&subject_token=unchanged%2Bbytes";
+    const response = await server
+      .getWorker("cyspbot-token-proxy")
+      .fetch("https://example.test/token?ignored=1", {
+        method: "POST",
+        body,
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+          "cf-connecting-ip": "192.0.2.17",
+          "x-real-ip": "198.51.100.99",
+          host: "untrusted.example",
+        },
+      });
+    expect(response.status).toBe(429);
+    expect(response.headers.get("x-fixture-real-ip")).toBe("192.0.2.17");
+    expect(response.headers.get("x-fixture-host")).toBe("broker.example");
+    expect(response.headers.get("x-fixture-method")).toBe("POST");
+    expect(response.headers.get("retry-after")).toBe("30");
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("pragma")).toBe("no-cache");
+    await expect(response.text()).resolves.toBe(body);
+    expect(outbound).toHaveBeenCalledTimes(1);
+  });
+
   it("serves the root page from the built entrypoint", async () => {
     const response = await server.fetch("/");
 
@@ -65,6 +95,8 @@ describe("built Workers", () => {
     ["HEAD", "/", 200, null],
     ["POST", "/", 405, "GET, HEAD"],
     ["GET", "/absent", 404, null],
+    ["POST", "/token", 404, null],
+    ["GET", "/token?ignored=1", 404, null],
   ] as const)("handles %s %s at the built entrypoint", async (method, path, status, allow) => {
     const response = await server.fetch(path, { method });
 

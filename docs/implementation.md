@@ -2,8 +2,9 @@
 
 ## Workspace layout
 
-cyspbot is a pnpm workspace with three deployable Cloudflare Workers:
+cyspbot is a pnpm workspace with four deployable Cloudflare Workers:
 
+- `workers/cyspbot-token-proxy` publishes `@cyspbot/token-proxy` and Worker `cyspbot-token-proxy`.
 - `workers/cyspbot` publishes `@cyspbot/cyspbot` and Worker `cyspbot`.
 - `workers/cyspbot-github-webhook-receiver` publishes `@cyspbot/github-webhook-receiver` and Worker `cyspbot-github-webhook-receiver`.
 - `workers/cyspbot-github-webhook-processor` publishes `@cyspbot/github-webhook-processor` and Worker `cyspbot-github-webhook-processor`.
@@ -20,7 +21,7 @@ The root `wrangler.jsonc` points at `test/support/root-test-harness.ts`. It supp
 
 `workers/cyspbot/src/worker.ts` uses a native fetch handler. It returns the minimal HTML bot page for `GET /` and the same status and headers without a body for `HEAD /`. Other methods at `/` receive an empty `405` response with `Allow: GET, HEAD`; other pathnames receive an empty `404`. Query parameters do not change route matching.
 
-In production, this Worker is the Custom Domain origin. More specific Cloudflare Worker Routes execute first and preserve independently deployed product endpoints such as `/github/webhooks`.
+In production, this Worker is the Custom Domain origin. More specific Cloudflare Worker Routes execute first and preserve independently deployed product endpoints such as `/token` and `/github/webhooks`.
 
 ## Webhook Worker flow
 
@@ -47,6 +48,8 @@ The receiver sends only a derived job to the queue, using the same job parser as
 The module follows redirects manually to preserve the reaction POST: [automatic Fetch redirects](https://fetch.spec.whatwg.org/#http-redirect-fetch) can turn a `301` or `302` POST into a GET. Intermediate response bodies are cancelled without awaiting cleanup. The [service contract](service-contract.md#webhook-responses) defines redirect limits, acknowledgement, retries, and diagnostic handling.
 
 ## Runtime bindings
+
+- The Token Endpoint Proxy Worker's `TOKEN_PROXY_ENDPOINT`: non-secret Worker variable containing the canonical broker App endpoint URL.
 
 - `GITHUB_APP_ID`: required non-secret variable used to bind deliveries to the intended GitHub App.
 - `GITHUB_WEBHOOK_SECRET`: required Worker secret or Cloudflare Secrets Store binding.
@@ -100,7 +103,7 @@ values.
 
 Tests live in each owning package or Worker’s `test/` directory alongside `src/`. Worker integration tests and their fixtures live under `test/integration/`; helpers shared by tests within a Worker live under its `test/support/`. The root `test/` contains the shared unit harness, its own test, and integration tests spanning multiple Workers. Tests use local source imports for internal seams and package imports for package interfaces and dependencies. Worker package exports expose only their entrypoints.
 
-The root `vitest.config.ts` selects the unit suite, three Worker integration suites, and the built-Worker integration suite, and owns combined coverage. Production TypeScript checks and the Node-import lint restriction apply to `src/`; the root test TypeScript configuration also covers package-local tests and their helpers. CI retains separate validation workflows.
+The root `vitest.config.ts` selects the unit suite, four Worker integration suites, and the built-Worker integration suite, and owns combined coverage. Production TypeScript checks and the Node-import lint restriction apply to `src/`; the root test TypeScript configuration also covers package-local tests and their helpers. CI retains separate validation workflows.
 
 New commits cancel superseded CI runs for the same pull request. Every main push
 keeps its own CI run so successful checks can trigger the deployment update.
@@ -119,7 +122,7 @@ the separately deployed issuer implementation. The unit project uses
 structural fixtures for validation failures.
 
 The `built-workers-integration` project runs in Node and uses Wrangler's
-`createTestHarness()` to build and run all three Workers with their production
+`createTestHarness()` to build and run all four Workers with their production
 compatibility dates and flags. It checks the root page, bodyless responses for
 HEAD, unsupported methods and unknown paths, and rejection of matching webhooks
 with an invalid signature or installation target. It sends signed Webhook
@@ -149,4 +152,23 @@ fnm exec --using=24 corepack pnpm run check
 fnm exec --using=24 corepack pnpm run test:coverage
 ```
 
-`check` verifies the frozen lockfile, formatting, generated environment types, lint, TypeScript, Knip, unit and integration tests, and all three Workers' Wrangler deploy dry runs.
+`check` verifies the frozen lockfile, formatting, generated environment types, lint, TypeScript, Knip, unit and integration tests, and all four Workers' Wrangler deploy dry runs.
+
+## Token Endpoint forwarding
+
+The dedicated `workers/cyspbot-token-proxy` Worker's `/token` handler streams the
+request with global `fetch` to `TOKEN_PROXY_ENDPOINT` and returns non-3xx responses
+unchanged. Upstream 3xx responses become sanitized, non-cacheable 503 errors;
+their bodies are cancelled without awaiting cleanup. The deployment-owned URL
+must be an HTTPS canonical App path without credentials, query, or fragment.
+It selects the actual network destination. Request input cannot choose an upstream.
+The proxy removes incoming `Host` and sets `x-real-ip` from edge-supplied
+`CF-Connecting-IP` for same-zone admission, removing it when the latter is absent.
+See `SECURITY.md` for cross-zone admission behavior.
+
+The proxy requires no broker Service Binding. The webhook processor retains its
+separate broker binding and endpoint variable. Tests exercise exact forwarding,
+redirect rejection and sanitized transport errors. Workerd integration tests
+intercept outbound HTTPS fetches and check destination, `Host`, `x-real-ip`, and
+body bytes. Miniflare strips `CF-Connecting-IP` on outbound fetch; these tests do
+not establish production edge header behavior.

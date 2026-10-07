@@ -29,3 +29,21 @@ The webhook receiver needs:
 
 - `GITHUB_APP_ID`, a non-secret Worker variable; and
 - `GITHUB_WEBHOOK_SECRET`, supplied by a Worker secret or Cloudflare Secrets Store.
+
+The dedicated Token Endpoint Proxy Worker is trusted with incoming identity tokens
+and outgoing access tokens. It forwards only to a deployment-owned HTTPS canonical
+App path using HTTPS, without caching, retries, or token logging. It rejects all
+upstream 3xx responses without forwarding their headers or bodies, preventing
+those responses from directing clients to replay subject tokens elsewhere.
+The configured URL determines the destination; incoming `Host` is discarded.
+The proxy sets `x-real-ip` from edge-supplied `CF-Connecting-IP` and removes it
+when that identity is absent. Public ingress must replace client-supplied
+`CF-Connecting-IP`; direct Worker callers must be trusted.
+
+For same-zone Worker subrequests, Cloudflare derives `CF-Connecting-IP` from
+`x-real-ip`. For cross-zone subrequests to another Cloudflare zone, Cloudflare
+replaces it with a shared Worker address, so broker admission becomes shared
+across those requests. Cross-account HTTPS works but does not preserve per-client
+admission identity. Do not substitute untrusted `X-Forwarded-For`. See
+[Cloudflare's request-header behavior](https://developers.cloudflare.com/fundamentals/reference/http-headers/#cf-connecting-ip).
+The broker authenticates and authorizes every exchange independently of transport.

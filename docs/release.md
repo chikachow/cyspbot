@@ -12,14 +12,16 @@
 
 ## Documentation and boundaries
 
-- `README.md` describes the root page, webhook receiver, and queue processor.
-- `docs/service-contract.md` matches the implemented root-page and webhook behavior.
+- `README.md` describes the root page, Token Endpoint Proxy, webhook receiver, and queue processor.
+- `docs/service-contract.md` matches the implemented root-page, Token Endpoint forwarding, and webhook behavior.
 - `docs/implementation.md` matches the packages, entrypoint, bindings, tests, and checks.
 - `docs/deployment.md` matches the public-source and deployment-repository boundary.
 - `CONTEXT.md` matches the repository's domain language.
 - The deployment operator can manually redeliver failed GitHub webhooks and replay exhausted queue jobs after resolving the failure.
 - Broker policy covers the processor's intended repositories and `issues:write pull_requests:write` scope.
-- Generated environment types cover all three Workers, while Wrangler configuration defines their bindings, including queue producers and consumers.
+- Generated environment types cover all four Workers, while Wrangler configuration defines their bindings, including queue producers and consumers.
+- Verify `/token` forwarding, the dedicated proxy canonical HTTPS URL,
+  absence of broker configuration on the root Worker, route precedence, and edge admission identity during coordinated cutover.
 
 ## Repository settings
 

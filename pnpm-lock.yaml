@@ -81,6 +81,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/http
 
+  workers/cyspbot-token-proxy: {}
+
 packages:
 
   '@babel/code-frame@7.29.7':

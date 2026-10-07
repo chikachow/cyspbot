@@ -1,3 +1,4 @@
+import { tokenBrokerFixture } from "./workers/cyspbot-token-proxy/test/integration/token-broker.ts";
 import { cloudflareTest } from "@cloudflare/vitest-plugin";
 import { configDefaults, defineConfig } from "vitest/config";
 
@@ -37,6 +38,20 @@ export default defineConfig({
           allowOnly: false,
           include: ["workers/cyspbot/test/integration/**/*.test.ts"],
           name: "cyspbot-integration",
+        },
+      },
+      {
+        plugins: [
+          cloudflareTest({
+            remoteBindings: false,
+            wrangler: { configPath: "./workers/cyspbot-token-proxy/wrangler.jsonc" },
+            miniflare: { outboundService: tokenBrokerFixture },
+          }),
+        ],
+        test: {
+          allowOnly: false,
+          include: ["workers/cyspbot-token-proxy/test/integration/**/*.test.ts"],
+          name: "token-proxy-integration",
         },
       },
       {
