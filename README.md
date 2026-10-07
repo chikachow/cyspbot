@@ -1,12 +1,16 @@
 # cyspbot
 
-cyspbot serves a tiny bot page and receives signed GitHub App webhook deliveries. It validates each delivery for the configured GitHub App, classifies status commands, and queues only the jobs that require processing. It does not retain raw webhook bodies.
+cyspbot serves a tiny bot page, forwards Token Endpoint requests, and receives signed GitHub App webhook deliveries. It validates each delivery for the configured GitHub App, classifies status commands, and queues only the jobs that require processing. It does not retain raw webhook bodies.
 
 ## Public surface
 
 ### `GET /`
 
-The root renders a minimal HTML page identifying cyspbot as a bot. `HEAD /` returns the same status and headers without a body. Other methods at `/` return an empty `405` response with `Allow: GET, HEAD`. The root Worker returns an empty `404` response for every other path that is not carved out by a more specific Worker route.
+The root renders a minimal HTML page identifying cyspbot as a bot. `HEAD /` returns the same status and headers without a body. Other methods at `/` return an empty `405` response with `Allow: GET, HEAD`. The cyspbot Worker also handles `/token`; other paths return an empty `404` unless a more specific Worker route handles them.
+
+### `/token`
+
+The cyspbot Worker forwards exactly `/token` to a deployment-selected canonical broker App endpoint. See the [proxy contract](docs/service-contract.md#token-endpoint-proxy) and [deployment prerequisites](docs/deployment.md#token-endpoint-proxy-prerequisites).
 
 ### `POST /github/webhooks`
 
@@ -21,7 +25,7 @@ Valid deliveries receive `202` after any matching status-reaction job is durably
 
 ## Architecture
 
-- `workers/cyspbot` owns the root-page Worker and its public-safe Wrangler configuration.
+- `workers/cyspbot` owns the root page, Token Endpoint Proxy, and public-safe Wrangler configuration.
 - `workers/cyspbot-github-webhook-receiver` authenticates webhook deliveries, classifies status commands, and produces queue jobs.
 - `workers/cyspbot-github-webhook-processor` consumes queue jobs, obtains a GitHub App Installation Access Token, and adds the status reaction.
 - `packages/http` owns bounded request-body and JSON/problem-details response helpers.
@@ -41,7 +45,7 @@ cp .dev.vars.example .dev.vars
 fnm exec --using=24 corepack pnpm run dev
 ```
 
-Fill in the GitHub App ID and webhook secret in `.dev.vars`. Do not commit that file. This command starts the root and receiver only. The processor, issuer, and broker interactions are exercised with local fixtures by the integration tests.
+Fill in the GitHub App ID and webhook secret in `.dev.vars`. Do not commit that file. This command starts the root and receiver only. Token forwarding, processor, issuer, and broker interactions are exercised with local fixtures by the integration tests.
 
 Run the complete validation suite with:
 
@@ -50,7 +54,7 @@ fnm exec --using=24 corepack pnpm run check
 fnm exec --using=24 corepack pnpm run test:coverage
 ```
 
-The checks cover formatting, generated environment types, lint, type checking, unused-code detection, unit and Workerd integration tests, and Wrangler deployment dry runs for all three Workers.
+See [contribution requirements](CONTRIBUTING.md) for validation and artifact checks.
 
 ## Deployment trigger
 
@@ -67,4 +71,4 @@ After successful CI on `main`, `.github/workflows/run-cyspbot-deploy-update.yml`
 - [Service contract](docs/service-contract.md)
 - [Implementation](docs/implementation.md)
 - [Deployment and service boundaries](docs/deployment.md)
-- [Release checklist](docs/release.md)
+- [Contributing](CONTRIBUTING.md)

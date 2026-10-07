@@ -1,9 +1,15 @@
+import { forwardTokenRequest } from "./token-proxy.ts";
+
 const rootDocument = "<!doctype html><title>cyspbot</title><p>beep, boop. i am a bot.</p>";
 
 export function createCyspbotWorker(): ExportedHandler<CyspbotEnv> {
   return {
-    fetch(request) {
-      if (new URL(request.url).pathname !== "/") {
+    fetch(request, env) {
+      const pathname = new URL(request.url).pathname;
+      if (pathname === "/token") {
+        return forwardTokenRequest(request, env);
+      }
+      if (pathname !== "/") {
         return new Response(null, { status: 404 });
       }
       if (request.method !== "GET" && request.method !== "HEAD") {

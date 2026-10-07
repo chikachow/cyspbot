@@ -10,6 +10,9 @@
     "disallow_eval_during_startup",
     "global_fetch_strictly_public",
   ],
+  "vars": {
+    "TOKEN_PROXY_ENDPOINT": "https://broker.example/github/apps/example-app/token",
+  },
   "observability": {
     "enabled": true,
   },
