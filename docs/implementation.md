@@ -18,9 +18,17 @@ The root `wrangler.jsonc` points at `test/support/root-test-harness.ts`. It supp
 
 ## Root Worker flow
 
-`workers/cyspbot/src/worker.ts` uses a native fetch handler. It returns the minimal HTML bot page for `GET /` and the same status and headers without a body for `HEAD /`. Other methods at `/` receive an empty `405` response with `Allow: GET, HEAD`; other pathnames receive an empty `404`. Query parameters do not change route matching.
+`workers/cyspbot/src/worker.ts` dispatches exactly `/token` to the private
+`src/token-proxy.ts` forwarding module and handles the root page and fallback
+responses directly. Endpoint configuration is read inside forwarding, keeping
+root and fallback handling independent. See the [service contract](service-contract.md#routes)
+for route and response behavior.
 
-In production, this Worker is the Custom Domain origin. More specific Cloudflare Worker Routes execute first and preserve independently deployed product endpoints such as `/github/webhooks`.
+In production, this Worker is the Custom Domain origin for `/` and `/token`.
+The more specific webhook route still selects the independently deployed receiver.
+The root page and forwarding handler share source and deployment ownership, so
+one Worker avoids an extra publication target and token route. They also share
+a credential-bearing runtime; `SECURITY.md` defines that accepted trust boundary.
 
 ## Webhook Worker flow
 
@@ -47,6 +55,8 @@ The receiver sends only a derived job to the queue, using the same job parser as
 The module follows redirects manually to preserve the reaction POST: [automatic Fetch redirects](https://fetch.spec.whatwg.org/#http-redirect-fetch) can turn a `301` or `302` POST into a GET. Intermediate response bodies are cancelled without awaiting cleanup. The [service contract](service-contract.md#webhook-responses) defines redirect limits, acknowledgement, retries, and diagnostic handling.
 
 ## Runtime bindings
+
+- The cyspbot Worker's `TOKEN_PROXY_ENDPOINT`: non-secret Worker variable containing the canonical broker App endpoint URL.
 
 - `GITHUB_APP_ID`: required non-secret variable used to bind deliveries to the intended GitHub App.
 - `GITHUB_WEBHOOK_SECRET`: required Worker secret or Cloudflare Secrets Store binding.
@@ -151,3 +161,14 @@ fnm exec --using=24 corepack pnpm run test:coverage
 ```
 
 `check` verifies the frozen lockfile, formatting, generated environment types, lint, TypeScript, Knip, unit and integration tests, and all three Workers' Wrangler deploy dry runs.
+
+## Token Endpoint forwarding
+
+The private `workers/cyspbot/src/token-proxy.ts` module owns the
+[Token Endpoint forwarding contract](service-contract.md#token-endpoint-proxy)
+using global HTTPS `fetch`. It requires no broker Service Binding. The webhook
+processor retains its separate broker binding and endpoint variable.
+
+Workerd integration tests intercept outbound HTTPS fetches. Miniflare strips
+`CF-Connecting-IP` on outbound fetch; these tests do not establish production
+edge header behavior. See `SECURITY.md` for the deployment trust requirements.

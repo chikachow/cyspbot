@@ -1,10 +1,10 @@
 # Deployment
 
-This repository contains the public source, tests, and public-safe Wrangler templates for the cyspbot root page, GitHub webhook receiver, and GitHub webhook processor. It does not contain production domains, routes, Cloudflare resource identifiers, or secret values.
+This repository contains the public source, tests, and public-safe Wrangler templates for the cyspbot root page, Token Endpoint Proxy, GitHub webhook receiver, and GitHub webhook processor. It does not contain production domains, routes, Cloudflare resource identifiers, or secret values.
 
 ## Deployable Workers
 
-`@cyspbot/cyspbot` deploys Worker `cyspbot` as the fallback origin. Its native fetch handler serves the root bot page for `GET` and standard bodyless `HEAD` requests, rejects other root methods with an empty `405`, and returns empty `404` responses for other paths.
+`@cyspbot/cyspbot` deploys Worker `cyspbot` as the Custom Domain origin for the root page and Token Endpoint Proxy. Its [service contract](service-contract.md#routes) owns request matching and responses.
 
 `@cyspbot/github-webhook-receiver` deploys Worker `cyspbot-github-webhook-receiver` for `POST /github/webhooks`.
 
@@ -14,7 +14,7 @@ The source-owned Worker configurations define their entrypoints, compatibility d
 
 ## Separate deployment pipeline
 
-[`chikachow/cyspbot-deploy`](https://github.com/chikachow/cyspbot-deploy) pins this repository as a submodule and owns production Worker code, bindings, variables, validation, deployment workflows, and smoke probes. [`chikachow/infrastructure`](https://github.com/chikachow/infrastructure) manages the queues, retention, queue consumer, Custom Domain, and routes with Terraform. The specific webhook route executes before the Custom Domain origin Worker. A cyspbot source update must pass its own checks and strict Wrangler dry runs in the deployment repository before deployment.
+[`chikachow/cyspbot-deploy`](https://github.com/chikachow/cyspbot-deploy) pins this repository as a submodule and owns production Worker code, bindings, variables, validation, deployment workflows, and smoke probes. [`chikachow/infrastructure`](https://github.com/chikachow/infrastructure) manages the queues, retention, queue consumer, Custom Domain, and routes with Terraform. The specific webhook route executes before the Custom Domain origin Worker; `/token` is handled by that origin without a separate route. A cyspbot source update must pass its own checks and strict Wrangler dry runs in the deployment repository before deployment.
 
 The source workflow `.github/workflows/run-cyspbot-deploy-update.yml` is responsible for dispatching the deployment repository's source-update workflow after successful `main` CI. It obtains a short-lived GitHub token through `cyspbot-app-token-action`.
 
@@ -74,3 +74,20 @@ fnm exec --using=24 corepack pnpm run deploy:dry-run
 ```
 
 Do not add production credentials, domains, or routes to this repository.
+
+## Token Endpoint Proxy prerequisites
+
+The cyspbot Worker's Token Endpoint Proxy requires a canonical HTTPS Token Endpoint
+variable. Its broker target must be reachable by public HTTPS; a Cloudflare
+[Custom Domain](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/)
+supports fetches from Workers in the same zone. No broker Service Binding is
+required. Same-zone forwarding retains per-client admission; cross-zone
+Cloudflare forwarding shares an admission key (see `SECURITY.md`).
+
+Terraform manages the production Custom Domains and Routes separately from
+Worker publication. The existing cyspbot Custom Domain serves `/token` after
+Terraform removes the former broker route.
+The [broker deployment cutover procedure](https://github.com/chikachow/github-app-token-broker-deploy/blob/main/CUTOVER.md)
+owns coordinated source acceptance, Worker publication, Terraform routing changes,
+queue protection, verification, and rollback. Verify HTTPS reachability, OAuth
+responses, and edge admission behavior as part of that procedure.

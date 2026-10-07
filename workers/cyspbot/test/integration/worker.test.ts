@@ -2,7 +2,7 @@ import { exports } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 
 describe("cyspbot Worker entrypoint", () => {
-  it("serves only the root bot page", async () => {
+  it("preserves root-page and fallback behavior", async () => {
     const rootResponse = await exports.default.fetch("https://cyspbot.chikachow.org/");
 
     expect(rootResponse.status).toBe(200);
