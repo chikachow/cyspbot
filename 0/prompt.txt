@@ -1,0 +1,18 @@
+# AGENTS.md instructions
+
+<INSTRUCTIONS>
+GitHub CLI authentication is macOS Keychain-backed and unavailable inside the
+sandbox. Run authenticated `gh` commands and networked Git commands with
+escalated sandbox permissions on the first attempt. Do not reauthenticate or
+rotate credentials based solely on sandboxed `gh auth status`.
+</INSTRUCTIONS>
+
+---
+
+<environment_context>
+  <cwd>/Users/cysp/src/cyspbot</cwd>
+  <shell>zsh</shell>
+  <current_date>2026-10-11</current_date>
+  <timezone>Australia/Sydney</timezone>
+  <filesystem><workspace_roots><root>/Users/cysp/src/cyspbot</root></workspace_roots><permission_profile type="managed"><file_system type="restricted"><entry access="read"><special>:root</special></entry><entry access="write"><path>/Users/cysp/src/cyspbot</path></entry><entry access="write"><special>:slash_tmp</special></entry><entry access="write"><special>:tmpdir</special></entry><entry access="write"><path>/Users/cysp/.codex/visualizations/2026/10/11/01a128af-a9cf-7593-9095-c823d11df02f</path></entry><entry access="read"><path>/Users/cysp/src/cyspbot/.git</path></entry><entry access="read"><path>/Users/cysp/src/cyspbot/.agents</path></entry><entry access="read"><path>/Users/cysp/src/cyspbot/.codex</path></entry><entry access="read"><path>/Users/cysp/src/cyspbot/.aws</path></entry></file_system></permission_profile></filesystem>
+</environment_context>
