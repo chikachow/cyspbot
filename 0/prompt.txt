@@ -1,0 +1,87 @@
+# AGENTS.md instructions
+
+<INSTRUCTIONS>
+GitHub CLI authentication is macOS Keychain-backed and unavailable inside the
+sandbox. Run authenticated `gh` commands and networked Git commands with
+escalated sandbox permissions on the first attempt. Do not reauthenticate or
+rotate credentials based solely on sandboxed `gh auth status`.
+</INSTRUCTIONS>
+
+---
+
+<environment_context>
+  <cwd>/Users/cysp/src/cyspbot</cwd>
+  <shell>zsh</shell>
+  <current_date>2026-10-11</current_date>
+  <timezone>Australia/Sydney</timezone>
+  <filesystem><workspace_roots><root>/Users/cysp/src/cyspbot</root></workspace_roots><permission_profile type="managed"><file_system type="restricted"><entry access="read"><special>:root</special></entry><entry access="write"><path>/Users/cysp/src/cyspbot</path></entry><entry access="write"><special>:slash_tmp</special></entry><entry access="write"><special>:tmpdir</special></entry><entry access="write"><path>/Users/cysp/.codex/visualizations/2026/10/11/01a128af-a9cf-7593-9095-c823d11df02f</path></entry><entry access="read"><path>/Users/cysp/src/cyspbot/.git</path></entry><entry access="read"><path>/Users/cysp/src/cyspbot/.agents</path></entry><entry access="read"><path>/Users/cysp/src/cyspbot/.codex</path></entry><entry access="read"><path>/Users/cysp/src/cyspbot/.aws</path></entry></file_system></permission_profile></filesystem>
+</environment_context>
+
+---
+
+Agree
+
+---
+
+Agree
+
+---
+
+Q6: can this just be somewhere in Cloudflare? Or if it is best as an email, where is that configured?
+
+---
+
+Q7: agree
+
+---
+
+Great, agree with that and use my email address for alert notifications in Cloudflare
+
+---
+
+What does this manual check mean
+
+---
+
+Yes
+
+---
+
+Look for any simplifications for the job failure detection
+
+---
+
+Which errors become non-retried in this approach
+
+---
+
+Critically assess that downstream policy, considering broad improvements and corrections
+
+---
+
+Agree
+
+---
+
+Agree
+
+---
+
+Proceed
+
+---
+
+Raise a pull request once this work is ready, then spawn an agent to collaboratively conduct a thorough adversarial code, design  and implementation review, then collaborate on addressing its findings and update the pull request holistically
+
+---
+
+Can these queue and notification configurations be applied via terraform? (If these resources were managed in tf)
+
+---
+
+Spawn a thread in chikachow-infrastructure to raise a draft pull request importing and managing the resources appropriate for cyspbot, keeping in mind that that configuration repository is public
+Collaborate with Atlantis-deploy or the fly hosting directly to set up appropriate Cloudflare credentials
+
+---
+
+Rebase semantically to current origin, noting the move towards terraform management of infrastructure resources
