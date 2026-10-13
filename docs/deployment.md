@@ -14,7 +14,7 @@ The source-owned Worker configurations define their entrypoints, compatibility d
 
 ## Separate deployment pipeline
 
-[`chikachow/cyspbot-deploy`](https://github.com/chikachow/cyspbot-deploy) pins this repository as a submodule and owns production Worker code, bindings, variables, validation, deployment workflows, and smoke probes. [`chikachow/infrastructure`](https://github.com/chikachow/infrastructure) manages the queues, retention, queue consumer, Custom Domain, and routes with Terraform. The specific webhook route executes before the Custom Domain origin Worker; `/token` is handled by that origin without a separate route. A cyspbot source update must pass its own checks and strict Wrangler dry runs in the deployment repository before deployment.
+[`chikachow/cyspbot-deploy`](https://github.com/chikachow/cyspbot-deploy) pins this repository as a submodule and owns production Worker code, bindings, variables, validation, deployment workflows, and smoke probes. [`chikachow/infrastructure`](https://github.com/chikachow/infrastructure) manages the queues, retention, queue consumer, Custom Domain, and routes with Terraform. The webhook Route selects the receiver, and the retained Token Endpoint Route selects the cyspbot Worker. A cyspbot source update must pass its own checks and strict Wrangler dry runs in the deployment repository before deployment.
 
 The source workflow `.github/workflows/run-cyspbot-deploy-update.yml` is responsible for dispatching the deployment repository's source-update workflow after successful `main` CI. It obtains a short-lived GitHub token through `cyspbot-app-token-action`.
 
@@ -93,9 +93,7 @@ synthetic remote-binding probes cannot establish edge identity authenticity.
 See `SECURITY.md` for the trust boundary and public-ingress control limitations.
 
 Terraform manages the production Custom Domains and Routes separately from
-Worker publication. Terraform retargets the existing vanity Token Endpoint Route
-to the cyspbot Worker, preserving the Route and its import.
-The [broker deployment cutover procedure](https://github.com/chikachow/github-app-token-broker-deploy/blob/main/CUTOVER.md)
-owns coordinated source acceptance, Worker publication, Terraform routing changes,
-verification, and rollback. Verify binding reachability, canonical and vanity OAuth
-responses, and edge admission behavior as part of that procedure.
+Worker publication. The retained vanity Token Endpoint Route selects the cyspbot
+Worker. The [deployment repository](https://github.com/chikachow/cyspbot-deploy#token-endpoint-verification)
+owns production verification of binding reachability, canonical and vanity OAuth
+responses, edge admission identity, and the webhook-to-reaction flow.
