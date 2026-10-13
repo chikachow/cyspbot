@@ -1,6 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createTestHarness } from "wrangler";
-import { tokenBrokerFixture } from "../../workers/cyspbot/test/integration/token-broker.ts";
 
 import { githubWebhookProcessorOutboundService } from "../../workers/cyspbot-github-webhook-processor/test/integration/outbound.ts";
 import {
@@ -35,9 +34,7 @@ describe("built Workers", () => {
   });
   const outbound = vi.fn<typeof fetch>(async (input, init) => {
     const request = new Request(input, init);
-    return request.url === "https://broker.example/github/apps/example-app/token"
-      ? tokenBrokerFixture(request)
-      : githubWebhookProcessorOutboundService(request);
+    return githubWebhookProcessorOutboundService(request);
   });
 
   beforeAll(async () => {
@@ -58,7 +55,7 @@ describe("built Workers", () => {
     }
   });
 
-  it("forwards token bytes and admission identity over HTTPS through the built Worker", async () => {
+  it("forwards token bytes and admission identity through the built Worker and broker Service Binding", async () => {
     const body = "scope=contents%3Aread&scope=issues%3Awrite&subject_token=unchanged%2Bbytes";
     const response = await server
       .getWorker("cyspbot")
@@ -73,14 +70,15 @@ describe("built Workers", () => {
         },
       });
     expect(response.status).toBe(429);
+    expect(response.headers.get("x-fixture-client-ip")).toBe("192.0.2.17");
     expect(response.headers.get("x-fixture-real-ip")).toBe("192.0.2.17");
-    expect(response.headers.get("x-fixture-host")).toBe("broker.example");
+    expect(response.headers.get("x-fixture-host")).toBe("missing");
     expect(response.headers.get("x-fixture-method")).toBe("POST");
     expect(response.headers.get("retry-after")).toBe("30");
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(response.headers.get("pragma")).toBe("no-cache");
     await expect(response.text()).resolves.toBe(body);
-    expect(outbound).toHaveBeenCalledTimes(1);
+    expect(outbound).not.toHaveBeenCalled();
   });
 
   it("rejects broker redirects through the built root entrypoint", async () => {
@@ -93,7 +91,7 @@ describe("built Workers", () => {
     expect(response.headers.has("location")).toBe(false);
     expect(response.headers.get("cache-control")).toBe("no-store");
     await expect(response.json()).resolves.toEqual({ error: "temporarily_unavailable" });
-    expect(outbound).toHaveBeenCalledTimes(1);
+    expect(outbound).not.toHaveBeenCalled();
   });
 
   it("serves the root page from the built entrypoint", async () => {

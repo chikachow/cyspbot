@@ -50,5 +50,6 @@ A short-lived GitHub App token returned by the broker's Token Endpoint for one c
 
 **Token Endpoint Proxy**:
 The cyspbot Worker's `/token` forwarding handler. It transports identity tokens and
-access tokens over HTTPS between clients and the deployment-selected broker App. It has no
+access tokens between clients and the deployment-selected broker App through an HTTP
+Service Binding to the broker Worker and a canonical HTTPS App URL. It has no
 authorization policy of its own; the broker remains the OAuth Authorization Server.

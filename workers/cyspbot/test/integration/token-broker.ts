@@ -16,6 +16,7 @@ export async function tokenBrokerFixture(request: Request): Promise<Response> {
       pragma: "no-cache",
       "retry-after": "30",
       "x-fixture-method": request.method,
+      "x-fixture-client-ip": request.headers.get("cf-connecting-ip") ?? "missing",
       "x-fixture-real-ip": request.headers.get("x-real-ip") ?? "missing",
       "x-fixture-host": request.headers.get("host") ?? "missing",
     },
