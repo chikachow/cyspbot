@@ -1,11 +1,13 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import cyspbotWorker from "../src/index.ts";
 
 const endpoint = "https://broker.example/github/apps/example-app/token";
 
 function invoke(request: Request, fixture: { fetch: unknown; TOKEN_PROXY_ENDPOINT?: unknown }) {
-  vi.stubGlobal("fetch", fixture.fetch);
-  const env = { TOKEN_PROXY_ENDPOINT: fixture.TOKEN_PROXY_ENDPOINT };
+  const env = {
+    TOKEN_PROXY_ENDPOINT: fixture.TOKEN_PROXY_ENDPOINT,
+    GITHUB_APP_TOKEN_BROKER: { fetch: fixture.fetch },
+  };
   const handler = cyspbotWorker.fetch!;
   return handler(
     request as Parameters<typeof handler>[0],
@@ -15,7 +17,47 @@ function invoke(request: Request, fixture: { fetch: unknown; TOKEN_PROXY_ENDPOIN
 }
 
 describe("Token Endpoint proxy", () => {
-  afterEach(() => vi.unstubAllGlobals());
+  const globalFetch = vi.fn();
+  beforeEach(() => {
+    vi.stubGlobal("fetch", globalFetch);
+  });
+  afterEach(() => {
+    expect(globalFetch).not.toHaveBeenCalled();
+    globalFetch.mockClear();
+    vi.unstubAllGlobals();
+  });
+
+  it.each([undefined, {}, { fetch: "invalid" }])(
+    "isolates missing or broken binding %s from root and fallback without public-fetch fallback",
+    async (GITHUB_APP_TOKEN_BROKER) => {
+      const handler = cyspbotWorker.fetch!;
+      const env: unknown = { TOKEN_PROXY_ENDPOINT: endpoint, GITHUB_APP_TOKEN_BROKER };
+      for (const [path, method, status] of [
+        ["/", "GET", 200],
+        ["/", "HEAD", 200],
+        ["/", "POST", 405],
+        ["/token/", "POST", 404],
+        ["/absent", "GET", 404],
+        ["/token", "POST", 503],
+      ] as const) {
+        const response = await handler(
+          new Request(`https://vanity.example${path}`, { method }) as Parameters<typeof handler>[0],
+          env as CyspbotEnv,
+          {} as ExecutionContext,
+        );
+        expect(response.status).toBe(status);
+        if (path === "/token") {
+          expect(response.headers.get("cache-control")).toBe("no-store");
+          expect(response.headers.get("pragma")).toBe("no-cache");
+          await expect(response.json()).resolves.toEqual({ error: "temporarily_unavailable" });
+        } else if (method === "GET" && path === "/") {
+          await expect(response.text()).resolves.toContain("beep, boop");
+        } else {
+          await expect(response.text()).resolves.toBe("");
+        }
+      }
+    },
+  );
   it.each([200, 400, 401, 429, 503])(
     "preserves broker status %i, headers and bytes",
     async (status) => {

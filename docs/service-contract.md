@@ -141,20 +141,23 @@ Processor failures log the queue message ID, delivery ID (at most 128 characters
 ## Token Endpoint proxy
 
 The cyspbot Worker forwards exactly `/token` to the deployment-owned canonical
-`/github/apps/{app_slug}/token` URL over HTTPS.
+`/github/apps/{app_slug}/token` HTTPS URL through the required
+`GITHUB_APP_TOKEN_BROKER` HTTP Service Binding.
 It preserves the method and request bytes. The configured URL determines the
-upstream destination; incoming query parameters cannot change it. Incoming `Host`
-is discarded so the runtime uses the destination hostname. The proxy sets
+App path; the Service Binding selects the broker Worker. Both are deployment-owned,
+and incoming query parameters cannot change them. Incoming `Host` is discarded. The proxy sets
 `x-real-ip` from edge-supplied `CF-Connecting-IP`, or removes it if that header is
 absent; other headers are forwarded subject to Cloudflare's subrequest behavior.
-Same-zone forwarding preserves the client admission identity; cross-zone
-Cloudflare forwarding uses a shared Worker address as described in `SECURITY.md`.
+The incoming `CF-Connecting-IP` is retained. The broker uses it for admission,
+not token authorization, and retains its shared `unknown` bucket when it is
+absent. Public ingress must establish trustworthy identity; Service Binding
+callers can supply these headers, as described in `SECURITY.md`.
 It returns non-3xx broker response status, headers, and bytes unchanged,
 including OAuth failures and admission responses. It does not cache responses,
-follow or forward redirects, parse tokens, or retry requests. The broker owns request limits,
+follow or forward redirects, parse tokens, retry requests, or fall back to public fetch. The broker owns request limits,
 OIDC verification, policy, GitHub I/O deadlines, and issuance observations.
-Endpoint configuration is validated only for `/token`; missing or invalid configuration does not affect the root page or unmatched paths, which make no outbound requests.
-Every upstream 3xx response, invalid endpoint configuration, or HTTPS transport failure
+Endpoint configuration and the binding are used only for `/token`; missing or invalid configuration does not affect the root page or unmatched paths, which make no outbound requests.
+Every upstream 3xx response, invalid endpoint configuration, missing or unusable binding, or binding transport failure
 before an upstream response is received returns `503` with
 `{"error":"temporarily_unavailable"}`, `Cache-Control: no-store`, and
 `Pragma: no-cache`; upstream redirect headers and bodies are discarded. `/token/` and other path variants remain unknown routes.

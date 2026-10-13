@@ -56,7 +56,8 @@ The module follows redirects manually to preserve the reaction POST: [automatic 
 
 ## Runtime bindings
 
-- The cyspbot Worker's `TOKEN_PROXY_ENDPOINT`: non-secret Worker variable containing the canonical broker App endpoint URL.
+- The cyspbot Worker's `TOKEN_PROXY_ENDPOINT`: non-secret Worker variable containing the canonical HTTPS broker App endpoint URL.
+- The cyspbot Worker's `GITHUB_APP_TOKEN_BROKER`: required HTTP Service Binding to the broker's default handler. The binding selects the service; the endpoint URL selects the App path.
 
 - `GITHUB_APP_ID`: required non-secret variable used to bind deliveries to the intended GitHub App.
 - `GITHUB_WEBHOOK_SECRET`: required Worker secret or Cloudflare Secrets Store binding.
@@ -166,9 +167,13 @@ fnm exec --using=24 corepack pnpm run test:coverage
 
 The private `workers/cyspbot/src/token-proxy.ts` module owns the
 [Token Endpoint forwarding contract](service-contract.md#token-endpoint-proxy)
-using global HTTPS `fetch`. It requires no broker Service Binding. The webhook
+using `env.GITHUB_APP_TOKEN_BROKER.fetch` with a fixed canonical HTTPS URL and
+manual redirect handling. It never falls back to global fetch. The webhook
 processor retains its separate broker binding and endpoint variable.
 
-Workerd integration tests intercept outbound HTTPS fetches. Miniflare strips
-`CF-Connecting-IP` on outbound fetch; these tests do not establish production
-edge header behavior. See `SECURITY.md` for the deployment trust requirements.
+Workerd integration tests exercise the HTTP Service Binding, and built-Worker
+tests route requests to a local broker Worker fixture while rejecting public
+fetches. They check canonical App selection, request bytes, preserved admission
+headers, and redirect rejection. They establish transport behavior, not the
+origin or authenticity of an edge identity. Production ingress and spoofing
+checks remain required; see `SECURITY.md` for the deployment trust requirements.

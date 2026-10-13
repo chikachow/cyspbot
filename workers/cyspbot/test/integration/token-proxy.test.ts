@@ -2,7 +2,7 @@ import { exports } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 
 describe("Token Endpoint Proxy entrypoint", () => {
-  it("forwards over HTTPS to the configured broker endpoint", async () => {
+  it("forwards through the broker Service Binding to the configured broker endpoint", async () => {
     const body = "subject_token=unchanged%2Bbytes";
     const response = await exports.default.fetch("https://vanity.example/token?ignored=1", {
       method: "POST",
@@ -14,6 +14,7 @@ describe("Token Endpoint Proxy entrypoint", () => {
       },
     });
     expect(response.status).toBe(429);
+    expect(response.headers.get("x-fixture-client-ip")).toBe("192.0.2.17");
     expect(response.headers.get("x-fixture-real-ip")).toBe("192.0.2.17");
     expect(response.headers.get("x-fixture-host")).toBe("broker.example");
     expect(response.headers.get("x-fixture-method")).toBe("POST");
@@ -21,7 +22,18 @@ describe("Token Endpoint Proxy entrypoint", () => {
     await expect(response.text()).resolves.toBe(body);
   });
 
-  it("rejects a redirect returned over HTTPS", async () => {
+  it("does not substitute an untrusted header for missing edge identity", async () => {
+    const response = await exports.default.fetch("https://vanity.example/token", {
+      method: "POST",
+      headers: { "x-real-ip": "198.51.100.99", "x-forwarded-for": "198.51.100.99" },
+    });
+    expect(response.status).toBe(429);
+    expect(response.headers.get("x-fixture-client-ip")).toBe("missing");
+    expect(response.headers.get("x-fixture-real-ip")).toBe("missing");
+    await response.body?.cancel();
+  });
+
+  it("rejects a redirect returned through the broker Service Binding", async () => {
     const response = await exports.default.fetch("https://vanity.example/token", {
       method: "POST",
       body: "subject_token=unchanged",

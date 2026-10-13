@@ -32,7 +32,7 @@ export default defineConfig({
             wrangler: {
               configPath: "./workers/cyspbot/wrangler.jsonc",
             },
-            miniflare: { outboundService: tokenBrokerFixture },
+            miniflare: { serviceBindings: { GITHUB_APP_TOKEN_BROKER: tokenBrokerFixture } },
           }),
         ],
         test: {

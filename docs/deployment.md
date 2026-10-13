@@ -10,7 +10,7 @@ This repository contains the public source, tests, and public-safe Wrangler temp
 
 `@cyspbot/github-webhook-processor` deploys Worker `cyspbot-github-webhook-processor` as the consumer for the status-reaction job queue.
 
-The source-owned Worker configurations define their entrypoints, compatibility dates and flags, required binding names, safe local/dry-run service targets, and safe local values for the processor's token-client variables. Production deployment configuration replaces those targets and supplies the deployment-owned values for the processor's token-client variables and issuer properties.
+The source-owned Worker configurations define their entrypoints, compatibility dates and flags, required binding names, safe local/dry-run service targets, and safe local values for the root proxy and processor's token-client variables. Production deployment configuration replaces those targets and supplies the deployment-owned endpoint values, audience, and issuer properties.
 
 ## Separate deployment pipeline
 
@@ -18,9 +18,9 @@ The source-owned Worker configurations define their entrypoints, compatibility d
 
 The source workflow `.github/workflows/run-cyspbot-deploy-update.yml` is responsible for dispatching the deployment repository's source-update workflow after successful `main` CI. It obtains a short-lived GitHub token through `cyspbot-app-token-action`.
 
-The production deployment configuration retains the receiver's queue producer
-binding and the processor's WorkloadIdentityIssuer RPC and broker Service
-Bindings. Terraform owns the processor's queue consumer attachment and its
+The production deployment configuration retains the root Worker's broker HTTP
+Service Binding, the receiver's queue producer binding, and the processor's
+WorkloadIdentityIssuer RPC and broker Service Bindings. Terraform owns the processor's queue consumer attachment and its
 retry and dead-letter settings. The source Wrangler consumer declaration is
 for local tests and dry runs; production overlays omit consumers and routes.
 The deployment configuration supplies the logical Workload Identity Token
@@ -78,16 +78,24 @@ Do not add production credentials, domains, or routes to this repository.
 ## Token Endpoint Proxy prerequisites
 
 The cyspbot Worker's Token Endpoint Proxy requires a canonical HTTPS Token Endpoint
-variable. Its broker target must be reachable by public HTTPS; a Cloudflare
-[Custom Domain](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/)
-supports fetches from Workers in the same zone. No broker Service Binding is
-required. Same-zone forwarding retains per-client admission; cross-zone
-Cloudflare forwarding shares an admission key (see `SECURITY.md`).
+variable and a `GITHUB_APP_TOKEN_BROKER` HTTP Service Binding to the broker's
+default handler. The binding selects the Worker; the URL selects its App path.
+Deploy source and binding configuration together. An arbitrary public HTTPS
+broker target is not supported by this proxy transport, and there is no public
+fetch fallback. The broker's public canonical endpoint remains available to
+its direct clients. Do not add an issuer binding or a named RPC entrypoint to
+the root Worker for forwarding.
+
+Verify the complete public ingress path preserves the original client's
+`CF-Connecting-IP` and replaces spoofed client identity headers. The broker owns
+admission with a shared `unknown` bucket for missing identity. Local fixtures and
+synthetic remote-binding probes cannot establish edge identity authenticity.
+See `SECURITY.md` for the trust boundary and public-ingress control limitations.
 
 Terraform manages the production Custom Domains and Routes separately from
 Worker publication. Terraform retargets the existing vanity Token Endpoint Route
 to the cyspbot Worker, preserving the Route and its import.
 The [broker deployment cutover procedure](https://github.com/chikachow/github-app-token-broker-deploy/blob/main/CUTOVER.md)
 owns coordinated source acceptance, Worker publication, Terraform routing changes,
-verification, and rollback. Verify HTTPS reachability, OAuth
+verification, and rollback. Verify binding reachability, canonical and vanity OAuth
 responses, and edge admission behavior as part of that procedure.

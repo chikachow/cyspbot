@@ -33,19 +33,36 @@ The webhook receiver needs:
 The cyspbot Worker serves both the root page and the Token Endpoint Proxy, so
 its runtime is trusted with incoming identity tokens and outgoing access tokens.
 Keep forwarding isolated from root-page handling; configuration failures affect
-only `/token`. It forwards only to a deployment-owned HTTPS canonical
-App path using HTTPS, without caching, retries, or token logging. It rejects all
-upstream 3xx responses without forwarding their headers or bodies, preventing
-those responses from directing clients to replay subject tokens elsewhere.
-The configured URL determines the destination; incoming `Host` is discarded.
-The proxy sets `x-real-ip` from edge-supplied `CF-Connecting-IP` and removes it
-when that identity is absent. Public ingress must replace client-supplied
-`CF-Connecting-IP`; direct Worker callers must be trusted.
+only `/token`. It forwards only to a deployment-owned canonical HTTPS
+App URL through the required `GITHUB_APP_TOKEN_BROKER` HTTP Service Binding,
+without caching, retries, public-fetch fallback, or token logging. The binding
+selects the broker Worker; the configured URL selects its App path. Both are
+trusted deployment configuration. This binding targets the default HTTP handler,
+not the GitHub App Information RPC or Workload Identity issuer. It does not grant
+access to signing keys, the ability to mint workload assertions, or token issuance
+authority. The broker authenticates the supplied subject token and applies its
+App-specific Token Issuance Policy independently of transport.
 
-For same-zone Worker subrequests, Cloudflare derives `CF-Connecting-IP` from
-`x-real-ip`. For cross-zone subrequests to another Cloudflare zone, Cloudflare
-replaces it with a shared Worker address, so broker admission becomes shared
-across those requests. Cross-account HTTPS works but does not preserve per-client
-admission identity. Do not substitute untrusted `X-Forwarded-For`. See
-[Cloudflare's request-header behavior](https://developers.cloudflare.com/fundamentals/reference/http-headers/#cf-connecting-ip).
-The broker authenticates and authorizes every exchange independently of transport.
+The proxy rejects all upstream 3xx responses without forwarding their headers or
+bodies, preventing those responses from directing clients to replay subject tokens
+elsewhere. Incoming `Host` is discarded and incoming query parameters cannot
+change the configured URL. The proxy preserves `CF-Connecting-IP`, sets
+`x-real-ip` from it, and removes `x-real-ip` when that identity is absent. Public
+ingress must replace client-supplied `CF-Connecting-IP`; direct Worker and Service
+Binding callers must be trusted. Do not substitute untrusted `X-Forwarded-For`.
+
+The broker uses `CF-Connecting-IP` only for admission rate limiting, with a shared
+`unknown` key when absent. A trusted binding caller can supply this header; the
+binding does not authenticate it as an original client address. A compromised
+caller can manipulate admission keys, but still needs a valid subject token and
+an authorized request to obtain a token. The service-wide binding is not scoped
+to one App; fixed App selection is enforced by the proxy code. The root runtime
+already handles incoming assertions and outgoing tokens and must be trusted with
+both.
+
+Service Binding calls reach the Worker directly, so public-host routing and edge
+controls must not be assumed to protect that hop. The broker's own admission,
+OIDC authentication, and Token Issuance Policy remain mandatory. Local fixtures
+and synthetic remote-binding probes establish header transport only. Production
+verification must check the complete public ingress path and resistance to
+client-supplied identity headers before claiming per-client admission behavior.
