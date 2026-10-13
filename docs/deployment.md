@@ -85,9 +85,9 @@ required. Same-zone forwarding retains per-client admission; cross-zone
 Cloudflare forwarding shares an admission key (see `SECURITY.md`).
 
 Terraform manages the production Custom Domains and Routes separately from
-Worker publication. The existing cyspbot Custom Domain serves `/token` after
-Terraform removes the former broker route.
+Worker publication. Terraform retargets the existing vanity Token Endpoint Route
+to the cyspbot Worker, preserving the Route and its import.
 The [broker deployment cutover procedure](https://github.com/chikachow/github-app-token-broker-deploy/blob/main/CUTOVER.md)
 owns coordinated source acceptance, Worker publication, Terraform routing changes,
-queue protection, verification, and rollback. Verify HTTPS reachability, OAuth
+verification, and rollback. Verify HTTPS reachability, OAuth
 responses, and edge admission behavior as part of that procedure.
