@@ -41,37 +41,20 @@ export function createGitHubWebhookProcessorWorker(
             messageId: message.id,
             queue: batch.queue,
           };
-          if (shouldRetry(error)) {
-            console.warn("github_webhook_job_retrying", fields);
-            if (error instanceof GitHubReactionError) {
-              message.retry({
-                delaySeconds:
-                  error.retryDelaySeconds ??
-                  Math.min(86_400, 60 * 2 ** Math.max(0, message.attempts - 1)),
-              });
-            } else {
-              message.retry();
-            }
+          console.warn("github_webhook_job_retrying", fields);
+          if (error instanceof GitHubReactionError) {
+            message.retry({
+              delaySeconds:
+                error.retryDelaySeconds ??
+                Math.min(86_400, 60 * 2 ** Math.max(0, message.attempts - 1)),
+            });
           } else {
-            console.error("github_webhook_job_failed", fields);
-            message.ack();
+            message.retry();
           }
         }
       }
     },
   };
-}
-
-function shouldRetry(error: unknown): boolean {
-  if (error instanceof GitHubReactionError) {
-    return error.retryable;
-  }
-
-  if (error instanceof GitHubAppTokenBrokerError) {
-    return error.status === 429 || error.status >= 500;
-  }
-
-  return true;
 }
 
 function errorLogFields(error: unknown): Record<string, unknown> {
