@@ -90,27 +90,29 @@ with an unparseable `Location` URL or a chain requiring more than three permitte
 redirects retries through the queue. Diagnostics record `redirectFailure` as
 `invalid_location` or `too_many_redirects`; the `Location` header is not logged.
 Missing `Location`, unsupported redirect statuses, and disallowed destinations
-are permanent failures.
+stop the request without following the redirect; the job retries through the queue.
 Cancellation of unused response bodies is best effort and does not
-delay acknowledgement or cause a retry. Network failures, `429`, `5xx`, and rate-limited `403` responses retry;
-other failures are acknowledged. The queue uses one-message batches, five
+delay acknowledgement or cause a retry. Every failure while processing a valid
+job retries, including issuer failures, broker denials or malformed responses,
+GitHub HTTP errors, and network failures. Only GitHub `200` and `201` complete
+a valid job. Invalid queue jobs are acknowledged and rejected before requesting
+credentials. The queue uses one-message batches, five
 retries, a 60-second default retry delay, and the
 `cyspbot-github-webhook-jobs-dlq` dead-letter queue. GitHub HTTP error responses honor numeric
 `Retry-After` and exhausted primary-quota `X-RateLimit-Reset` headers, using
 the longer wait with a 60-second minimum and Cloudflare's 24-hour maximum.
 Without a valid hint, GitHub HTTP error responses use exponential backoff starting at
-60 seconds, capped at 24 hours. Secondary-limit messages on `403` are
-retryable even when primary quota remains. Transport failures and other transient
-issuer or broker failures use the queue's 60-second default.
+60 seconds, capped at 24 hours. Transport, issuer, and broker failures use the
+queue's 60-second default. Cloudflare transfers jobs that exhaust the retry
+budget to the dead-letter queue for operator recovery; the processor does not
+acknowledge failed valid jobs or infer exhaustion from their attempt count.
 
 GitHub error-body diagnostics have a one-second total read budget and a 16 KiB
 size limit. On timeout the processor cancels the unfinished read, retains status
 and header diagnostics, and logs `bodyReadTimedOut: true`. Stream failures and
 size-limit failures retain header diagnostics and log `bodyReadFailed: true`.
-These incomplete `403` bodies are retryable because their secondary-rate-limit
-classification is inconclusive. Fully received empty or malformed bodies retain
-the normal status/header policy.
-Other statuses retain their normal acknowledgement or retry policy.
+Error-body contents and read failures affect diagnostics, not whether the job
+retries. Available response headers still determine the retry delay.
 
 Rejections use RFC 9457-style problem-details JSON with `type`, `title`, and `status` fields:
 

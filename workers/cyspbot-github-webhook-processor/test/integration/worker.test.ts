@@ -11,6 +11,10 @@ describe("GitHub webhook processor Worker entrypoint", () => {
     [45, "created after a repository redirect", false],
     [46, "given an unparseable redirect", true],
     [47, "stuck in a redirect loop", true],
+    [48, "unauthorized", true],
+    [49, "not found", true],
+    [50, "unprocessable", true],
+    [51, "accepted without a completed reaction", true],
   ] as const)(
     "observes queue completion when reaction %s is %s",
     async (commentId, _name, retry) => {

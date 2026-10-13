@@ -18,7 +18,7 @@ const job: GitHubIssueCommentStatusReactionJob = {
 
 describe("cyspbot-github-webhook-processor", () => {
   it("defaults GitHub reaction error diagnostics to an empty object", () => {
-    expect(new GitHubReactionError(403, false).diagnostics).toEqual({});
+    expect(new GitHubReactionError(403).diagnostics).toEqual({});
   });
 
   it("requests comment-write permissions and adds an eyes reaction", async () => {
@@ -145,8 +145,8 @@ describe("cyspbot-github-webhook-processor", () => {
         );
         expect(fetch).toHaveBeenCalledTimes(redirects + 1);
         expect(fetch.mock.calls[0]?.[1]).toMatchObject({ redirect: "manual" });
-        expect(message.ack).toHaveBeenCalledOnce();
-        expect(message.retry).not.toHaveBeenCalled();
+        expect(message.ack).not.toHaveBeenCalled();
+        expect(message.retry).toHaveBeenCalledExactlyOnceWith({ delaySeconds: 60 });
       },
     );
   });
@@ -293,11 +293,11 @@ describe("cyspbot-github-webhook-processor", () => {
   it.each([
     [503, { "retry-after": "120" }, 120],
     [403, {}, 60],
-    [400, {}, undefined],
+    [400, {}, 60],
+    [422, { "retry-after": "600" }, 600],
   ] as const)("bounds stalled GitHub %s diagnostics", async (status, headers, delaySeconds) => {
     vi.useFakeTimers();
     const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const reading = Promise.withResolvers<void>();
     const cancel = vi.fn(() => new Promise<void>(() => undefined));
     let bodyController: ReadableStreamDefaultController<Uint8Array> | undefined;
@@ -335,16 +335,11 @@ describe("cyspbot-github-webhook-processor", () => {
       await vi.advanceTimersByTimeAsync(1);
 
       expect(cancel).toHaveBeenCalledOnce();
-      if (delaySeconds === undefined) {
-        expect(message.ack).toHaveBeenCalledOnce();
-        expect(message.retry).not.toHaveBeenCalled();
-      } else {
-        expect(message.retry).toHaveBeenCalledExactlyOnceWith({ delaySeconds });
-        expect(message.ack).not.toHaveBeenCalled();
-      }
-      expect([...consoleWarn.mock.calls, ...consoleError.mock.calls]).toEqual([
+      expect(message.retry).toHaveBeenCalledExactlyOnceWith({ delaySeconds });
+      expect(message.ack).not.toHaveBeenCalled();
+      expect(consoleWarn.mock.calls).toEqual([
         [
-          expect.any(String),
+          "github_webhook_job_retrying",
           expect.objectContaining({
             github: expect.objectContaining({ bodyReadTimedOut: true, requestId: "STALLED" }),
             status,
@@ -358,27 +353,48 @@ describe("cyspbot-github-webhook-processor", () => {
       if (cancel.mock.calls.length === 0) bodyController?.close();
       await processing;
       consoleWarn.mockRestore();
-      consoleError.mockRestore();
       vi.useRealTimers();
     }
   });
 
-  it("acknowledges permanent broker failures", async () => {
-    const worker = createGitHubWebhookProcessorWorker({
-      fetch: async () => new Response(null, { status: 201 }),
-    });
-    const message = createMessage(job);
+  it.each([301, 400, 401, 403, 404, 408, 422, 429, 500, 503])(
+    "retries broker %s without calling GitHub",
+    async (brokerStatus) => {
+      const fetch = vi.fn<GitHubReactionDependencies["fetch"]>();
+      const message = createMessage(job);
+      await invokeQueue(
+        createGitHubWebhookProcessorWorker({ fetch }),
+        [message],
+        createTokenExchangeEnvironment({ brokerStatus }),
+      );
+      expect(message.ack).not.toHaveBeenCalled();
+      expect(message.retry).toHaveBeenCalledExactlyOnceWith();
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
 
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    try {
-      await invokeQueue(worker, [message], createTokenExchangeEnvironment({ brokerStatus: 400 }));
-    } finally {
-      consoleError.mockRestore();
-    }
-
-    expect(message.ack).toHaveBeenCalledOnce();
-    expect(message.retry).not.toHaveBeenCalled();
-  });
+  it.each([
+    ["HTML", 404, "<html>Not found</html>"],
+    ["malformed JSON", 404, "{"],
+    ["missing error code", 404, "{}"],
+    ["empty body", 404, ""],
+    ["oversized body", 404, "x".repeat(64 * 1024 + 1)],
+    ["invalid success", 200, "{}"],
+  ] as const)(
+    "retries a broker %s response without calling GitHub",
+    async (_name, brokerStatus, brokerBody) => {
+      const fetch = vi.fn<GitHubReactionDependencies["fetch"]>();
+      const message = createMessage(job);
+      await invokeQueue(
+        createGitHubWebhookProcessorWorker({ fetch }),
+        [message],
+        createTokenExchangeEnvironment({ brokerStatus, brokerBody }),
+      );
+      expect(message.ack).not.toHaveBeenCalled();
+      expect(message.retry).toHaveBeenCalledExactlyOnceWith();
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
 
   it("retries unexpected token-exchange failures", async () => {
     const worker = createGitHubWebhookProcessorWorker({
@@ -407,24 +423,25 @@ describe("cyspbot-github-webhook-processor", () => {
     expect(message.ack).not.toHaveBeenCalled();
   });
 
-  it("acknowledges a non-rate-limited forbidden response", async () => {
-    const worker = createGitHubWebhookProcessorWorker({
-      fetch: async () => new Response(null, { status: 403 }),
-    });
-    const message = createMessage(job);
+  it.each([202, 204, 400, 401, 403, 404, 422])(
+    "retries unsuccessful GitHub %s responses with backoff",
+    async (status) => {
+      const fetch = vi.fn<GitHubReactionDependencies["fetch"]>(
+        async () => new Response(null, { status }),
+      );
+      const message = { ...createMessage(job), attempts: 3 };
+      await invokeQueue(
+        createGitHubWebhookProcessorWorker({ fetch }),
+        [message],
+        createTokenExchangeEnvironment(),
+      );
+      expect(message.ack).not.toHaveBeenCalled();
+      expect(message.retry).toHaveBeenCalledExactlyOnceWith({ delaySeconds: 240 });
+      expect(fetch).toHaveBeenCalledOnce();
+    },
+  );
 
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    try {
-      await invokeQueue(worker, [message], createTokenExchangeEnvironment());
-    } finally {
-      consoleError.mockRestore();
-    }
-
-    expect(message.ack).toHaveBeenCalledOnce();
-    expect(message.retry).not.toHaveBeenCalled();
-  });
-
-  it("logs bounded GitHub response details for a permanent failure", async () => {
+  it("logs bounded GitHub response details while retrying", async () => {
     const worker = createGitHubWebhookProcessorWorker({
       fetch: async () =>
         new Response(
@@ -447,12 +464,12 @@ describe("cyspbot-github-webhook-processor", () => {
     });
     const message = createMessage(job);
 
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     try {
       await invokeQueue(worker, [message], createTokenExchangeEnvironment());
 
-      expect(consoleError).toHaveBeenCalledWith(
-        "github_webhook_job_failed",
+      expect(consoleWarn).toHaveBeenCalledWith(
+        "github_webhook_job_retrying",
         expect.objectContaining({
           github: {
             acceptedPermissions: "issues=write",
@@ -464,13 +481,13 @@ describe("cyspbot-github-webhook-processor", () => {
           },
         }),
       );
-      expect(JSON.stringify(consoleError.mock.calls)).not.toContain("do not log this");
+      expect(JSON.stringify(consoleWarn.mock.calls)).not.toContain("do not log this");
     } finally {
-      consoleError.mockRestore();
+      consoleWarn.mockRestore();
     }
 
-    expect(message.ack).toHaveBeenCalledOnce();
-    expect(message.retry).not.toHaveBeenCalled();
+    expect(message.ack).not.toHaveBeenCalled();
+    expect(message.retry).toHaveBeenCalledExactlyOnceWith({ delaySeconds: 60 });
   });
 
   it("retries a forbidden response when its body exceeds the limit", async () => {
@@ -510,18 +527,18 @@ describe("cyspbot-github-webhook-processor", () => {
     });
     const message = createMessage(job);
 
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     try {
       await invokeQueue(worker, [message], createTokenExchangeEnvironment());
 
-      expect(consoleError).toHaveBeenCalledWith(
-        "github_webhook_job_failed",
+      expect(consoleWarn).toHaveBeenCalledWith(
+        "github_webhook_job_retrying",
         expect.objectContaining({
           github: { requestId: "NON_OBJECT" },
         }),
       );
     } finally {
-      consoleError.mockRestore();
+      consoleWarn.mockRestore();
     }
   });
 
@@ -535,18 +552,18 @@ describe("cyspbot-github-webhook-processor", () => {
     });
     const message = createMessage(job);
 
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     try {
       await invokeQueue(worker, [message], createTokenExchangeEnvironment());
 
-      expect(consoleError).toHaveBeenCalledWith(
-        "github_webhook_job_failed",
+      expect(consoleWarn).toHaveBeenCalledWith(
+        "github_webhook_job_retrying",
         expect.objectContaining({
           github: { requestId: "EMPTY_OBJECT" },
         }),
       );
     } finally {
-      consoleError.mockRestore();
+      consoleWarn.mockRestore();
     }
   });
 
@@ -668,6 +685,38 @@ describe("cyspbot-github-webhook-processor", () => {
     }
   });
 
+  it("honors the retry delay on a validation or spam response", async () => {
+    const message = createMessage(job);
+    await invokeQueue(
+      createGitHubWebhookProcessorWorker({
+        fetch: async () => new Response(null, { status: 422, headers: { "retry-after": "600" } }),
+      }),
+      [message],
+      createTokenExchangeEnvironment(),
+    );
+    expect(message.ack).not.toHaveBeenCalled();
+    expect(message.retry).toHaveBeenCalledExactlyOnceWith({ delaySeconds: 600 });
+  });
+
+  it("continues a batch after retrying a failed job", async () => {
+    const fetch = vi
+      .fn<GitHubReactionDependencies["fetch"]>()
+      .mockResolvedValueOnce(new Response(null, { status: 404 }))
+      .mockResolvedValueOnce(new Response(null, { status: 201 }));
+    const failed = createMessage(job);
+    const completed = createMessage({ ...job, commentId: 43 });
+    await invokeQueue(
+      createGitHubWebhookProcessorWorker({ fetch }),
+      [failed, completed],
+      createTokenExchangeEnvironment(),
+    );
+    expect(failed.ack).not.toHaveBeenCalled();
+    expect(failed.retry).toHaveBeenCalledExactlyOnceWith({ delaySeconds: 60 });
+    expect(completed.ack).toHaveBeenCalledOnce();
+    expect(completed.retry).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
   it("backs off repeated failures without waiting hints", async () => {
     const message = { ...createMessage(job), attempts: 4 };
     await invokeQueue(
@@ -684,7 +733,7 @@ describe("cyspbot-github-webhook-processor", () => {
     ["invalid_scope", "invalid_scope"],
     ["ghs_private_token", "unrecognized_error"],
   ])("logs safe broker diagnostics for %s", async (brokerError, oauthErrorCode) => {
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const message = createMessage({ ...job, deliveryId: "d".repeat(200) });
     try {
       await invokeQueue(
@@ -696,17 +745,17 @@ describe("cyspbot-github-webhook-processor", () => {
         [message],
         createTokenExchangeEnvironment({ brokerStatus: 400, brokerError }),
       );
-      expect(consoleError).toHaveBeenCalledExactlyOnceWith(
-        "github_webhook_job_failed",
+      expect(consoleWarn).toHaveBeenCalledExactlyOnceWith(
+        "github_webhook_job_retrying",
         expect.objectContaining({ deliveryId: "d".repeat(128), oauthErrorCode, status: 400 }),
       );
-      expect(JSON.stringify(consoleError.mock.calls)).not.toContain("private broker description");
-      expect(JSON.stringify(consoleError.mock.calls)).not.toContain("ghs_private_token");
+      expect(JSON.stringify(consoleWarn.mock.calls)).not.toContain("private broker description");
+      expect(JSON.stringify(consoleWarn.mock.calls)).not.toContain("ghs_private_token");
     } finally {
-      consoleError.mockRestore();
+      consoleWarn.mockRestore();
     }
-    expect(message.ack).toHaveBeenCalledOnce();
-    expect(message.retry).not.toHaveBeenCalled();
+    expect(message.ack).not.toHaveBeenCalled();
+    expect(message.retry).toHaveBeenCalledExactlyOnceWith();
   });
 
   it("keeps the queue default for transport failures", async () => {
@@ -724,6 +773,75 @@ describe("cyspbot-github-webhook-processor", () => {
     expect(message.retry).toHaveBeenCalledExactlyOnceWith();
   });
 
+  it.each(["broker", "GitHub"] as const)(
+    "still requests a retry for a %s failure on the final configured attempt",
+    async (failure) => {
+      const fetch = vi.fn<GitHubReactionDependencies["fetch"]>(
+        async () => new Response(null, { status: 404 }),
+      );
+      const message = { ...createMessage(job), attempts: 6 };
+      await invokeQueue(
+        createGitHubWebhookProcessorWorker({ fetch }),
+        [message],
+        createTokenExchangeEnvironment({ brokerStatus: failure === "broker" ? 403 : 200 }),
+      );
+
+      expect(message.ack).not.toHaveBeenCalled();
+      if (failure === "broker") {
+        expect(message.retry).toHaveBeenCalledExactlyOnceWith();
+        expect(fetch).not.toHaveBeenCalled();
+      } else {
+        expect(message.retry).toHaveBeenCalledExactlyOnceWith({ delaySeconds: 1920 });
+        expect(fetch).toHaveBeenCalledOnce();
+      }
+    },
+  );
+
+  it("requests fresh credentials when a failed job succeeds on its next delivery", async () => {
+    const issuer = {
+      issueToken: vi
+        .fn()
+        .mockResolvedValueOnce({ token: "eyJ.first.identity" })
+        .mockResolvedValueOnce({ token: "eyJ.second.identity" }),
+    };
+    const env = createTokenExchangeEnvironment({ issuer });
+    let exchanges = 0;
+    const broker = vi.fn<typeof env.GITHUB_APP_TOKEN_BROKER.fetch>(async () =>
+      Response.json({
+        access_token: `ghs_attempt_${++exchanges}`,
+        expires_in: 300,
+        issued_token_type: "urn:ietf:params:oauth:token-type:access_token",
+        token_type: "Bearer",
+      }),
+    );
+    const retryEnv = { ...env, GITHUB_APP_TOKEN_BROKER: { fetch: broker } };
+    const fetch = vi
+      .fn<GitHubReactionDependencies["fetch"]>()
+      .mockResolvedValueOnce(new Response(null, { status: 401 }))
+      .mockResolvedValueOnce(new Response(null, { status: 201 }));
+    const worker = createGitHubWebhookProcessorWorker({ fetch });
+    const failed = createMessage(job);
+    const recovered = { ...createMessage(job), attempts: 2 };
+
+    await invokeQueue(worker, [failed], retryEnv);
+    await invokeQueue(worker, [recovered], retryEnv);
+
+    expect(failed.ack).not.toHaveBeenCalled();
+    expect(failed.retry).toHaveBeenCalledExactlyOnceWith({ delaySeconds: 60 });
+    expect(recovered.ack).toHaveBeenCalledOnce();
+    expect(recovered.retry).not.toHaveBeenCalled();
+    expect(issuer.issueToken).toHaveBeenCalledTimes(2);
+    expect(broker).toHaveBeenCalledTimes(2);
+    expect(
+      broker.mock.calls.map(([, init]) =>
+        new URLSearchParams(init?.body as URLSearchParams).get("subject_token"),
+      ),
+    ).toEqual(["eyJ.first.identity", "eyJ.second.identity"]);
+    expect(
+      fetch.mock.calls.map(([, init]) => new Headers(init?.headers).get("authorization")),
+    ).toEqual(["Bearer ghs_attempt_1", "Bearer ghs_attempt_2"]);
+  });
+
   it("acknowledges invalid jobs without calling GitHub", async () => {
     let githubCalls = 0;
     const worker = createGitHubWebhookProcessorWorker({
@@ -733,10 +851,16 @@ describe("cyspbot-github-webhook-processor", () => {
       },
     });
     const message = createMessage({ ...job, unexpected: true });
+    const issuer = { issueToken: vi.fn() };
+    const brokerRequest = vi.fn();
 
     const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     try {
-      await invokeQueue(worker, [message], createTokenExchangeEnvironment());
+      await invokeQueue(
+        worker,
+        [message],
+        createTokenExchangeEnvironment({ issuer, onBrokerRequest: brokerRequest }),
+      );
     } finally {
       consoleWarn.mockRestore();
     }
@@ -744,6 +868,8 @@ describe("cyspbot-github-webhook-processor", () => {
     expect(message.ack).toHaveBeenCalledOnce();
     expect(message.retry).not.toHaveBeenCalled();
     expect(githubCalls).toBe(0);
+    expect(issuer.issueToken).not.toHaveBeenCalled();
+    expect(brokerRequest).not.toHaveBeenCalled();
   });
 });
 
@@ -788,6 +914,7 @@ function createTokenExchangeEnvironment(
   options: {
     brokerStatus?: number;
     brokerError?: string;
+    brokerBody?: string;
     issuer?: { issueToken(audience: string): Promise<unknown> };
     onBrokerRequest?: (input: RequestInfo | URL, init: RequestInit | undefined) => void;
   } = {},
@@ -798,20 +925,21 @@ function createTokenExchangeEnvironment(
         options.onBrokerRequest?.(input, init);
         return Promise.resolve(
           new Response(
-            JSON.stringify(
-              options.brokerStatus === undefined || options.brokerStatus === 200
-                ? {
-                    access_token: "ghs_test_token",
-                    expires_in: 300,
-                    issued_token_type: "urn:ietf:params:oauth:token-type:access_token",
-                    scope: "issues:write pull_requests:write",
-                    token_type: "Bearer",
-                  }
-                : {
-                    error: options.brokerError ?? "token_exchange_failed",
-                    error_description: "private broker description",
-                  },
-            ),
+            options.brokerBody ??
+              JSON.stringify(
+                options.brokerStatus === undefined || options.brokerStatus === 200
+                  ? {
+                      access_token: "ghs_test_token",
+                      expires_in: 300,
+                      issued_token_type: "urn:ietf:params:oauth:token-type:access_token",
+                      scope: "issues:write pull_requests:write",
+                      token_type: "Bearer",
+                    }
+                  : {
+                      error: options.brokerError ?? "token_exchange_failed",
+                      error_description: "private broker description",
+                    },
+              ),
             {
               headers: { "content-type": "application/json" },
               status: options.brokerStatus ?? 200,

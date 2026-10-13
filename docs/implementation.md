@@ -90,11 +90,12 @@ description. Workload identity assertions and issued GitHub tokens must not be
 logged.
 
 The client is an internal library operation and is not exposed as an HTTP
-route. Production service names, identity properties, domains, routes,
-resource identifiers, secret-store references, and Cloudflare Workload Identity
-properties belong to the separate deployment repository. The public Worker
-Wrangler files contain only local-development and dry-run service targets and
-values.
+route. Production service names, binding resource identifiers, secret-store
+references, and Cloudflare Workload Identity properties belong to the separate
+deployment repository. Terraform manages production queues, their consumer,
+domains, and routes; see [deployment ownership](deployment.md#separate-deployment-pipeline).
+The public Worker Wrangler files contain only local-development and dry-run
+service targets and values.
 
 ## Tests and validation
 
@@ -127,7 +128,7 @@ Deliveries through the receiver's configured queue to the processor and exercise
 GitHub's success responses for both new and existing reactions.
 Local issuer and broker fixtures validate the token exchange; a Node `fetch`
 mock validates the GitHub reaction request and blocks other outbound requests.
-The queue connection uses the production Wrangler configurations. This suite
+The queue connection uses the source Wrangler configurations for local testing. This suite
 complements the individual processor tests that assert acknowledgement and retry
 behavior. Built Worker code runs outside Vitest's coverage instrumentation.
 

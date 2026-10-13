@@ -7,6 +7,10 @@ export async function githubWebhookProcessorOutboundService(request: Request): P
     ["https://api.github.com/repositories/123/issues/comments/45/reactions", 201],
     ["https://api.github.com/repos/chikachow/cyspbot/issues/comments/46/reactions", 302],
     ["https://api.github.com/repos/chikachow/cyspbot/issues/comments/47/reactions", 307],
+    ["https://api.github.com/repos/chikachow/cyspbot/issues/comments/48/reactions", 401],
+    ["https://api.github.com/repos/chikachow/cyspbot/issues/comments/49/reactions", 404],
+    ["https://api.github.com/repos/chikachow/cyspbot/issues/comments/50/reactions", 422],
+    ["https://api.github.com/repos/chikachow/cyspbot/issues/comments/51/reactions", 202],
   ]);
   const status = statuses.get(request.url);
   if (request.method !== "POST" || status === undefined) {

@@ -35,12 +35,10 @@ export interface GitHubReactionDependencies {
 export class GitHubReactionError extends Error {
   readonly diagnostics: GitHubReactionErrorDiagnostics;
   readonly retryDelaySeconds: number | undefined;
-  readonly retryable: boolean;
   readonly status: number;
 
   constructor(
     status: number,
-    retryable: boolean,
     diagnostics: GitHubReactionErrorDiagnostics = {},
     retryDelaySeconds?: number,
   ) {
@@ -48,7 +46,6 @@ export class GitHubReactionError extends Error {
     this.name = "GitHubReactionError";
     this.diagnostics = diagnostics;
     this.retryDelaySeconds = retryDelaySeconds;
-    this.retryable = retryable;
     this.status = status;
   }
 }
@@ -98,20 +95,8 @@ export async function addStatusReaction(
         ? {}
         : { redirectFailure: redirect.kind === "follow" ? "too_many_redirects" : redirect.kind }),
     };
-    const retryable =
-      redirect !== undefined ||
-      response.status === 429 ||
-      response.status >= 500 ||
-      (response.status === 403 &&
-        (response.headers.get("retry-after") !== null ||
-          response.headers.get("x-ratelimit-remaining") === "0" ||
-          diagnostics.bodyReadFailed === true ||
-          diagnostics.bodyReadTimedOut === true ||
-          /\bsecondary rate limit\b/iu.test(diagnostics.message ?? "")));
-
     throw new GitHubReactionError(
       response.status,
-      retryable,
       diagnostics,
       retryDelayFromHeaders(response.headers),
     );
