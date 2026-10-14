@@ -11,3 +11,6 @@ node_modules
 *.p12
 *.private-key.pem
 *.private-key.pkcs8.pem
+
+# Local dependency advisory evidence and receipts
+.advisory/
