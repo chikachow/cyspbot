@@ -16,12 +16,16 @@
     "lockfile:check": "pnpm install --lockfile-only --frozen-lockfile",
     "knip": "knip --no-progress",
     "runtime-types:generate": "pnpm --recursive --filter './workers/*' run runtime-types:generate",
-    "test": "WRANGLER_LOG=none WRANGLER_LOG_PATH=.wrangler/logs WRANGLER_REGISTRY_PATH=.wrangler/registry vitest run",
-    "test:coverage": "WRANGLER_LOG=none WRANGLER_LOG_PATH=.wrangler/logs WRANGLER_REGISTRY_PATH=.wrangler/registry vitest run --coverage",
+    "test": "node --run advisory:test && WRANGLER_LOG=none WRANGLER_LOG_PATH=.wrangler/logs WRANGLER_REGISTRY_PATH=.wrangler/registry vitest run",
+    "test:coverage": "node --run advisory:test && WRANGLER_LOG=none WRANGLER_LOG_PATH=.wrangler/logs WRANGLER_REGISTRY_PATH=.wrangler/registry vitest run --coverage",
     "typecheck": "node --run typecheck:packages && pnpm --recursive --filter './workers/*' run typecheck && node --run typecheck:test",
     "typecheck:packages": "tsc --project tsconfig.packages.json",
     "typecheck:test": "tsc --project tsconfig.json",
-    "wrangler:whoami": "WRANGLER_LOG=none WRANGLER_LOG_PATH=.wrangler/logs WRANGLER_REGISTRY_PATH=.wrangler/registry wrangler whoami"
+    "wrangler:whoami": "WRANGLER_LOG=none WRANGLER_LOG_PATH=.wrangler/logs WRANGLER_REGISTRY_PATH=.wrangler/registry wrangler whoami",
+    "advisory:collect": "node experiments/dependency-advisory/github.mjs",
+    "advisory:native": "node experiments/dependency-advisory/native.mjs",
+    "advisory:test": "node --test experiments/dependency-advisory/checks.mjs && node --run advisory:checks",
+    "advisory:checks": "node --test experiments/dependency-advisory/advisory-checks.mjs"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "1.1.12",
@@ -36,7 +40,8 @@
     "oxlint-tsgolint": "7.0.2003",
     "typescript": "7.0.2",
     "vitest": "4.1.11",
-    "wrangler": "4.146.0"
+    "wrangler": "4.146.0",
+    "yaml": "2.9.1"
   },
   "engines": {
     "node": "24"
