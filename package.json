@@ -26,8 +26,8 @@
     "wrangler:whoami": "WRANGLER_LOG=none WRANGLER_LOG_PATH=.wrangler/logs WRANGLER_REGISTRY_PATH=.wrangler/registry wrangler whoami"
   },
   "devDependencies": {
-    "@cloudflare/vitest-plugin": "1.1.12",
-    "@cloudflare/workers-types": "5.20261001.1",
+    "@cloudflare/vitest-plugin": "1.4.0",
+    "@cloudflare/workers-types": "5.20261011.1",
     "@cyspbot/http": "workspace:*",
     "@tsconfig/strictest": "2.0.8",
     "@types/node": "24.19.2",
@@ -38,7 +38,7 @@
     "oxlint-tsgolint": "7.0.2004",
     "typescript": "7.0.2",
     "vitest": "4.1.11",
-    "wrangler": "4.146.0"
+    "wrangler": "4.149.0"
   },
   "engines": {
     "node": "24"
