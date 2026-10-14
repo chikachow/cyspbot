@@ -62,7 +62,7 @@ After successful CI on `main`, `.github/workflows/run-cyspbot-deploy-update.yml`
 
 ## Repository workflows
 
-- `ci`: coordinates formatting, lint, generated environment types, type checking, Knip, tests, coverage reporting, and Wrangler dry runs.
+- `ci`: coordinates dependency validation, formatting, lint, generated environment types, type checking, Knip, tests, coverage reporting, and Wrangler dry runs.
 - `pnpm-up`: proposes pinned dependency updates.
 - `run-cyspbot-deploy-update`: requests the deployment repository to update its pinned cyspbot source revision after successful `main` CI.
 
