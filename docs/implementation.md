@@ -119,7 +119,7 @@ keeps its own CI run so successful checks can trigger the deployment update.
 The workspace's 72-hour minimum release age applies to local dependency resolution
 and the daily transitive updater, matching Dependabot's release-age floor.
 
-The unit and individual Worker integration suites run in Workerd through `@cloudflare/vitest-plugin` with Vitest 4. Keep Vitest and its Istanbul coverage provider on matching versions supported by the published Cloudflare plugin. pnpm enforces peer dependencies, and Dependabot groups Cloudflare SDK and Vitest updates together. Vitest 5 updates are temporarily held in Dependabot until the published Cloudflare plugin supports them. Each Vitest project prohibits focused tests. Coverage explicitly includes package and Worker source files, including files not imported by tests, and excludes type declarations. Each Worker's production TypeScript check uses the runtime types generated from its Wrangler compatibility date and flags.
+The unit and individual Worker integration suites run in Workerd through `@cloudflare/vitest-plugin` with Vitest 4. Keep Vitest and its Istanbul coverage provider on matching versions supported by the published Cloudflare plugin. The explicit `peer-dependencies:check` gate enforces peer compatibility after resolution; [Contributing](../CONTRIBUTING.md) owns the dependency-update policy. Dependabot groups Cloudflare SDK and Vitest updates together. Vitest 5 updates are temporarily held in Dependabot until the published Cloudflare plugin supports them. Each Vitest project prohibits focused tests. Coverage explicitly includes package and Worker source files, including files not imported by tests, and excludes type declarations. Each Worker's production TypeScript check uses the runtime types generated from its Wrangler compatibility date and flags.
 
 The unit project exercises the root response, bounded body reading, request-body size and status handling, signature/target validation through HTTP responses, queue-job classification and processing, token-exchange response mapping, and all Worker factories. Separate Workerd integration projects load each Worker's real Wrangler configuration and entrypoint.
 
@@ -161,7 +161,7 @@ fnm exec --using=24 corepack pnpm run check
 fnm exec --using=24 corepack pnpm run test:coverage
 ```
 
-`check` verifies the frozen lockfile, formatting, generated environment types, lint, TypeScript, Knip, unit and integration tests, and all three Workers' Wrangler deploy dry runs.
+`check` verifies the frozen lockfile, peer requirements, deduplication, formatting, generated environment types, lint, TypeScript, Knip, unit and integration tests, and all three Workers' Wrangler deploy dry runs.
 
 ## Token Endpoint forwarding
 

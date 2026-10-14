@@ -2,6 +2,14 @@
 
 Keep changes small, explicit, and grounded in the service contract.
 
+Dependency updates permit intermediate peer conflicts while grouped updates are
+assembled. `autoInstallPeers: false` keeps required peers explicit. The
+`peer-dependencies:check` command re-runs resolution with strict peer validation
+and lifecycle scripts disabled; a frozen install alone does not perform this
+check. `dedupe:check` rejects avoidable lockfile duplication. Both checks run in
+`check` and the required CI dependency job, alongside frozen manifest/lockfile
+validation. CI also rejects any lockfile changes produced by validation.
+
 Before opening a pull request:
 
 1. Run `pnpm install --frozen-lockfile`.

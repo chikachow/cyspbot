@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --run lockfile:check && node --run format:check && node --run env-types:check && node --run lint && node --run typecheck && node --run knip && node --run test && node --run deploy:dry-run",
+    "check": "node --run lockfile:check && node --run peer-dependencies:check && node --run dedupe:check && node --run format:check && node --run env-types:check && node --run lint && node --run typecheck && node --run knip && node --run test && node --run deploy:dry-run",
+    "dedupe:check": "pnpm dedupe --check --ignore-scripts",
     "deploy:dry-run": "pnpm --recursive --filter './workers/*' run deploy:dry-run",
     "dev": "WRANGLER_LOG=none WRANGLER_LOG_PATH=.wrangler/logs WRANGLER_REGISTRY_PATH=.wrangler/registry wrangler dev --config workers/cyspbot/wrangler.jsonc --config workers/cyspbot-github-webhook-receiver/wrangler.jsonc --env-file .dev.vars",
     "env-types:check": "pnpm --recursive --filter './workers/*' run env-types:check",
@@ -14,6 +15,7 @@
     "lint": "node --run runtime-types:generate && oxlint --report-unused-disable-directives --deny-warnings .",
     "lint:fix": "node --run runtime-types:generate && oxlint --fix .",
     "lockfile:check": "pnpm install --lockfile-only --frozen-lockfile",
+    "peer-dependencies:check": "pnpm install --resolution-only --strict-peer-dependencies --no-frozen-lockfile --ignore-scripts",
     "knip": "knip --no-progress",
     "runtime-types:generate": "pnpm --recursive --filter './workers/*' run runtime-types:generate",
     "test": "WRANGLER_LOG=none WRANGLER_LOG_PATH=.wrangler/logs WRANGLER_REGISTRY_PATH=.wrangler/registry vitest run",
