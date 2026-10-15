@@ -119,7 +119,20 @@ keeps its own CI run so successful checks can trigger the deployment update.
 The workspace's 72-hour minimum release age applies to local dependency resolution
 and the daily transitive updater, matching Dependabot's release-age floor.
 
-The unit and individual Worker integration suites run in Workerd through `@cloudflare/vitest-plugin` with Vitest 5. Keep Vitest and its Istanbul coverage provider on matching versions supported by the published Cloudflare plugin. The explicit `peer-dependencies:check` gate enforces peer compatibility after resolution; [Contributing](../CONTRIBUTING.md) owns the dependency-update policy. Dependabot groups Cloudflare SDK and Vitest updates together. Vite is an explicit development dependency because Vitest 5 requires it as a peer. Each Vitest project prohibits focused tests. Coverage explicitly includes package and Worker source files, including files not imported by tests, and excludes type declarations. Each Worker's production TypeScript check uses the runtime types generated from its Wrangler compatibility date and flags.
+The unit and individual Worker integration suites run in Workerd through `@cloudflare/vitest-plugin` with Vitest 5. Keep Vitest and its V8 coverage provider on matching versions supported by the published Cloudflare plugin. Vite is an explicit development dependency because Vitest 5 requires it as a peer. The explicit `peer-dependencies:check` gate enforces peer compatibility after resolution; [Contributing](../CONTRIBUTING.md) owns the dependency-update policy. Dependabot groups Cloudflare SDK and Vitest updates together. Each Vitest project prohibits focused tests. Each Worker's production TypeScript check uses the runtime types generated from its Wrangler compatibility date and flags.
+
+Coverage uses native V8 collection in Node and plugin-managed Workerd, avoiding
+source coverage instrumentation. The Cloudflare plugin configures inspector
+compatibility settings for its test runtime. Reports use Istanbul's coverage
+model and retain the text and LCOV reporters and Codecov upload. Coverage
+explicitly includes package and Worker source files, including unimported files,
+and excludes type declarations. No numerical coverage thresholds are configured.
+
+V8 has [documented measurement limitations](https://github.com/AriPerkkio/ast-v8-to-istanbul#limitations):
+unexecuted default arguments and statements after a throwing call can appear
+covered. Assert defaults and failure-path behavior directly; percentages alone
+do not prove execution. When changing providers, compare source inventories and
+uncovered locations as well as totals.
 
 The unit project exercises the root response, bounded body reading, request-body size and status handling, signature/target validation through HTTP responses, queue-job classification and processing, token-exchange response mapping, and all Worker factories. Separate Workerd integration projects load each Worker's real Wrangler configuration and entrypoint.
 
@@ -141,7 +154,7 @@ Local issuer and broker fixtures validate the token exchange; a Node `fetch`
 mock validates the GitHub reaction request and blocks other outbound requests.
 The queue connection uses the source Wrangler configurations for local testing. This suite
 complements the individual processor tests that assert acknowledgement and retry
-behavior. Built Worker code runs outside Vitest's coverage instrumentation.
+behavior. The separately launched built Workers run outside Vitest's coverage collection.
 
 Vitest's async-leak diagnostics use Node's `async_hooks`; Workerd does not
 implement the hooks used by this detector. To investigate leaked resources in
