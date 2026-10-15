@@ -16,12 +16,6 @@ updates:
       time: "09:00"
       timezone: Australia/Sydney
     open-pull-requests-limit: 10
-    # Remove these holds with the separately validated Vitest 5 upgrade.
-    ignore:
-      - dependency-name: vitest
-        versions: [">=5.0.0 <6.0.0"]
-      - dependency-name: "@vitest/coverage-istanbul"
-        versions: [">=5.0.0 <6.0.0"]
     groups:
       cloudflare-workers-sdk:
         patterns:

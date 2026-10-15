@@ -31,13 +31,14 @@
     "@cyspbot/http": "workspace:*",
     "@tsconfig/strictest": "2.0.8",
     "@types/node": "24.19.2",
-    "@vitest/coverage-istanbul": "4.1.11",
+    "@vitest/coverage-istanbul": "5.0.3",
     "knip": "6.41.0",
     "oxfmt": "0.72.0",
     "oxlint": "1.87.0",
     "oxlint-tsgolint": "7.0.2004",
     "typescript": "7.0.2",
-    "vitest": "4.1.11",
+    "vite": "8.3.2",
+    "vitest": "5.0.3",
     "wrangler": "4.149.0"
   },
   "engines": {
