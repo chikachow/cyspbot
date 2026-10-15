@@ -3,6 +3,18 @@ packages:
   - "workers/*"
 
 autoInstallPeers: false
-engineStrict: true
 strictPeerDependencies: false
+engineStrict: true
 minimumReleaseAge: 4320
+
+# Corepack and CI select the manifest pin; keep GitHub-compatible lockfiles.
+pmOnFail: ignore
+autoDedupe: true
+lockfile:
+  includeResolutionSettings: true
+verifyDepsBeforeRun: error
+
+allowBuilds:
+  esbuild: false
+  workerd: false
+strictDepBuilds: true
