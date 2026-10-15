@@ -16,16 +16,24 @@ updates:
       time: "09:00"
       timezone: Australia/Sydney
     open-pull-requests-limit: 10
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     groups:
       cloudflare-workers-sdk:
         patterns:
           - "@cloudflare/vitest-plugin"
           - "@cloudflare/workers-types"
           - wrangler
-          - vitest
-          - "@vitest/*"
       oxc-tooling:
         patterns:
           - oxfmt
           - oxlint
           - oxlint-tsgolint
+      vitest:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
+      vite:
+        patterns:
+          - "vite"
