@@ -70,7 +70,7 @@ Broker policy must authorize the processor's workload identity for the intended 
 This repository's deployment command is a dry run:
 
 ```bash
-fnm exec --using=24 corepack pnpm run deploy:dry-run
+fnm exec --using=24 pnpm run deploy:dry-run
 ```
 
 Do not add production credentials, domains, or routes to this repository.

@@ -37,12 +37,12 @@ The source repository intentionally contains no Cloudflare account IDs, producti
 
 ## Local development
 
-Use Node 24 and the pinned pnpm version:
+Use Node 24 and install the [pinned pnpm version](CONTRIBUTING.md#dependency-tooling):
 
 ```bash
-fnm exec --using=24 corepack pnpm install --frozen-lockfile
+fnm exec --using=24 pnpm install --frozen-lockfile
 cp .dev.vars.example .dev.vars
-fnm exec --using=24 corepack pnpm run dev
+fnm exec --using=24 pnpm run dev
 ```
 
 Fill in the GitHub App ID and webhook secret in `.dev.vars`. Do not commit that file. This command starts the root and receiver only. Token forwarding, processor, issuer, and broker interactions are exercised with local fixtures by the integration tests.
@@ -50,8 +50,8 @@ Fill in the GitHub App ID and webhook secret in `.dev.vars`. Do not commit that 
 Run the complete validation suite with:
 
 ```bash
-fnm exec --using=24 corepack pnpm run check
-fnm exec --using=24 corepack pnpm run test:coverage
+fnm exec --using=24 pnpm run check
+fnm exec --using=24 pnpm run test:coverage
 ```
 
 See [contribution requirements](CONTRIBUTING.md) for validation and artifact checks.

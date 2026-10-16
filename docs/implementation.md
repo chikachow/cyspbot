@@ -170,8 +170,8 @@ inside the Workers. Keep this slower diagnostic mode opt-in.
 Use Node 24 and the pinned pnpm version:
 
 ```bash
-fnm exec --using=24 corepack pnpm run check
-fnm exec --using=24 corepack pnpm run test:coverage
+fnm exec --using=24 pnpm run check
+fnm exec --using=24 pnpm run test:coverage
 ```
 
 `check` verifies the frozen lockfile, peer requirements, deduplication, formatting, generated environment types, lint, TypeScript, Knip, unit and integration tests, and all three Workers' Wrangler deploy dry runs.
