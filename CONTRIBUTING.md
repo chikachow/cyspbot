@@ -2,12 +2,8 @@
 
 Keep changes small, explicit, and grounded in the service contract.
 
-Dependency updates permit intermediate peer conflicts while grouped updates are
-assembled. `autoInstallPeers: false` keeps required peers explicit. The
-`peer-dependencies:check` command runs `pnpm peers check` without changing the
-lockfile; a frozen install alone does not perform this check. `dedupe:check` rejects avoidable lockfile duplication. Both checks run in
-`check` and the required CI dependency job, alongside frozen manifest/lockfile
-validation. CI also rejects any lockfile changes produced by validation.
+See [dependency tooling](#dependency-tooling) for the dependency update policy
+and validation gates.
 
 Before opening a pull request:
 
@@ -51,10 +47,17 @@ check. `pmOnFail: ignore` keeps the lockfile as one YAML document for GitHub's
 dependency graph; direct pnpm commands do not automatically select or enforce the
 pin. Adding config dependencies requires reviewing that compatibility assumption.
 
+Dependency updates permit intermediate peer conflicts while grouped updates are
+assembled. `autoInstallPeers: false` keeps required peers explicit. The
+`peer-dependencies:check` command runs `pnpm peers check` without changing the
+lockfile; a frozen install alone does not perform this check. `dedupe:check` rejects avoidable lockfile duplication. Both checks run in
+`check` and the required CI dependency job, alongside frozen manifest/lockfile
+validation. CI also rejects any lockfile changes produced by validation.
+
 `autoDedupe` consolidates compatible resolutions during updates, including across
 workspace projects outside a command's filter. Frozen installs leave the graph
 unchanged; `lockfile.includeResolutionSettings` records the selected deduplication
-and linking settings. Keep the frozen-lockfile, peer and dedupe validation gates.
+and linking settings.
 `verifyDepsBeforeRun: error` stops pnpm scripts when dependencies are stale; it
 does not guard `node --run`, so install explicitly before validation.
 
