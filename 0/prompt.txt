@@ -1,0 +1,63 @@
+# AGENTS.md instructions
+
+<INSTRUCTIONS>
+# Working preferences
+
+## Design and scope
+
+- Choose the simplest cohesive design for the whole affected concern, including callers and lifecycle transitions. Preserve required behavior, public contracts, and lifecycle guarantees; distinguish these obligations from existing implementation choices. Assess current and proposed designs against the same requirements; weigh concrete benefits against migration, regression, review, and maintenance costs. Treat change size as a cost, not the objective.
+- Preserve established domain, API, and protocol terminology. Rename internal symbols when a concrete correctness or comprehension benefit justifies the change cost.
+- Extract helpers and abstractions when they expose a coherent operation or lifecycle boundary, remove meaningful duplication, or clarify the caller. Call count alone is not decisive. Testability can justify a production seam when meaningful behavioral evidence warrants its interface and maintenance costs.
+- When adding defensive mechanisms or removing safeguards, identify the failure scenario and required guarantees, then compare alternatives that preserve them. Explain consequential or uncertain tradeoffs using evidence and explicit unknowns.
+- Resolve routine choices from available evidence and carry forward prior agreement. Ask when unresolved requirements materially affect public contracts, compatibility, recovery, scope, or authorization; continue independent work while awaiting the answer.
+
+## Evidence and completion
+
+- Evaluate reviews against the requested outcomes as well as regressions. Distinguish defects, unmet outcomes, unresolved contract questions, and optional improvements; support material findings with their trigger, consequence, and evidence.
+- Choose verification for independent behavioral evidence at the affected boundary. When consolidating tests, identify evidence for retained guarantees and justify consequential coverage deliberately relinquished. To claim that a test detects a regression, exercise the faulty behavior with unchanged expectations and observe the relevant failure and restored pass. Follow project-specific checks, and repeat or broaden them when new changes, failures, or unresolved concerns justify it.
+- Report each material requested outcome with supporting evidence or a specific limitation. For design work, explain the concrete benefit achieved or why retaining the existing design better meets the requirements.
+- Keep durable guidance scoped to where it applies, with each fact or policy in one authoritative place. Use explicit task-triggered pointers for specialized material; keep evaluation history and completed plans with their change records.
+
+## Machine-specific authentication
+
+GitHub CLI authentication is macOS Keychain-backed and unavailable inside the
+sandbox. Run authenticated `gh` commands and networked Git commands with
+escalated sandbox permissions on the first attempt. Do not reauthenticate or
+rotate credentials based solely on sandboxed `gh auth status`.
+</INSTRUCTIONS>
+
+---
+
+<environment_context>
+  <cwd>/Users/cysp/src/cyspbot</cwd>
+  <shell>zsh</shell>
+  <current_date>2026-10-25</current_date>
+  <timezone>Australia/Sydney</timezone>
+  <filesystem><workspace_roots><root>/Users/cysp/src/cyspbot</root><root>/Users/cysp/src/cyspbot-deploy</root></workspace_roots><permission_profile type="managed"><file_system type="restricted"><entry access="read"><special>:root</special></entry><entry access="write"><path>/Users/cysp/src/cyspbot</path></entry><entry access="write"><path>/Users/cysp/src/cyspbot-deploy</path></entry><entry access="write"><special>:slash_tmp</special></entry><entry access="write"><special>:tmpdir</special></entry><entry access="write"><path>/Users/cysp/.codex/visualizations/2026/10/24/01a17014-ff2a-7ee2-8e4f-6b6db4ea2610</path></entry><entry access="read"><path>/Users/cysp/src/cyspbot/.git</path></entry><entry access="read"><path>/Users/cysp/src/cyspbot-deploy/.git</path></entry><entry access="read"><path>/Users/cysp/src/cyspbot/.agents</path></entry><entry access="read"><path>/Users/cysp/src/cyspbot-deploy/.agents</path></entry><entry access="read"><path>/Users/cysp/src/cyspbot/.codex</path></entry><entry access="read"><path>/Users/cysp/src/cyspbot-deploy/.codex</path></entry><entry access="read"><path>/Users/cysp/src/cyspbot/.aws</path></entry><entry access="read"><path>/Users/cysp/src/cyspbot-deploy/.aws</path></entry></file_system></permission_profile></filesystem>
+</environment_context>
+
+---
+
+Itemise and debate each instruction with steelman arguments for and against, starting from first principles 
+Use opencode’s instructions as a reference
+Use OpenAI’s authoritative guidance
+
+---
+
+[$grill-me](/Users/cysp/.agents/skills/grill-me/SKILL.md)
+
+---
+
+Agree all
+
+---
+
+Agree all
+
+---
+
+Proceed
+
+---
+
+Raise a draft pull request
