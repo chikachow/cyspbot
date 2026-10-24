@@ -97,8 +97,8 @@ integer `expires_in`. RFC 8693 defines `expires_in` as recommended.
 
 On an OAuth failure, the client throws a
 `GitHubAppTokenBrokerError` containing the HTTP status and OAuth error code and
-description. Workload identity assertions and issued GitHub tokens must not be
-logged.
+description. Credential logging restrictions are defined in the
+[security boundary](../SECURITY.md#security-boundary).
 
 The client is an internal library operation and is not exposed as an HTTP
 route. Production service names, binding resource identifiers, secret-store
@@ -167,14 +167,10 @@ node --run test -- --project built-workers-integration --detectAsyncLeaks
 This diagnoses resources in the Node test process; it does not detect leaks
 inside the Workers. Keep this slower diagnostic mode opt-in.
 
-Use Node 24 and the pinned pnpm version:
-
-```bash
-fnm exec --using=24 pnpm run check
-fnm exec --using=24 pnpm run test:coverage
-```
-
-`check` verifies the frozen lockfile, peer requirements, deduplication, formatting, generated environment types, lint, TypeScript, Knip, unit and integration tests, and all three Workers' Wrangler deploy dry runs.
+Choose required checks using [Contributing: Validation scope](../CONTRIBUTING.md#validation-scope).
+`vitest.config.ts` owns the test projects and fixtures; `package.json` owns
+the validation commands. Keep fixture-backed local integration results distinct
+from verification of separately deployed services.
 
 ## Token Endpoint forwarding
 
