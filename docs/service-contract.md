@@ -23,7 +23,12 @@ The `/` response has media type `text/html; charset=utf-8` and is equivalent to 
 
 ## Webhook request requirements
 
-The receiver requires:
+The receiver requires a configured `GITHUB_APP_ID` containing one or more ASCII
+decimal digits and a non-empty string webhook secret. Secrets Store results are
+validated before use; missing, malformed, or unreadable configuration returns
+`500` without authenticating or publishing a delivery.
+
+Each delivery requires:
 
 - a primary media type of `application/json` (parameters are allowed);
 - a body no larger than `256 KiB`;
@@ -120,6 +125,7 @@ Rejections use RFC 9457-style problem-details JSON with `type`, `title`, and `st
 | Condition                                                  | Status |
 | ---------------------------------------------------------- | -----: |
 | Missing, empty, or unreadable webhook secret configuration |  `500` |
+| Invalid receiver configuration                             |  `500` |
 | Non-JSON media type                                        |  `415` |
 | Body exceeds `256 KiB`                                     |  `413` |
 | Missing event, delivery, or signature header               |  `400` |

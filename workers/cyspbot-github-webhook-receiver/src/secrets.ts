@@ -7,5 +7,9 @@ export async function resolveSecretText(
     return binding;
   }
 
-  return binding.get();
+  const value: unknown = await binding.get();
+  if (typeof value !== "string") {
+    throw new TypeError("Webhook secret binding must return a string.");
+  }
+  return value;
 }

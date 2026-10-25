@@ -30,6 +30,12 @@ export async function handleGitHubWebhookRequest(
   request: Request,
   env: WebhookReceiverEnvironment,
 ): Promise<Response> {
+  const appId = env.GITHUB_APP_ID;
+  if (typeof appId !== "string" || !/^[0-9]+$/u.test(appId)) {
+    console.error("webhook_receiver_not_configured");
+    return problemResponse(500);
+  }
+
   let secret: string | undefined;
   try {
     secret = await resolveSecretText(env.GITHUB_WEBHOOK_SECRET);
@@ -44,7 +50,7 @@ export async function handleGitHubWebhookRequest(
   }
 
   const envelope = await authenticateWebhookEnvelope({
-    env,
+    appId,
     request,
     secret,
   });
@@ -87,11 +93,11 @@ export async function handleGitHubWebhookRequest(
 }
 
 async function authenticateWebhookEnvelope(input: {
-  env: WebhookReceiverEnvironment;
+  appId: string;
   request: Request;
   secret: string;
 }): Promise<AuthenticatedWebhookEnvelope | Response> {
-  const { env, request, secret } = input;
+  const { appId, request, secret } = input;
 
   if (!isJsonContentType(request.headers.get("content-type"))) {
     return problemResponse(415);
@@ -112,7 +118,7 @@ async function authenticateWebhookEnvelope(input: {
     return problemResponse(400);
   }
 
-  if (targetType !== "integration" || targetId !== env.GITHUB_APP_ID) {
+  if (targetType !== "integration" || targetId !== appId) {
     return problemResponse(401);
   }
 

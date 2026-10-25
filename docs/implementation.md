@@ -36,7 +36,7 @@ a credential-bearing runtime; `SECURITY.md` defines that accepted trust boundary
 
 `handleGitHubWebhookRequest` owns the HTTP response and privately authenticates the envelope. It:
 
-1. resolves `GITHUB_WEBHOOK_SECRET` from a direct Worker secret or Secrets Store binding through its private secret adapter;
+1. validates the configured App ID and resolves a string `GITHUB_WEBHOOK_SECRET` from a direct Worker secret or Secrets Store binding through its private secret adapter;
 2. requires `application/json` and reads at most `256 KiB`;
 3. requires the event, delivery, signature, and installation-target headers;
 4. requires the target type `integration` and the configured `GITHUB_APP_ID`;
