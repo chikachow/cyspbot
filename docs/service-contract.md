@@ -75,6 +75,10 @@ An authenticated `issue_comment` delivery creates a queue job only when its
 
 The receiver waits for the queue write before returning `202`. Authenticated
 events that do not classify to this job receive `202` without a queue write.
+Version-1 queue jobs have exactly the fields shown above, including exactly
+`owner` and `name` in `repository`; extra fields and unknown versions are rejected.
+Webhook payloads remain extensible: only fields needed to classify and derive
+the job are consumed.
 The receiver validates the derived job before publication: comment IDs must be positive safe integers, delivery IDs must be non-empty, and repository parts must be non-empty, at most 100 characters, and contain no path separators, query/fragment delimiters, or control characters. Repository parts must also be well-formed Unicode strings and cannot be `.` or `..`, so URL encoding neither throws nor changes the repository path. Payloads that cannot produce a valid job are acknowledged without a queue write. The receiver does not apply repository authorization filtering. A queue write failure
 returns `503 Service Unavailable`. GitHub does not automatically redeliver
 failed webhooks. Ingress is best effort until publication succeeds; operators

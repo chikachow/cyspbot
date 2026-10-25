@@ -63,6 +63,49 @@ describe("cyspbot-github-webhook-processor", () => {
     });
   });
 
+  it("keeps the validated job stable while the issuer is pending", async () => {
+    const issuing = Promise.withResolvers<void>();
+    const issued = Promise.withResolvers<{ token: string }>();
+    const incoming = { ...job, repository: { ...job.repository } };
+    const message = createMessage(incoming);
+    const brokerRequest = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => void>();
+    const fetch = vi.fn<GitHubReactionDependencies["fetch"]>(
+      async () => new Response(null, { status: 201 }),
+    );
+    const processing = invokeQueue(
+      createGitHubWebhookProcessorWorker({ fetch }),
+      [message],
+      createTokenExchangeEnvironment({
+        issuer: {
+          issueToken: () => {
+            issuing.resolve();
+            return issued.promise;
+          },
+        },
+        onBrokerRequest: brokerRequest,
+      }),
+    );
+    await issuing.promise;
+    incoming.commentId = 99;
+    incoming.repository.owner = "changed-owner";
+    incoming.repository.name = "changed-repository";
+    expect(message.ack).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+    issued.resolve({ token: "eyJ.test.workload.identity" });
+    await processing;
+    const requestBody = brokerRequest.mock.calls[0]?.[1]?.body;
+    if (!(requestBody instanceof URLSearchParams))
+      throw new TypeError("expected token request body");
+    expect(requestBody.get("resource")).toBe("https://api.github.com/repos/chikachow/cyspbot");
+    const reactionUrl = fetch.mock.calls[0]?.[0];
+    if (!(reactionUrl instanceof URL)) throw new TypeError("expected reaction URL");
+    expect(reactionUrl.href).toBe(
+      "https://api.github.com/repos/chikachow/cyspbot/issues/comments/42/reactions",
+    );
+    expect(message.ack).toHaveBeenCalledOnce();
+    expect(message.retry).not.toHaveBeenCalled();
+  });
+
   it.each([200, 201])(
     "acknowledges GitHub %s even when body cancellation rejects",
     async (status) => {
