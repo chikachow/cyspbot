@@ -204,6 +204,46 @@ describe("webhook delivery acceptance", () => {
     await expect(result.json()).resolves.toEqual({ accepted: true, event: "ping" });
   });
 
+  it("does not acknowledge a status command until publication completes", async () => {
+    const publishing = Promise.withResolvers<void>();
+    const publication = Promise.withResolvers<void>();
+    const body = JSON.stringify({
+      action: "created",
+      comment: { body: "/cyspbot status", id: 42 },
+      repository: { name: "cyspbot", owner: { login: "chikachow" } },
+    });
+    let acknowledged = false;
+    const response = handleGitHubWebhookRequest(
+      new Request("https://example.test/github/webhooks", {
+        body,
+        headers: githubWebhookHeaders(body, "test-webhook-secret", "issue_comment"),
+        method: "POST",
+      }),
+      {
+        ...testWebhookEnv,
+        GITHUB_WEBHOOK_JOBS: {
+          send: () => {
+            publishing.resolve();
+            return publication.promise;
+          },
+        },
+      },
+    ).then((result) => {
+      acknowledged = true;
+      return result;
+    });
+    try {
+      await publishing.promise;
+      // Give an incorrectly detached queue write time to return its acknowledgement.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(acknowledged).toBe(false);
+    } finally {
+      publication.resolve();
+      await response;
+    }
+    expect((await response).status).toBe(202);
+  });
+
   it("enqueues a job for a newly created status comment", async () => {
     const jobs: GitHubIssueCommentStatusReactionJob[] = [];
     const body = JSON.stringify({
