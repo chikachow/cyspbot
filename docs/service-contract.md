@@ -175,3 +175,13 @@ Every upstream 3xx response, invalid endpoint configuration, missing or unusable
 before an upstream response is received returns `503` with
 `{"error":"temporarily_unavailable"}`, `Cache-Control: no-store`, and
 `Pragma: no-cache`; upstream redirect headers and bodies are discarded. `/token/` and other path variants remain unknown routes.
+
+## Token Exchange Client
+
+The internal Token Exchange Client accepts broker response bodies up to `64 KiB`
+encoded as valid UTF-8 JSON. It rejects malformed encoding in both success and
+error responses. A malformed success response fails token acquisition; a
+malformed error response retains the HTTP status and uses `invalid_response` as
+the OAuth error code. These failures cause the Webhook Processor to retry the job.
+Only consumed fields from Workload Identity issuer results and broker responses
+are validated; unconsumed extension fields are ignored.
