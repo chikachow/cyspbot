@@ -12,6 +12,31 @@ const scope = "contents:read";
 const workloadIdentityToken = "eyJ.test.workload.identity";
 
 describe("cyspbot OAuth Token Exchange Client", () => {
+  it.each([200, 400])("rejects malformed UTF-8 in a broker %s response", async (status) => {
+    const prefix =
+      status === 200
+        ? '{"expires_in":300,"issued_token_type":"urn:ietf:params:oauth:token-type:access_token","token_type":"Bearer","access_token":"'
+        : '{"error":"';
+    const body = new Uint8Array([
+      ...new TextEncoder().encode(prefix),
+      255,
+      ...new TextEncoder().encode('"}'),
+    ]);
+    const { env } = createEnv({ response: new Response(body, { status }) });
+    if (status === 200) {
+      await expect(requestGitHubAppInstallationToken(env, { resource, scope })).rejects.toThrow(
+        "invalid token response",
+      );
+    } else {
+      await expect(
+        requestGitHubAppInstallationToken(env, { resource, scope }),
+      ).rejects.toMatchObject({
+        status: 400,
+        oauthErrorCode: "invalid_response",
+      });
+    }
+  });
+
   it("uses the Workload Identity RPC binding before calling the broker", async () => {
     const events: string[] = [];
     let audience: string | undefined;
@@ -111,6 +136,18 @@ describe("cyspbot OAuth Token Exchange Client", () => {
       accessToken: "ghs_test_token",
       expiresIn: 300,
       scope: "issues:read",
+    });
+  });
+
+  it("ignores unconsumed issuer and broker extension fields", async () => {
+    const { env } = createEnv({
+      issuerToken: { token: workloadIdentityToken, extension: { version: 2 } },
+      response: createBrokerSuccessResponse({ extension: { version: 2 } }),
+    });
+    await expect(requestGitHubAppInstallationToken(env, { resource, scope })).resolves.toEqual({
+      accessToken: "ghs_test_token",
+      expiresIn: 300,
+      scope,
     });
   });
 
