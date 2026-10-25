@@ -28,9 +28,12 @@ export async function readRequestBodyUpTo(
     }
   }
 
-  const result = await readBodyUpTo(request.body, maxBytes);
-
-  return result.ok ? result : { ok: false, status: 413 };
+  try {
+    const result = await readBodyUpTo(request.body, maxBytes);
+    return result.ok ? result : { ok: false, status: 413 };
+  } catch {
+    return { ok: false, status: 400 };
+  }
 }
 
 function parseContentLength(value: string): bigint | null {

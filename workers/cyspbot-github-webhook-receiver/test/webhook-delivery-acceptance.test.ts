@@ -365,6 +365,35 @@ describe("webhook delivery acceptance", () => {
     expect(result.status).toBe(401);
   });
 
+  it("rejects an unreadable delivery without publishing or exposing the stream error", async () => {
+    const send = vi.fn();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      const response = await handleGitHubWebhookRequest(
+        new Request("https://example.test/github/webhooks", {
+          method: "POST",
+          headers: githubWebhookHeaders("{}", "test-webhook-secret", "issue_comment"),
+          body: new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.error(new Error("private transport details"));
+            },
+          }),
+        }),
+        { ...testWebhookEnv, GITHUB_WEBHOOK_JOBS: { send } },
+      );
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({
+        status: 400,
+        title: "Bad Request",
+        type: "about:blank",
+      });
+      expect(send).not.toHaveBeenCalled();
+      expect(JSON.stringify(warn.mock.calls)).not.toContain("private");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it("rejects oversized streamed bodies without relying on content-length", async () => {
     const body = JSON.stringify({
       payload: "x".repeat(256 * 1024),
