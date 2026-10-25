@@ -396,6 +396,32 @@ describe("cyspbot-github-webhook-processor", () => {
     },
   );
 
+  it.each(["issuer", "broker", "github"])(
+    "retries %s transport failures without logging dependency exception names",
+    async (source) => {
+      const fail = async () => {
+        throw Object.assign(new Error("private failure details"), { name: "private credential" });
+      };
+      const env = { ...createTokenExchangeEnvironment() };
+      if (source === "issuer") env.WORKLOAD_IDENTITY_ISSUER = { issueToken: fail };
+      if (source === "broker") env.GITHUB_APP_TOKEN_BROKER.fetch = fail;
+      const fetch = vi.fn(
+        source === "github" ? fail : async () => new Response(null, { status: 201 }),
+      );
+      const message = createMessage(job);
+      const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+      try {
+        await invokeQueue(createGitHubWebhookProcessorWorker({ fetch }), [message], env);
+        expect(message.retry).toHaveBeenCalledExactlyOnceWith();
+        expect(message.ack).not.toHaveBeenCalled();
+        expect(JSON.stringify(consoleWarn.mock.calls)).not.toContain("private");
+        if (source !== "github") expect(fetch).not.toHaveBeenCalled();
+      } finally {
+        consoleWarn.mockRestore();
+      }
+    },
+  );
+
   it("retries unexpected token-exchange failures", async () => {
     const worker = createGitHubWebhookProcessorWorker({
       fetch: async () => new Response(null, { status: 201 }),

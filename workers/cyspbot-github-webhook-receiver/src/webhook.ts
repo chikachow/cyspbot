@@ -73,10 +73,9 @@ export async function handleGitHubWebhookRequest(
   if (job !== undefined) {
     try {
       await env.GITHUB_WEBHOOK_JOBS.send(job, { contentType: "json" });
-    } catch (error) {
+    } catch {
       console.error("github_webhook_job_enqueue_failed", {
         deliveryId: envelope.deliveryId,
-        error: error instanceof Error ? error.name : typeof error,
         event: envelope.event,
       });
       return problemResponse(503);
