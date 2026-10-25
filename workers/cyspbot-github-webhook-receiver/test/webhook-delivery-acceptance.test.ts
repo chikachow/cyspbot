@@ -118,7 +118,7 @@ describe("webhook delivery acceptance", () => {
   );
 
   it.each([undefined, null, "", " ", "not-an-app-id", 42])(
-    "rejects an invalid App ID configuration before accepting a delivery: %j",
+    "rejects an invalid GitHub App ID configuration before accepting a delivery: %j",
     async (appId) => {
       const body = "{}";
       const headers = new Headers(githubWebhookHeaders(body, "test-webhook-secret", "ping"));
