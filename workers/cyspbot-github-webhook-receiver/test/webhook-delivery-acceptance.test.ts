@@ -78,6 +78,60 @@ describe("webhook delivery acceptance", () => {
     },
   );
 
+  it.each([
+    [null, "null"],
+    [42, "42"],
+    [{}, "[object Object]"],
+    [{ length: 1 }, "[object Object]"],
+    [["test-webhook-secret"], "test-webhook-secret"],
+  ] as const)(
+    "rejects a non-string Secrets Store result before authentication: %j",
+    async (value, coercedSecret) => {
+      const body = "{}";
+      const send = vi.fn();
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      try {
+        const response = await handleGitHubWebhookRequest(
+          new Request("https://example.test/github/webhooks", {
+            body,
+            headers: githubWebhookHeaders(body, coercedSecret, "ping"),
+            method: "POST",
+          }),
+          {
+            ...testWebhookEnv,
+            GITHUB_WEBHOOK_JOBS: { send },
+            GITHUB_WEBHOOK_SECRET: { get: async () => value } as unknown as SecretsStoreSecret,
+          },
+        );
+        expect(response.status).toBe(500);
+        await expect(response.json()).resolves.toEqual({
+          status: 500,
+          title: "Internal Server Error",
+          type: "about:blank",
+        });
+        expect(send).not.toHaveBeenCalled();
+        expect(consoleError).toHaveBeenCalledExactlyOnceWith("webhook_receiver_secret_unavailable");
+      } finally {
+        consoleError.mockRestore();
+      }
+    },
+  );
+
+  it.each([undefined, null, "", " ", "not-an-app-id", 42])(
+    "rejects an invalid App ID configuration before accepting a delivery: %j",
+    async (appId) => {
+      const body = "{}";
+      const headers = new Headers(githubWebhookHeaders(body, "test-webhook-secret", "ping"));
+      headers.delete("x-github-hook-installation-target-id");
+      const response = await handleGitHubWebhookRequest(
+        new Request("https://example.test/github/webhooks", { body, headers, method: "POST" }),
+        { ...testWebhookEnv, GITHUB_APP_ID: appId as unknown as string },
+      );
+      expect(response.status).toBe(500);
+      await response.body?.cancel();
+    },
+  );
+
   it("returns a safe configuration error when Secrets Store cannot resolve the secret", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const send = vi.fn();
