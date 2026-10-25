@@ -63,7 +63,7 @@ describe("cyspbot-github-webhook-processor", () => {
     });
   });
 
-  it("keeps the validated job stable while the issuer is pending", async () => {
+  it("preserves the validated repository and comment while Workload Identity Token issuance is pending", async () => {
     const issuing = Promise.withResolvers<void>();
     const issued = Promise.withResolvers<{ token: string }>();
     const incoming = { ...job, repository: { ...job.repository } };
