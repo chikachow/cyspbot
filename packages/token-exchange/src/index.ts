@@ -157,7 +157,9 @@ async function readJsonBody(response: Response): Promise<unknown> {
   }
 
   try {
-    return JSON.parse(new TextDecoder().decode(body.bytes));
+    return JSON.parse(
+      new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(body.bytes),
+    );
   } catch {
     return undefined;
   }

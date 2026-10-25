@@ -86,6 +86,11 @@ Installation Access Token with a canonical GitHub `resource` and explicit permis
 `scope`; the broker remains the source of truth for normalization, OIDC ID
 Token profile verification, and Token Issuance Policy.
 
+Broker response bodies are bounded to 64 KiB and decoded as UTF-8 with fatal
+error handling before JSON parsing. Malformed encoding is an invalid response,
+so replacement characters cannot silently alter a credential. Only consumed
+issuer and broker fields are validated; unconsumed extension fields are ignored.
+
 On success, the client returns a `GitHubAppInstallationAccessToken`. It accepts
 the case-insensitive `Bearer` token type and uses the requested scope when the
 broker omits an unchanged scope, following
