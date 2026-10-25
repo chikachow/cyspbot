@@ -204,7 +204,7 @@ describe("webhook delivery acceptance", () => {
     await expect(result.json()).resolves.toEqual({ accepted: true, event: "ping" });
   });
 
-  it("does not acknowledge a status command until publication completes", async () => {
+  it("does not return 202 for a status command until the queue write completes", async () => {
     const publishing = Promise.withResolvers<void>();
     const publication = Promise.withResolvers<void>();
     const body = JSON.stringify({
@@ -212,7 +212,7 @@ describe("webhook delivery acceptance", () => {
       comment: { body: "/cyspbot status", id: 42 },
       repository: { name: "cyspbot", owner: { login: "chikachow" } },
     });
-    let acknowledged = false;
+    let responded = false;
     const response = handleGitHubWebhookRequest(
       new Request("https://example.test/github/webhooks", {
         body,
@@ -229,14 +229,14 @@ describe("webhook delivery acceptance", () => {
         },
       },
     ).then((result) => {
-      acknowledged = true;
+      responded = true;
       return result;
     });
     try {
       await publishing.promise;
-      // Give an incorrectly detached queue write time to return its acknowledgement.
+      // Allow an HTTP response to settle if the queue write was not awaited.
       await new Promise((resolve) => setTimeout(resolve, 0));
-      expect(acknowledged).toBe(false);
+      expect(responded).toBe(false);
     } finally {
       publication.resolve();
       await response;
