@@ -3,6 +3,19 @@ import { describe, expect, it } from "vitest";
 import { readRequestBodyUpTo } from "@cyspbot/http/request-body";
 
 describe("bounded request body reading", () => {
+  it("rejects an unreadable request body as a bad request", async () => {
+    const request = new Request("https://example.test", {
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.error(new Error("private transport details"));
+        },
+      }),
+      method: "POST",
+    });
+    await expect(readRequestBodyUpTo(request, 1024)).resolves.toEqual({ ok: false, status: 400 });
+    expect(request.body?.locked).toBe(false);
+  });
+
   it("accepts a Content-Length with leading zeroes", async () => {
     const result = await readRequestBodyUpTo(
       new Request("https://example.test", {

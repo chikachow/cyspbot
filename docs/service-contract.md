@@ -126,6 +126,7 @@ Rejections use RFC 9457-style problem-details JSON with `type`, `title`, and `st
 | Target type or target App ID mismatch                      |  `401` |
 | Malformed or invalid signature                             |  `401` |
 | Authenticated body is not UTF-8 JSON                       |  `400` |
+| Malformed Content-Length or unreadable request body        |  `400` |
 | A matching job cannot be written to the queue              |  `503` |
 
 Repeated delivery IDs are accepted. Queue delivery is at least once, and the
