@@ -147,6 +147,10 @@ Rejected deliveries may log the delivery ID, event, Cloudflare Ray ID, and respo
 
 Processor failures log the queue message ID, delivery ID (at most 128 characters), attempt count, status, and bounded GitHub diagnostics or a recognized OAuth error code. Unrecognized broker codes are logged as `unrecognized_error`; broker descriptions and credentials are excluded.
 
+Receiver queue-publication failures log delivery metadata only. Processor error
+categories are locally selected (`GitHubReactionError`, `GitHubAppTokenBrokerError`,
+or `unexpected_error`); dependency exception names, messages, and stacks are not logged.
+
 ## Token Endpoint proxy
 
 The cyspbot Worker forwards exactly `/token` to the deployment-owned canonical

@@ -252,6 +252,36 @@ describe("webhook delivery acceptance", () => {
     ]);
   });
 
+  it("does not log exception names from failed queue publication", async () => {
+    const body = JSON.stringify({
+      action: "created",
+      comment: { body: "/cyspbot status", id: 42 },
+      repository: { name: "cyspbot", owner: { login: "chikachow" } },
+    });
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const response = await handleGitHubWebhookRequest(
+        new Request("https://example.test/github/webhooks", {
+          body,
+          headers: githubWebhookHeaders(body, "test-webhook-secret", "issue_comment"),
+          method: "POST",
+        }),
+        {
+          ...testWebhookEnv,
+          GITHUB_WEBHOOK_JOBS: {
+            send: async () => {
+              throw Object.assign(new Error("private payload"), { name: "private exception name" });
+            },
+          },
+        },
+      );
+      expect(response.status).toBe(503);
+      expect(JSON.stringify(consoleError.mock.calls)).not.toContain("private");
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
   it("returns service unavailable when the status job cannot be enqueued", async () => {
     const body = JSON.stringify({
       action: "created",

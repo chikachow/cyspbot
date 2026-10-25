@@ -36,7 +36,6 @@ export function createGitHubWebhookProcessorWorker(
           const fields = {
             attempts: message.attempts,
             deliveryId: job.deliveryId.slice(0, 128),
-            error: error instanceof Error ? error.name : typeof error,
             ...errorLogFields(error),
             messageId: message.id,
             queue: batch.queue,
@@ -59,11 +58,12 @@ export function createGitHubWebhookProcessorWorker(
 
 function errorLogFields(error: unknown): Record<string, unknown> {
   if (error instanceof GitHubReactionError) {
-    return { github: error.diagnostics, status: error.status };
+    return { error: "GitHubReactionError", github: error.diagnostics, status: error.status };
   }
 
   if (error instanceof GitHubAppTokenBrokerError) {
     return {
+      error: "GitHubAppTokenBrokerError",
       oauthErrorCode: oauthErrorCodes.has(error.oauthErrorCode)
         ? error.oauthErrorCode
         : "unrecognized_error",
@@ -71,7 +71,8 @@ function errorLogFields(error: unknown): Record<string, unknown> {
     };
   }
 
-  return {};
+  // Dependency exception names, messages, and stacks may contain credentials.
+  return { error: "unexpected_error" };
 }
 
 // Only known protocol codes are safe diagnostics; arbitrary broker text can contain credentials.
