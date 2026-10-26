@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.11.6",
+  "checkpoint_id": "01M5VGZYQ4W99Y7KT0Y6RMD72S",
+  "session_id": "01a17042-0e65-7ac3-aef3-f102d9277088",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-26T07:14:59.191915Z",
+  "branch": "codex/update-cloudflare-zod",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [],
+  "agent": "Codex",
+  "model": "gpt-6-astra",
+  "turn_id": "6f32b3de786a",
+  "checkpoint_transcript_start": 1322,
+  "transcript_lines_at_start": 1322,
+  "compact_transcript_start": 151,
+  "token_usage": {
+    "input_tokens": 23773,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1061376,
+    "output_tokens": 4753,
+    "api_call_count": 12
+  },
+  "session_metrics": {
+    "turn_count": 3
+  }
+}
