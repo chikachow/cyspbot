@@ -128,6 +128,15 @@ size-limit failures retain header diagnostics and log `bodyReadFailed: true`.
 Error-body contents and read failures affect diagnostics, not whether the job
 retries. Available response headers still determine the retry delay.
 
+The processor has no application deadline for Workload Identity Token issuance,
+the broker exchange (including its response body), or the GitHub reaction request.
+A stalled dependency can therefore hold an attempt until Cloudflare's
+[15-minute consumer wall-time limit](https://developers.cloudflare.com/queues/platform/limits/).
+The one-second diagnostic-body budget does not bound the whole attempt, and the
+queue's retry delay is a wait after failure, not a deadline for detecting it.
+This policy does not promise a shorter recovery time or an end-to-end reaction
+completion time; queue scheduling and retention also affect recovery.
+
 Rejections use RFC 9457-style problem-details JSON with `type`, `title`, and `status` fields:
 
 | Condition                                                  | Status |
