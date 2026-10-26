@@ -19,6 +19,8 @@ allowBuilds:
   workerd: false
 strictDepBuilds: true
 
-# GHSA-xjj6-f33q-929c: remove when Miniflare selects a patched Undici version.
 overrides:
+  # GHSA-xjj6-f33q-929c: remove when Miniflare selects a patched Undici version.
   "miniflare>undici@7.29.1": "7.30.1"
+  # GHSA-mrhx-c7xc-m3w5: remove when the test plugin selects a patched Zod version.
+  "@cloudflare/vitest-plugin>zod@4.6.5": "4.6.6"
