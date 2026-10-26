@@ -18,3 +18,7 @@ allowBuilds:
   esbuild: false
   workerd: false
 strictDepBuilds: true
+
+# GHSA-xjj6-f33q-929c: remove when Miniflare selects a patched Undici version.
+overrides:
+  "miniflare>undici@7.29.1": "7.30.1"
