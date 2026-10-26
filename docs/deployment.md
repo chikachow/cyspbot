@@ -34,7 +34,10 @@ identity assertion and performs authorization at its Token Endpoint.
 
 The deployment operator owns recovery of failed webhook deliveries and exhausted queue jobs. GitHub does not automatically redeliver failed webhooks; this source does not run a delivery-recovery scheduler. Queue durability starts only after the receiver successfully publishes the job.
 
-After resolving an ingress failure, inspect the GitHub App's recent webhook deliveries and manually redeliver the failed delivery. See [GitHub's redelivery procedure](https://docs.github.com/en/webhooks/testing-and-troubleshooting-webhooks/redelivering-webhooks).
+After resolving an ingress failure, manually redeliver the failed delivery from
+the GitHub App's recent webhook deliveries. GitHub only permits redelivery of
+deliveries from the past three days; begin recovery early enough to resolve the
+failure and redeliver within that window. See [GitHub's redelivery procedure](https://docs.github.com/en/webhooks/testing-and-troubleshooting-webhooks/redelivering-webhooks).
 
 Every failed valid job retries and reaches `cyspbot-github-webhook-jobs-dlq` if
 it exhausts the queue's retry budget. Inspect the DLQ and bounded processor
@@ -59,9 +62,14 @@ its retries when delivery is delayed or consumers are unavailable. DLQ retention
 does not extend that primary-queue window. Verify both retention settings against
 the intended recovery window; this policy does not guarantee indefinite delivery.
 
-The operator inspects the DLQ at least every 24 hours. Automated alerts are
-currently unconfigured; recovery does not depend on email notification. Queue
-retention is managed in Terraform, not by the Worker deployment pipeline.
+At least every 24 hours, the operator inspects the GitHub App's recent failed
+webhook deliveries, the primary queue backlog and oldest message age, and the
+DLQ backlog. Investigate primary-queue delays before messages reach their
+retention limit; an empty DLQ does not establish successful delivery. Recover
+failed ingress deliveries within GitHub's redelivery window and queued jobs
+within their respective retention windows. Automated alerts are currently
+unconfigured; recovery does not depend on email notification. Queue retention
+is managed in Terraform, not by the Worker deployment pipeline.
 
 Broker policy must authorize the processor's workload identity for the intended repositories and the exact requested scope, `issues:write pull_requests:write`. Keep both permissions until issue and pull-request conversation-comment behavior has been verified against the deployed GitHub App and broker policy.
 
