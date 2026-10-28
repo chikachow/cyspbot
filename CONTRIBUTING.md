@@ -94,6 +94,11 @@ Repository maintainers keep secret scanning and push protection, Dependabot
 security updates, and private vulnerability reporting (where available) enabled.
 The protected branch requires the aggregate `ci` check.
 
+The `dependency-review` workflow checks every pull request for newly introduced
+high or critical vulnerabilities in runtime, development, and unknown dependency
+scopes. License checks are disabled. GitHub repository rulesets in
+`chikachow/infrastructure` manage required checks.
+
 ## Dependency tooling
 
 Use Node 24 and the exact pnpm version in `packageManager`. Install it from the
