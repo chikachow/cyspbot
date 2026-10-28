@@ -72,3 +72,5 @@ After successful CI on `main`, `.github/workflows/run-cyspbot-deploy-update.yml`
 - [Implementation](docs/implementation.md)
 - [Deployment and service boundaries](docs/deployment.md)
 - [Contributing](CONTRIBUTING.md)
+
+This branch is a temporary dependency-review validation probe.
