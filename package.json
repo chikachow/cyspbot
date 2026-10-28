@@ -34,6 +34,7 @@
     "@types/node": "24.19.2",
     "@vitest/coverage-v8": "5.0.5",
     "knip": "6.42.1",
+    "lodash": "4.17.20",
     "oxfmt": "0.74.0",
     "oxlint": "1.89.0",
     "oxlint-tsgolint": "7.0.2004",
