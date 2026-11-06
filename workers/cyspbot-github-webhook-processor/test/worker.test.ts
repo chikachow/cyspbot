@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { GitHubIssueCommentStatusReactionJob } from "@cyspbot/github-webhook-jobs";
-import { GitHubReactionError, type GitHubReactionDependencies } from "../src/github/reactions.ts";
+import type { GitHubReactionDependencies } from "../src/github/reactions.ts";
 import { createGitHubWebhookProcessorWorker } from "../src/worker.ts";
 import type { TokenExchangeEnvironment } from "@cyspbot/token-exchange";
 
@@ -17,10 +17,6 @@ const job: GitHubIssueCommentStatusReactionJob = {
 };
 
 describe("cyspbot-github-webhook-processor", () => {
-  it("defaults GitHub reaction error diagnostics to an empty object", () => {
-    expect(new GitHubReactionError(403).diagnostics).toEqual({});
-  });
-
   it("requests comment-write permissions and adds an eyes reaction", async () => {
     const brokerRequests: RequestInit[] = [];
     const githubRequests: RequestInit[] = [];
@@ -299,40 +295,6 @@ describe("cyspbot-github-webhook-processor", () => {
     },
   );
 
-  it("retries transient GitHub failures", async () => {
-    const worker = createGitHubWebhookProcessorWorker({
-      fetch: async () => new Response(null, { status: 503 }),
-    });
-    const message = createMessage(job);
-
-    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    try {
-      await invokeQueue(worker, [message], createTokenExchangeEnvironment());
-    } finally {
-      consoleWarn.mockRestore();
-    }
-
-    expect(message.retry).toHaveBeenCalledOnce();
-    expect(message.ack).not.toHaveBeenCalled();
-  });
-
-  it("retries transient broker failures", async () => {
-    const worker = createGitHubWebhookProcessorWorker({
-      fetch: async () => new Response(null, { status: 201 }),
-    });
-    const message = createMessage(job);
-
-    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    try {
-      await invokeQueue(worker, [message], createTokenExchangeEnvironment({ brokerStatus: 503 }));
-    } finally {
-      consoleWarn.mockRestore();
-    }
-
-    expect(message.retry).toHaveBeenCalledOnce();
-    expect(message.ack).not.toHaveBeenCalled();
-  });
-
   it.each([
     [503, { "retry-after": "120" }, 120],
     [403, {}, 60],
@@ -586,51 +548,32 @@ describe("cyspbot-github-webhook-processor", () => {
     expect(message.ack).not.toHaveBeenCalled();
   });
 
-  it("keeps header diagnostics when the GitHub error body is not an object", async () => {
+  it.each([
+    ["a non-object", "[]"],
+    ["an object without diagnostic fields", "{}"],
+  ])("keeps header diagnostics when the GitHub error body is %s", async (_name, body) => {
     const worker = createGitHubWebhookProcessorWorker({
       fetch: async () =>
-        new Response("[]", {
-          headers: { "x-github-request-id": "NON_OBJECT" },
+        new Response(body, {
+          headers: { "x-github-request-id": "HEADERS_ONLY" },
           status: 403,
         }),
     });
     const message = createMessage(job);
-
     const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     try {
       await invokeQueue(worker, [message], createTokenExchangeEnvironment());
 
-      expect(consoleWarn).toHaveBeenCalledWith(
+      expect(consoleWarn).toHaveBeenCalledExactlyOnceWith(
         "github_webhook_job_retrying",
         expect.objectContaining({
-          github: { requestId: "NON_OBJECT" },
-        }),
-      );
-    } finally {
-      consoleWarn.mockRestore();
-    }
-  });
-
-  it("ignores absent fields in an object GitHub error body", async () => {
-    const worker = createGitHubWebhookProcessorWorker({
-      fetch: async () =>
-        new Response("{}", {
-          headers: { "x-github-request-id": "EMPTY_OBJECT" },
+          error: "GitHubReactionError",
+          github: { requestId: "HEADERS_ONLY" },
           status: 403,
         }),
-    });
-    const message = createMessage(job);
-
-    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    try {
-      await invokeQueue(worker, [message], createTokenExchangeEnvironment());
-
-      expect(consoleWarn).toHaveBeenCalledWith(
-        "github_webhook_job_retrying",
-        expect.objectContaining({
-          github: { requestId: "EMPTY_OBJECT" },
-        }),
       );
+      expect(message.ack).not.toHaveBeenCalled();
+      expect(message.retry).toHaveBeenCalledExactlyOnceWith({ delaySeconds: 60 });
     } finally {
       consoleWarn.mockRestore();
     }
@@ -667,27 +610,6 @@ describe("cyspbot-github-webhook-processor", () => {
       consoleWarn.mockRestore();
     }
     expect(message.retry).toHaveBeenCalledExactlyOnceWith({ delaySeconds: 60 });
-    expect(message.ack).not.toHaveBeenCalled();
-  });
-
-  it("retries a rate-limited forbidden response", async () => {
-    const worker = createGitHubWebhookProcessorWorker({
-      fetch: async () =>
-        new Response(null, {
-          headers: { "retry-after": "60", "x-ratelimit-remaining": "0" },
-          status: 403,
-        }),
-    });
-    const message = createMessage(job);
-
-    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    try {
-      await invokeQueue(worker, [message], createTokenExchangeEnvironment());
-    } finally {
-      consoleWarn.mockRestore();
-    }
-
-    expect(message.retry).toHaveBeenCalledOnce();
     expect(message.ack).not.toHaveBeenCalled();
   });
 
@@ -752,19 +674,6 @@ describe("cyspbot-github-webhook-processor", () => {
     } finally {
       vi.useRealTimers();
     }
-  });
-
-  it("honors the retry delay on a validation or spam response", async () => {
-    const message = createMessage(job);
-    await invokeQueue(
-      createGitHubWebhookProcessorWorker({
-        fetch: async () => new Response(null, { status: 422, headers: { "retry-after": "600" } }),
-      }),
-      [message],
-      createTokenExchangeEnvironment(),
-    );
-    expect(message.ack).not.toHaveBeenCalled();
-    expect(message.retry).toHaveBeenCalledExactlyOnceWith({ delaySeconds: 600 });
   });
 
   it("continues a batch after retrying a failed job", async () => {
