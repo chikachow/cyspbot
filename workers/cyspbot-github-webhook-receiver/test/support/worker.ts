@@ -1,31 +1,32 @@
-import { createGitHubWebhookReceiverWorker } from "../../src/worker.ts";
+import githubWebhookReceiverWorker from "@cyspbot/github-webhook-receiver";
+import type { GitHubIssueCommentStatusReactionJob } from "@cyspbot/github-webhook-jobs";
 
-import { testEnv } from "./worker-env.ts";
-
-type TestEnv = GitHubWebhookReceiverEnv;
-
-const githubWebhookReceiverApp = createGitHubWebhookReceiverWorker();
-
-export function fetchGitHubWebhookReceiver(
-  input: RequestInfo | URL,
-  init?: RequestInit,
-): Promise<Response> {
-  return fetchWorkerWithApp(githubWebhookReceiverApp, input, init);
+export interface TestWebhookEnv {
+  GITHUB_APP_ID: string;
+  GITHUB_WEBHOOK_JOBS: {
+    send(
+      message: GitHubIssueCommentStatusReactionJob,
+      options?: { contentType?: "json" },
+    ): Promise<unknown>;
+  };
+  GITHUB_WEBHOOK_SECRET?: string | SecretsStoreSecret;
 }
 
-function fetchWorkerWithApp(
-  app: ExportedHandler<TestEnv>,
-  input: RequestInfo | URL,
-  init?: RequestInit,
-  env: TestEnv = testEnv,
+export function fetchGitHubWebhookReceiver(
+  request: Request,
+  env: TestWebhookEnv,
 ): Promise<Response> {
-  const handler = app.fetch;
+  const handler = githubWebhookReceiverWorker.fetch;
 
   if (handler === undefined) {
     throw new Error("test app has no fetch handler");
   }
 
   return Promise.resolve(
-    handler(new Request(input, init) as Parameters<typeof handler>[0], env, {} as ExecutionContext),
+    handler(
+      request as Parameters<typeof handler>[0],
+      env as GitHubWebhookReceiverEnv,
+      {} as ExecutionContext,
+    ),
   );
 }

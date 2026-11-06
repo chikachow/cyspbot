@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { githubWebhookHeaders, githubWebhookTestSecret } from "../support/webhook.ts";
 
 describe("GitHub webhook receiver Worker entrypoint", () => {
-  it("classifies and enqueues a matching status comment", async () => {
+  it("accepts a matching status comment through the configured Worker entrypoint", async () => {
     const body = JSON.stringify({
       action: "created",
       comment: {

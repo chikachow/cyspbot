@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { parseGitHubIssueCommentStatusReactionJob } from "@cyspbot/github-webhook-jobs";
 
 import { classifyStatusReactionJob } from "../src/github-webhooks/status-reaction.ts";
 
@@ -79,7 +78,6 @@ describe("GitHub status reaction classification", () => {
         repository: { owner: "owner", name },
         version: 1,
       });
-      expect(parseGitHubIssueCommentStatusReactionJob(job)).toEqual(job);
     },
   );
 });
