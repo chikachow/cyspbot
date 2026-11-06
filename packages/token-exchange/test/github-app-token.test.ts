@@ -253,14 +253,33 @@ describe("cyspbot OAuth Token Exchange Client", () => {
     );
   });
 
-  it("rejects an oversized broker response", async () => {
-    const { env } = createEnv({
-      response: new Response("x".repeat(64 * 1024 + 1), { status: 200 }),
-    });
+  describe.each([200, 400])("broker HTTP %s response size", (status) => {
+    it.each([64 * 1024, 64 * 1024 + 1])("enforces the 64 KiB limit at %s bytes", async (size) => {
+      const json =
+        status === 200
+          ? await createBrokerSuccessResponse().text()
+          : JSON.stringify({ error: "invalid_scope" });
+      // JSON whitespace keeps both fixtures otherwise valid, isolating the size limit.
+      const body = json.padEnd(size, " ");
+      expect(new TextEncoder().encode(body)).toHaveLength(size);
+      const { env } = createEnv({ response: new Response(body, { status }) });
+      const result = requestGitHubAppInstallationToken(env, { resource, scope });
 
-    await expect(requestGitHubAppInstallationToken(env, { resource, scope })).rejects.toThrow(
-      "invalid token response",
-    );
+      if (status === 400) {
+        await expect(result).rejects.toMatchObject({
+          status: 400,
+          oauthErrorCode: size === 64 * 1024 ? "invalid_scope" : "invalid_response",
+        });
+      } else if (size === 64 * 1024) {
+        await expect(result).resolves.toEqual({
+          accessToken: "ghs_test_token",
+          expiresIn: 300,
+          scope,
+        });
+      } else {
+        await expect(result).rejects.toThrow("invalid token response");
+      }
+    });
   });
 
   it("throws a typed error for broker OAuth failures", async () => {
