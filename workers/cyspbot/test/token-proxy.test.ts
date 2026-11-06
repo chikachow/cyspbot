@@ -96,7 +96,15 @@ describe("Token Endpoint proxy", () => {
         }),
         { fetch, TOKEN_PROXY_ENDPOINT: endpoint },
       );
-      expect(actual).toBe(response);
+      expect(actual.status).toBe(status);
+      expect(Object.fromEntries(actual.headers)).toEqual({
+        "cache-control": "no-store",
+        location: "https://untrusted.example/",
+        pragma: "no-cache",
+        "retry-after": "30",
+        "www-authenticate": "Bearer",
+      });
+      expect(new Uint8Array(await actual.arrayBuffer())).toEqual(body);
       expect(fetch).toHaveBeenCalledTimes(1);
     },
   );
