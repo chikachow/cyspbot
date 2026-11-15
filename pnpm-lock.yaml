@@ -26,8 +26,8 @@ importers:
         specifier: workspace:*
         version: link:packages/http
       '@tsconfig/strictest':
-        specifier: 2.0.8
-        version: 2.0.8
+        specifier: 2.0.9
+        version: 2.0.9
       '@types/node':
         specifier: 24.19.2
         version: 24.19.2
@@ -1161,8 +1161,8 @@ packages:
   '@speed-highlight/core@1.2.24':
     resolution: {integrity: sha512-qeW2e1l78afw8VhRPfPQ1Gjj+KU5XFQ/OFV5ti6eTa9bruO7mJyZtA4vw0ofqmA3tKCkROE9xLk3VZoeRc98nw==}
 
-  '@tsconfig/strictest@2.0.8':
-    resolution: {integrity: sha512-XnQ7vNz5HRN0r88GYf1J9JJjqtZPiHt2woGJOo2dYqyHGGcd6OLGqSlBB6p1j9mpzja6Oe5BoPqWmeDx6X9rLw==}
+  '@tsconfig/strictest@2.0.9':
+    resolution: {integrity: sha512-CbwIySRXoGapLZYXqQHF15cg0wQImJa25Ynmubb7816vnHqTdQrmQlSbZxkJrrBusHLbF1kFbNVn8XtxmQ3EpQ==}
 
   '@tybys/wasm-util@0.10.5':
     resolution: {integrity: sha512-dOGOPxlaNV+G046mZzN+9C0dAcQZeSKcXiVaM0TYy/LM4ttTmgSBDxYfovcYI8Em3+eAbiAYpvWLOv8+ZVRJKA==}
@@ -2420,7 +2420,7 @@ snapshots:
 
   '@speed-highlight/core@1.2.24': {}
 
-  '@tsconfig/strictest@2.0.8': {}
+  '@tsconfig/strictest@2.0.9': {}
 
   '@tybys/wasm-util@0.10.5':
     dependencies:
