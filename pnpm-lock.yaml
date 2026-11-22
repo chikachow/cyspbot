@@ -8,10 +8,6 @@ settings:
   excludeLinksFromLockfile: false
   linkWorkspacePackages: false
 
-overrides:
-  miniflare>undici@7.29.1: 7.30.1
-  '@cloudflare/vitest-plugin>zod@4.6.5': 4.6.6
-
 importers:
 
   .:
